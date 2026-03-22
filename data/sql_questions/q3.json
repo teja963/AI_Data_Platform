@@ -1,0 +1,19 @@
+{
+  "id": 3,
+  "category": "Joins",
+  "title": "Employees Earning More Than Their Managers",
+  "tags": ["SELF JOIN", "COMPARISON"],
+  "description": "Find employees whose salary is greater than their direct manager's salary.",
+  "tables": {
+    "employees": [
+      {"id": 1, "name": "A", "salary": 100000, "manager_id": null},
+      {"id": 2, "name": "B", "salary": 90000, "manager_id": 1},
+      {"id": 3, "name": "C", "salary": 120000, "manager_id": 1},
+      {"id": 4, "name": "D", "salary": 80000, "manager_id": 2}
+    ]
+  },
+  "expected_output": [
+    {"name": "C"}
+  ],
+  "solution": "SELECT e.name FROM employees e JOIN employees m ON e.manager_id=m.id WHERE e.salary>m.salary;"
+}

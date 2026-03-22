@@ -1,0 +1,29 @@
+# 🔹 Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# 🔹 Virtual environment
+myenv/
+venv/
+.env/
+
+# 🔹 Streamlit secrets
+.streamlit/secrets.toml
+
+# 🔹 Progress file (if you don't want to track user progress)
+data/progress.json
+
+# 🔹 OS files
+.DS_Store
+Thumbs.db
+
+# 🔹 Logs
+*.log
+
+# 🔹 VS Code
+.vscode/
+
+# 🔹 Temporary files
+*.tmp
+*.swp

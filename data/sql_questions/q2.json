@@ -1,0 +1,24 @@
+{
+  "id": 2,
+  "category": "Joins",
+  "title": "Customers With High Total Spending",
+  "tags": ["JOIN", "GROUP BY", "HAVING"],
+  "description": "Find customers whose total order amount exceeds 500. Include only customers who have placed at least two orders.",
+  "tables": {
+    "customers": [
+      {"id": 1, "name": "Alice"},
+      {"id": 2, "name": "Bob"},
+      {"id": 3, "name": "Charlie"}
+    ],
+    "orders": [
+      {"id": 1, "customer_id": 1, "amount": 300},
+      {"id": 2, "customer_id": 1, "amount": 250},
+      {"id": 3, "customer_id": 2, "amount": 200},
+      {"id": 4, "customer_id": 2, "amount": 100}
+    ]
+  },
+  "expected_output": [
+    {"name": "Alice", "total": 550}
+  ],
+  "solution": "SELECT c.name, SUM(o.amount) total FROM customers c JOIN orders o ON c.id=o.customer_id GROUP BY c.name HAVING SUM(o.amount)>500 AND COUNT(*)>=2;"
+}

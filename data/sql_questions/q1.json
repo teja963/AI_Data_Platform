@@ -1,0 +1,25 @@
+{
+  "id": 1,
+  "category": "Joins",
+  "title": "Inactive Customers Without Orders in Last Year",
+  "tags": ["JOIN", "ANTI JOIN", "DATE", "NULL"],
+  "description": "You are given customers and orders data. Identify customers who are currently marked as 'inactive' and have not placed any orders in the last 365 days from '2025-01-01'. Ensure that even customers with no orders at all are included.",
+  "tables": {
+    "customers": [
+      {"id": 1, "name": "Alice", "status": "inactive"},
+      {"id": 2, "name": "Bob", "status": "inactive"},
+      {"id": 3, "name": "Charlie", "status": "active"},
+      {"id": 4, "name": "David", "status": "inactive"}
+    ],
+    "orders": [
+      {"id": 101, "customer_id": 1, "order_date": "2024-12-01"},
+      {"id": 102, "customer_id": 2, "order_date": "2023-01-01"},
+      {"id": 103, "customer_id": 3, "order_date": "2024-10-01"}
+    ]
+  },
+  "expected_output": [
+    {"id": 2, "name": "Bob"},
+    {"id": 4, "name": "David"}
+  ],
+  "solution": "SELECT c.id, c.name FROM customers c LEFT JOIN orders o ON c.id = o.customer_id AND o.order_date >= '2024-01-01' WHERE c.status='inactive' AND o.id IS NULL;"
+}

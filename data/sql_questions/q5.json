@@ -1,0 +1,22 @@
+{
+  "id": 5,
+  "category": "Joins",
+  "title": "Recent Orders Sorted by Amount",
+  "tags": ["JOIN", "ORDER BY", "DATE"],
+  "description": "Retrieve customers with orders in last 30 days and sort them by amount descending.",
+  "tables": {
+    "customers": [
+      {"id": 1, "name": "A"},
+      {"id": 2, "name": "B"}
+    ],
+    "orders": [
+      {"customer_id": 1, "amount": 500, "date": "2024-12-20"},
+      {"customer_id": 2, "amount": 300, "date": "2024-12-25"}
+    ]
+  },
+  "expected_output": [
+    {"name": "A", "amount": 500},
+    {"name": "B", "amount": 300}
+  ],
+  "solution": "SELECT c.name,o.amount FROM customers c JOIN orders o ON c.id=o.customer_id WHERE o.date>='2024-12-01' ORDER BY o.amount DESC;"
+}
