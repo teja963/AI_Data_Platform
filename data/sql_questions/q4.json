@@ -1,19 +1,22 @@
 {
   "id": 4,
   "category": "Joins",
-  "title": "Customers With Unique Purchase Categories",
-  "tags": ["JOIN", "DISTINCT"],
-  "description": "Find customers who have purchased products from more than one distinct category.",
+  "title": "Customers Buying Across Multiple Categories",
+  "tags": ["GROUP BY", "DISTINCT"],
+  "description": "Find all customers who have made purchases in more than one distinct product category based on their order history.",
   "tables": {
     "orders": [
       {"customer_id": 1, "category": "Electronics"},
       {"customer_id": 1, "category": "Furniture"},
+      {"customer_id": 1, "category": "Electronics"},
       {"customer_id": 2, "category": "Electronics"},
-      {"customer_id": 2, "category": "Electronics"}
+      {"customer_id": 3, "category": "Books"},
+      {"customer_id": 3, "category": "Clothing"}
     ]
   },
   "expected_output": [
-    {"customer_id": 1}
+    {"customer_id": 1},
+    {"customer_id": 3}
   ],
-  "solution": "SELECT customer_id FROM orders GROUP BY customer_id HAVING COUNT(DISTINCT category)>1;"
+  "solution": "SELECT customer_id FROM orders GROUP BY customer_id HAVING COUNT(DISTINCT category) > 1;"
 }

@@ -4,176 +4,122 @@ from modules.sql.validator import validate
 from core.loader import load_questions, group_by_category
 from core.ai import ask_ai
 from core.progress import load_progress, save_progress
+import re
+
+# ---------- FORMAT SQL ----------
+def format_sql_vertical(sql):
+    keywords = [
+        "SELECT", "FROM", "JOIN", "LEFT JOIN", "RIGHT JOIN",
+        "INNER JOIN", "WHERE", "GROUP BY", "HAVING",
+        "ORDER BY", "LIMIT", "ON"
+    ]
+    for kw in keywords:
+        sql = re.sub(rf"\b{kw}\b", f"\n{kw}", sql, flags=re.IGNORECASE)
+    return sql.strip()
+
 
 def render_sql():
-    st.set_page_config(layout="wide")
 
     questions = load_questions("sql")
 
     if not questions:
-        st.error("❌ No SQL questions found.")
+        st.error("No SQL questions found.")
         return
 
-    # 🔥 Load progress
     if "solved" not in st.session_state:
         st.session_state.solved = load_progress()
 
-    # 🔥 Persist selected category/module
-    if "category" not in st.session_state:
-        st.session_state.category = None
-
-    if "selected_question" not in st.session_state:
-        st.session_state.selected_question = None
-
-    # 🔥 Group by category
     grouped = group_by_category(questions)
 
+    # ---------- SIDEBAR ----------
     st.sidebar.title("SQL Practice")
 
-    # ---------------- CATEGORY ----------------
-    categories = list(grouped.keys())
-
-    selected_category = st.sidebar.selectbox(
-        "📂 Select Category",
-        categories,
-        index=categories.index(st.session_state.category)
-        if st.session_state.category in categories else 0
+    selected_submodule = st.sidebar.selectbox(
+        "Submodule",
+        list(grouped.keys())
     )
 
-    st.session_state.category = selected_category
+    sub_qs = grouped[selected_submodule]
 
-    modules = grouped[selected_category]
+    st.sidebar.markdown("### Questions")
 
-    # ---------------- MODULE ----------------
-    selected_q = st.sidebar.selectbox(
-        "📘 Select Module",
-        modules,
-        format_func=lambda x: f"{x['id']}. {x['title']}",
-        index=modules.index(st.session_state.selected_question)
-        if st.session_state.selected_question in modules else 0
-    )
+    for q in sub_qs:
+        if st.sidebar.button(
+            f"{q['id']}. {q['title']}",
+            key=f"q_{q['id']}"
+        ):
+            st.session_state.selected_question = q
 
-    st.session_state.selected_question = selected_q
+    if "selected_question" not in st.session_state:
+        st.session_state.selected_question = sub_qs[0]
 
-    q = selected_q
+    q = st.session_state.selected_question
 
-    show_ai = st.sidebar.checkbox("Show AI Assistant", value=True)
+    # 🔥 KEY FIX → FORCE RENDER START
+    st.empty()
 
-    # 🔥 60:40 layout
-    col1, col2 = st.columns([3, 2])
+    # ---------- LAYOUT ----------
+    col1, col2 = st.columns([3, 1.5])
 
-    # ---------------- LEFT PANEL ----------------
+    # ---------- QUESTION ----------
     with col1:
-        st.header(q.get("title", ""))
+        st.subheader(q["title"])
+        st.write(q["description"])
 
-        # Tags
-        tags = q.get("tags", [])
-        if tags:
-            st.markdown("**Tags:** " + " | ".join([f"`{t}`" for t in tags]))
-
-        st.write(q.get("description", ""))
-
-        st.markdown("### 📊 Input Tables")
-        for table, data in q.get("tables", {}).items():
-            st.markdown(f"#### 🟦 {table}")
+        st.markdown("### Input Tables")
+        for table, data in q["tables"].items():
+            st.markdown(f"#### {table}")
             st.dataframe(data, use_container_width=True, hide_index=True)
 
-        st.markdown("### 📤 Expected Output")
-        st.dataframe(q.get("expected_output", []), use_container_width=True, hide_index=True)
+        st.markdown("### Expected Output")
+        st.dataframe(q["expected_output"], use_container_width=True, hide_index=True)
 
-    # ---------------- RIGHT PANEL ----------------
+    # ---------- EDITOR ----------
     with col2:
-        st.subheader("💻 SQL Editor")
+        st.subheader("SQL Editor")
 
         query = st.text_area(
-            "Write your SQL query",
-            height=500,
-            placeholder="SELECT * FROM Customers;",
+            "Write SQL",
+            height=250,
             key=f"query_{q['id']}"
         )
 
-        col_run, col_submit = st.columns(2)
+        c1, c2 = st.columns(2)
+        run = c1.button("Run")
+        submit = c2.button("Submit")
 
-        result = None
-
-        with col_run:
-            run_clicked = st.button("▶️ Run")
-
-        with col_submit:
-            submit_clicked = st.button("✅ Submit")
-
-        if run_clicked or submit_clicked:
+        if run or submit:
             if not query.strip():
-                st.warning("⚠️ Please write a query")
+                st.warning("Write a query")
             else:
-                with st.spinner("Running..."):
-                    conn = create_db(q["tables"])
-                    result, error = run_query(conn, query)
+                conn = create_db(q["tables"])
+                result, error = run_query(conn, query)
 
                 if error:
                     st.error(error)
                 else:
-                    st.markdown("### 📊 Output")
                     st.dataframe(result, use_container_width=True, hide_index=True)
 
-                    if submit_clicked:
+                    if submit:
                         if validate(result, q["expected_output"]):
-                            st.success("✅ Correct Answer!")
+                            st.success("Correct")
                             st.session_state.solved.add(q["id"])
                             save_progress(st.session_state.solved)
                         else:
-                            st.error("❌ Incorrect Answer")
+                            st.error("Incorrect")
 
-        # ---------------- AI ----------------
-        if show_ai:
-            st.markdown("---")
-            st.subheader("🤖 AI Assistant")
+        # ---------- AI ----------
+        st.markdown("### AI Tools")
 
-            col1, col2, col3 = st.columns(3)
+        cA, cB = st.columns(2)
+        hint = cA.button("Hint")
+        explain = cB.button("Explain")
 
-            explain = col1.button("Explain")
-            debug = col2.button("Debug")
-            hint = col3.button("Hint")
+        if hint:
+            st.write(ask_ai(f"Hint:\n{q['description']}"))
 
-            if explain and query.strip():
-                st.write(ask_ai(f"""
-Explain this SQL:
+        elif explain and query.strip():
+            st.write(ask_ai(f"Explain:\n{query}"))
 
-{query}
-
-Focus:
-- Query flow
-- Joins
-- Filters
-- Output
-
-Be concise.
-"""))
-
-            elif debug and query.strip():
-                st.write(ask_ai(f"""
-Debug this SQL:
-
-{query}
-
-Provide:
-1. Mistake
-2. Correct query
-3. Why
-
-Be precise.
-"""))
-
-            elif hint:
-                st.write(ask_ai(f"""
-Question:
-{q['description']}
-
-Give a hint only.
-Do NOT give full solution.
-"""))
-
-        # ---------------- SOLUTION ----------------
-        st.markdown("---")
-        with st.expander("💡 Show Solution"):
-            st.code(q.get("solution", ""), language="sql")
+        with st.expander("Show Solution"):
+            st.code(format_sql_vertical(q["solution"]), language="sql")
