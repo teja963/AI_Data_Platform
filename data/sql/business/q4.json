@@ -1,0 +1,48 @@
+{
+  "id": 4,
+  "category": "Business",
+  "title": "Customers With Consistent Purchase Gap",
+  "tags": [
+    "DATE",
+    "WINDOW"
+  ],
+  "description": "Identify customers whose gap between consecutive orders is always less than or equal to 30 days.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "date": "2024-01-20"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-03-01"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-02-20"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "SELECT customer_id FROM (SELECT customer_id, julianday(date) - julianday(LAG(date) OVER (PARTITION BY customer_id ORDER BY date)) gap FROM orders) GROUP BY customer_id HAVING MAX(COALESCE(gap,0)) <= 30;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\ngap_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")))\n\ncustomer_gaps = (\n    orders.withColumn(\"prev_date\", lag(\"date\").over(gap_window))\n    .withColumn(\"gap\", datediff(to_date(col(\"date\")), to_date(col(\"prev_date\"))))\n)\n\nresult = (\n    customer_gaps.groupBy(\"customer_id\")\n    .agg(max(coalesce(col(\"gap\"), lit(0))).alias(\"max_gap\"))\n    .filter(col(\"max_gap\") <= 30)\n    .select(\"customer_id\")\n)"
+}

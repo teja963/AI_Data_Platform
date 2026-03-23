@@ -1,0 +1,73 @@
+{
+  "id": 1,
+  "category": "DeepComposite",
+  "title": "Revenue Inflation Due to Join Explosion",
+  "tags": [
+    "JOIN",
+    "AGGREGATION",
+    "DISTINCT"
+  ],
+  "description": "Calculate total revenue per customer by joining orders and order_items. Each order can have multiple items. Ensure that revenue is not inflated due to duplicate joins.",
+  "tables": {
+    "orders": [
+      {
+        "order_id": 1,
+        "customer_id": 1
+      },
+      {
+        "order_id": 2,
+        "customer_id": 1
+      },
+      {
+        "order_id": 3,
+        "customer_id": 2
+      },
+      {
+        "order_id": 4,
+        "customer_id": 3
+      }
+    ],
+    "order_items": [
+      {
+        "order_id": 1,
+        "price": 100
+      },
+      {
+        "order_id": 1,
+        "price": 50
+      },
+      {
+        "order_id": 2,
+        "price": 200
+      },
+      {
+        "order_id": 3,
+        "price": 300
+      },
+      {
+        "order_id": 3,
+        "price": 100
+      },
+      {
+        "order_id": 4,
+        "price": 400
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1,
+      "revenue": 350
+    },
+    {
+      "customer_id": 2,
+      "revenue": 400
+    },
+    {
+      "customer_id": 3,
+      "revenue": 400
+    }
+  ],
+  "sql_solution": "SELECT o.customer_id, SUM(i.price) revenue FROM orders o JOIN order_items i ON o.order_id = i.order_id GROUP BY o.customer_id;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\norder_revenue = (\n    orders.alias(\"o\")\n    .join(order_items.alias(\"i\"), col(\"o.order_id\") == col(\"i.order_id\"), \"inner\")\n    .select(\n        col(\"o.customer_id\").alias(\"customer_id\"),\n        col(\"i.price\").alias(\"price\")\n    )\n)\n\nresult = order_revenue.groupBy(\"customer_id\").agg(sum(\"price\").alias(\"revenue\"))"
+}

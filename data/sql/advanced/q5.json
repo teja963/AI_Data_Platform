@@ -1,0 +1,45 @@
+{
+  "id": 5,
+  "category": "Advanced",
+  "title": "Overlapping Time Ranges",
+  "tags": [
+    "INTERVAL"
+  ],
+  "description": "Find pairs of records that have overlapping time intervals.",
+  "tables": {
+    "events": [
+      {
+        "id": 1,
+        "start": 1,
+        "end": 5
+      },
+      {
+        "id": 2,
+        "start": 4,
+        "end": 8
+      },
+      {
+        "id": 3,
+        "start": 10,
+        "end": 15
+      },
+      {
+        "id": 4,
+        "start": 12,
+        "end": 20
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "id1": 1,
+      "id2": 2
+    },
+    {
+      "id1": 3,
+      "id2": 4
+    }
+  ],
+  "sql_solution": "SELECT a.id id1, b.id id2 FROM events a JOIN events b ON a.id < b.id AND a.start <= b.end AND b.start <= a.end;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    events.alias(\"a\")\n    .join(\n        events.alias(\"b\"),\n        (col(\"a.id\") < col(\"b.id\"))\n        & (col(\"a.start\") <= col(\"b.end\"))\n        & (col(\"b.start\") <= col(\"a.end\")),\n        \"inner\"\n    )\n    .select(col(\"a.id\").alias(\"id1\"), col(\"b.id\").alias(\"id2\"))\n)"
+}

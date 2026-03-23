@@ -1,0 +1,38 @@
+{
+  "id": 7,
+  "category": "Advanced",
+  "title": "Find Missing Sequence Numbers",
+  "tags": [
+    "SEQUENCE"
+  ],
+  "description": "Identify missing numbers in a sequence of order ids.",
+  "tables": {
+    "orders": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      },
+      {
+        "id": 4
+      },
+      {
+        "id": 5
+      },
+      {
+        "id": 7
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "missing_id": 3
+    },
+    {
+      "missing_id": 6
+    }
+  ],
+  "sql_solution": "SELECT a.id + 1 AS missing_id FROM orders a LEFT JOIN orders b ON a.id + 1 = b.id WHERE b.id IS NULL AND a.id < (SELECT MAX(id) FROM orders);",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nmax_id = orders.agg(max(\"id\").alias(\"max_id\"))\n\nresult = (\n    orders.alias(\"a\")\n    .join(orders.alias(\"b\"), col(\"a.id\") + lit(1) == col(\"b.id\"), \"left\")\n    .crossJoin(max_id)\n    .filter(col(\"b.id\").isNull() & (col(\"a.id\") < col(\"max_id\")))\n    .select((col(\"a.id\") + lit(1)).alias(\"missing_id\"))\n)"
+}

@@ -1,0 +1,56 @@
+{
+  "id": 6,
+  "category": "Aggregation",
+  "title": "Customers With Mixed Order Values",
+  "tags": [
+    "GROUP BY",
+    "CASE"
+  ],
+  "description": "Find customers who have placed at least one order above 300 and at least one order below 100. Return the customer id.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 50
+      },
+      {
+        "customer_id": 1,
+        "amount": 400
+      },
+      {
+        "customer_id": 2,
+        "amount": 200
+      },
+      {
+        "customer_id": 2,
+        "amount": 300
+      },
+      {
+        "customer_id": 3,
+        "amount": 80
+      },
+      {
+        "customer_id": 3,
+        "amount": 90
+      },
+      {
+        "customer_id": 4,
+        "amount": 500
+      },
+      {
+        "customer_id": 4,
+        "amount": 20
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 4
+    }
+  ],
+  "sql_solution": "SELECT customer_id FROM orders GROUP BY customer_id HAVING MAX(amount) > 300 AND MIN(amount) < 100;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    orders.groupBy(\"customer_id\")\n    .agg(\n        max(\"amount\").alias(\"max_amount\"),\n        min(\"amount\").alias(\"min_amount\")\n    )\n    .filter((col(\"max_amount\") > 300) & (col(\"min_amount\") < 100))\n    .select(\"customer_id\")\n)"
+}

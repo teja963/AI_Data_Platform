@@ -1,0 +1,45 @@
+{
+  "id": 10,
+  "category": "Window",
+  "title": "Customers With Increasing Orders",
+  "tags": [
+    "LAG"
+  ],
+  "description": "Find customers whose order amounts are strictly increasing when ordered by order_seq. Return customers who have at least two orders and no non-increasing step.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 100,
+        "order_seq": 1
+      },
+      {
+        "customer_id": 1,
+        "amount": 200,
+        "order_seq": 2
+      },
+      {
+        "customer_id": 1,
+        "amount": 300,
+        "order_seq": 3
+      },
+      {
+        "customer_id": 2,
+        "amount": 200,
+        "order_seq": 1
+      },
+      {
+        "customer_id": 2,
+        "amount": 150,
+        "order_seq": 2
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    }
+  ],
+  "sql_solution": "SELECT customer_id FROM (SELECT customer_id, amount, LAG(amount) OVER (PARTITION BY customer_id ORDER BY order_seq) prev_amount FROM orders) GROUP BY customer_id HAVING COUNT(*) > 1 AND SUM(CASE WHEN prev_amount IS NOT NULL AND amount <= prev_amount THEN 1 ELSE 0 END) = 0;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nprogression_window = Window.partitionBy(\"customer_id\").orderBy(col(\"order_seq\"))\n\nresult = (\n    orders.withColumn(\"prev_amount\", lag(\"amount\").over(progression_window))\n    .groupBy(\"customer_id\")\n    .agg(\n        count(lit(1)).alias(\"order_count\"),\n        sum(\n            when(\n                col(\"prev_amount\").isNotNull() & (col(\"amount\") <= col(\"prev_amount\")),\n                lit(1)\n            ).otherwise(lit(0))\n        ).alias(\"non_increasing_steps\")\n    )\n    .filter((col(\"order_count\") > 1) & (col(\"non_increasing_steps\") == 0))\n    .select(\"customer_id\")\n)"
+}

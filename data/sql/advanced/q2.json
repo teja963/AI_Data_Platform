@@ -1,0 +1,63 @@
+{
+  "id": 2,
+  "category": "Advanced",
+  "title": "Continuous Same Amount Orders",
+  "tags": [
+    "SEQUENCE"
+  ],
+  "description": "Find customers who have at least three consecutive orders with the same amount.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 100,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "amount": 100,
+        "date": "2024-01-02"
+      },
+      {
+        "customer_id": 1,
+        "amount": 100,
+        "date": "2024-01-03"
+      },
+      {
+        "customer_id": 2,
+        "amount": 200,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 300,
+        "date": "2024-01-02"
+      },
+      {
+        "customer_id": 3,
+        "amount": 400,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 3,
+        "amount": 400,
+        "date": "2024-01-02"
+      },
+      {
+        "customer_id": 3,
+        "amount": 400,
+        "date": "2024-01-03"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "WITH t AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY date) - ROW_NUMBER() OVER (PARTITION BY customer_id, amount ORDER BY date) grp FROM orders) SELECT DISTINCT customer_id FROM t GROUP BY customer_id, amount, grp HAVING COUNT(*) >= 3;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\ncustomer_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")))\namount_window = Window.partitionBy(\"customer_id\", \"amount\").orderBy(to_date(col(\"date\")))\n\ngrouped_orders = orders.withColumn(\n    \"grp\",\n    row_number().over(customer_window) - row_number().over(amount_window)\n)\n\nresult = (\n    grouped_orders.groupBy(\"customer_id\", \"amount\", \"grp\")\n    .agg(count(lit(1)).alias(\"sequence_length\"))\n    .filter(col(\"sequence_length\") >= 3)\n    .select(\"customer_id\")\n    .distinct()\n)"
+}

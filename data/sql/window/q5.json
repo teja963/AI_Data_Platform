@@ -1,0 +1,45 @@
+{
+  "id": 5,
+  "category": "Window",
+  "title": "Second Highest Order Per Customer",
+  "tags": [
+    "ROW_NUMBER"
+  ],
+  "description": "Retrieve the second highest order amount for each customer. Assume order amounts are distinct within each customer.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 100
+      },
+      {
+        "customer_id": 1,
+        "amount": 300
+      },
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 2,
+        "amount": 400
+      },
+      {
+        "customer_id": 2,
+        "amount": 250
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1,
+      "amount": 200
+    },
+    {
+      "customer_id": 2,
+      "amount": 250
+    }
+  ],
+  "sql_solution": "SELECT customer_id, amount FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY amount DESC) rn FROM orders) WHERE rn = 2;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nranking_window = Window.partitionBy(\"customer_id\").orderBy(col(\"amount\").desc())\n\nresult = (\n    orders.withColumn(\"rn\", row_number().over(ranking_window))\n    .filter(col(\"rn\") == 2)\n    .select(\"customer_id\", \"amount\")\n)"
+}

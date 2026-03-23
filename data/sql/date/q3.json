@@ -1,0 +1,48 @@
+{
+  "id": 3,
+  "category": "Date",
+  "title": "Customers With Gaps In Orders",
+  "tags": [
+    "LAG",
+    "DATE"
+  ],
+  "description": "Find customers who have a gap of more than 30 days between any two consecutive orders.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "date": "2024-02-10"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-01-20"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-03-05"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "SELECT DISTINCT customer_id FROM (SELECT *, LAG(date) OVER (PARTITION BY customer_id ORDER BY date) prev_date FROM orders) WHERE julianday(date) - julianday(prev_date) > 30;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\ngap_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")))\n\nresult = (\n    orders.withColumn(\"prev_date\", lag(\"date\").over(gap_window))\n    .filter(datediff(to_date(col(\"date\")), to_date(col(\"prev_date\"))) > 30)\n    .select(\"customer_id\")\n    .distinct()\n)"
+}

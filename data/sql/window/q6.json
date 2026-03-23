@@ -1,0 +1,47 @@
+{
+  "id": 6,
+  "category": "Window",
+  "title": "Difference From Previous Order",
+  "tags": [
+    "LAG"
+  ],
+  "description": "Calculate the difference in order amount between each order and the previous order for the same customer.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 100,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "amount": 200,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 300,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 250,
+        "date": "2024-02-01"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1,
+      "date": "2024-02-01",
+      "diff": 100
+    },
+    {
+      "customer_id": 2,
+      "date": "2024-02-01",
+      "diff": -50
+    }
+  ],
+  "sql_solution": "SELECT customer_id, date, diff FROM (SELECT customer_id, date, amount - LAG(amount) OVER (PARTITION BY customer_id ORDER BY date) diff FROM orders) WHERE diff IS NOT NULL;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\ndifference_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")))\n\nresult = (\n    orders.withColumn(\"prev_amount\", lag(\"amount\").over(difference_window))\n    .withColumn(\"diff\", col(\"amount\") - col(\"prev_amount\"))\n    .filter(col(\"diff\").isNotNull())\n    .select(\"customer_id\", \"date\", \"diff\")\n)"
+}

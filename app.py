@@ -2,16 +2,22 @@ import streamlit as st
 
 st.set_page_config(layout="wide")
 
+PRACTICE_MODULE_LABEL = "SQL + PySpark"
+
 # 🔥 READ FROM URL
 query_params = st.query_params
 
 if "module" not in query_params:
-    st.query_params["module"] = "SQL"
+    st.query_params["module"] = PRACTICE_MODULE_LABEL
+
+selected_module = st.query_params.get("module", PRACTICE_MODULE_LABEL)
+if selected_module == "SQL":
+    selected_module = PRACTICE_MODULE_LABEL
 
 module = st.sidebar.selectbox(
-    "Choose Module",
-    ["SQL", "Dashboard"],
-    index=["SQL", "Dashboard"].index(st.query_params.get("module", "SQL"))
+    "Choose Section",
+    [PRACTICE_MODULE_LABEL, "Dashboard"],
+    index=[PRACTICE_MODULE_LABEL, "Dashboard"].index(selected_module)
 )
 
 # 🔥 SAVE TO URL (PERSISTS AFTER REFRESH)
@@ -19,7 +25,7 @@ st.query_params["module"] = module
 
 
 # ---------------- SQL ----------------
-if module == "SQL":
+if module == PRACTICE_MODULE_LABEL:
     from modules.sql.ui import render_sql
     render_sql()
 
@@ -27,30 +33,32 @@ if module == "SQL":
 elif module == "Dashboard":
     import matplotlib.pyplot as plt
     from core.loader import load_questions
+    from core.progress import load_progress
 
     st.title("📊 Dashboard")
 
-    modules = ["sql", "pyspark", "python"]
+    modules = [
+        {"label": "SQL", "question_module": "sql", "progress_track": "sql"},
+        {"label": "PySpark", "question_module": "sql", "progress_track": "pyspark"},
+        {"label": "Python", "question_module": "python", "progress_track": "python"},
+    ]
 
     cols = st.columns(3)
 
-    for i, module_name in enumerate(modules):
+    for i, module_config in enumerate(modules):
         with cols[i % 3]:
 
             try:
-                questions = load_questions(module_name)
+                questions = load_questions(module_config["question_module"])
             except:
                 questions = []
 
             total = len(questions)
-
-            if "solved" not in st.session_state:
-                st.session_state.solved = set()
-
-            solved = len([q for q in questions if q["id"] in st.session_state.solved])
+            solved_keys = load_progress(module_config["progress_track"])
+            solved = len([q for q in questions if q["progress_key"] in solved_keys])
             unsolved = total - solved
 
-            st.markdown(f"### 📘 {module_name.upper()}")
+            st.markdown(f"### 📘 {module_config['label'].upper()}")
 
             if total == 0:
                 st.info("No questions yet")

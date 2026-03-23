@@ -1,0 +1,53 @@
+{
+  "id": 7,
+  "category": "Aggregation",
+  "title": "Top Categories By Order Count",
+  "tags": [
+    "GROUP BY",
+    "ORDER BY"
+  ],
+  "description": "Retrieve categories along with their total order count and return the top 2 categories with the highest counts. If multiple categories tie on count, break ties by category in ascending alphabetical order.",
+  "tables": {
+    "orders": [
+      {
+        "category": "A"
+      },
+      {
+        "category": "A"
+      },
+      {
+        "category": "A"
+      },
+      {
+        "category": "B"
+      },
+      {
+        "category": "B"
+      },
+      {
+        "category": "C"
+      },
+      {
+        "category": "C"
+      },
+      {
+        "category": "C"
+      },
+      {
+        "category": "C"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "category": "C",
+      "count": 4
+    },
+    {
+      "category": "A",
+      "count": 3
+    }
+  ],
+  "sql_solution": "SELECT category, COUNT(*) count FROM orders GROUP BY category ORDER BY count DESC, category ASC LIMIT 2;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    orders.groupBy(\"category\")\n    .agg(count(lit(1)).alias(\"count\"))\n    .orderBy(col(\"count\").desc(), col(\"category\").asc())\n    .limit(2)\n)"
+}

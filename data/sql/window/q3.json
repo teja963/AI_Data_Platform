@@ -1,0 +1,67 @@
+{
+  "id": 3,
+  "category": "Window",
+  "title": "Running Total Per Customer",
+  "tags": [
+    "SUM OVER"
+  ],
+  "description": "Calculate the cumulative order amount for each customer based on order date.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 100,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "amount": 200,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 1,
+        "amount": 300,
+        "date": "2024-03-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 150,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 100,
+        "date": "2024-02-01"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1,
+      "date": "2024-01-01",
+      "running_total": 100
+    },
+    {
+      "customer_id": 1,
+      "date": "2024-02-01",
+      "running_total": 300
+    },
+    {
+      "customer_id": 1,
+      "date": "2024-03-01",
+      "running_total": 600
+    },
+    {
+      "customer_id": 2,
+      "date": "2024-01-01",
+      "running_total": 150
+    },
+    {
+      "customer_id": 2,
+      "date": "2024-02-01",
+      "running_total": 250
+    }
+  ],
+  "sql_solution": "SELECT customer_id, date, SUM(amount) OVER (PARTITION BY customer_id ORDER BY date) running_total FROM orders;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nrunning_window = (\n    Window.partitionBy(\"customer_id\")\n    .orderBy(to_date(col(\"date\")))\n    .rowsBetween(Window.unboundedPreceding, Window.currentRow)\n)\n\nresult = (\n    orders.withColumn(\"running_total\", sum(\"amount\").over(running_window))\n    .select(\"customer_id\", \"date\", \"running_total\")\n)"
+}

@@ -1,0 +1,54 @@
+{
+  "id": 2,
+  "category": "Aggregation",
+  "title": "Products Purchased By Multiple Customers",
+  "tags": [
+    "GROUP BY",
+    "DISTINCT"
+  ],
+  "description": "Identify products that have been purchased by at least three distinct customers. Return the product id along with the count of unique customers.",
+  "tables": {
+    "orders": [
+      {
+        "product_id": 1,
+        "customer_id": 1
+      },
+      {
+        "product_id": 1,
+        "customer_id": 2
+      },
+      {
+        "product_id": 1,
+        "customer_id": 3
+      },
+      {
+        "product_id": 2,
+        "customer_id": 1
+      },
+      {
+        "product_id": 2,
+        "customer_id": 1
+      },
+      {
+        "product_id": 2,
+        "customer_id": 2
+      },
+      {
+        "product_id": 3,
+        "customer_id": 2
+      },
+      {
+        "product_id": 3,
+        "customer_id": 3
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "product_id": 1,
+      "customer_count": 3
+    }
+  ],
+  "sql_solution": "SELECT product_id, COUNT(DISTINCT customer_id) customer_count FROM orders GROUP BY product_id HAVING COUNT(DISTINCT customer_id) >= 3;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    orders.groupBy(\"product_id\")\n    .agg(countDistinct(\"customer_id\").alias(\"customer_count\"))\n    .filter(col(\"customer_count\") >= 3)\n)"
+}

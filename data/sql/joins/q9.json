@@ -1,0 +1,62 @@
+{
+  "id": 9,
+  "category": "Joins",
+  "title": "Customers With Consecutive Orders",
+  "tags": [
+    "WINDOW",
+    "DATE"
+  ],
+  "description": "Find customers who have placed orders on consecutive days. Return the distinct customer names who have at least one such occurrence.",
+  "tables": {
+    "customers": [
+      {
+        "id": 1,
+        "name": "Alice"
+      },
+      {
+        "id": 2,
+        "name": "Bob"
+      },
+      {
+        "id": 3,
+        "name": "Charlie"
+      }
+    ],
+    "orders": [
+      {
+        "customer_id": 1,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "date": "2024-01-02"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-01-03"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-02-02"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "name": "Alice"
+    },
+    {
+      "name": "Charlie"
+    }
+  ],
+  "sql_solution": "WITH ordered AS (SELECT customer_id, date, LAG(date) OVER (PARTITION BY customer_id ORDER BY date) prev_date FROM orders) SELECT DISTINCT c.name FROM ordered o JOIN customers c ON o.customer_id = c.id WHERE DATE(o.date) = DATE(prev_date, '+1 day');",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\norder_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")))\n\nordered_orders = orders.withColumn(\"prev_date\", lag(\"date\").over(order_window))\n\nresult = (\n    ordered_orders.alias(\"o\")\n    .join(customers.alias(\"c\"), col(\"o.customer_id\") == col(\"c.id\"), \"inner\")\n    .filter(datediff(to_date(col(\"o.date\")), to_date(col(\"o.prev_date\"))) == 1)\n    .select(col(\"c.name\").alias(\"name\"))\n    .distinct()\n)"
+}

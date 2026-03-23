@@ -1,0 +1,65 @@
+{
+  "id": 2,
+  "category": "DeepComposite",
+  "title": "Active Customers With High-Value Orders",
+  "tags": [
+    "LEFT JOIN",
+    "NULL",
+    "FILTER"
+  ],
+  "description": "Retrieve all customers and include only their orders above 150. Customers without qualifying orders should still appear.",
+  "tables": {
+    "customers": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      },
+      {
+        "id": 3
+      },
+      {
+        "id": 4
+      }
+    ],
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 100
+      },
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 2,
+        "amount": 50
+      },
+      {
+        "customer_id": 3,
+        "amount": 300
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "id": 1,
+      "amount": 200
+    },
+    {
+      "id": 2,
+      "amount": null
+    },
+    {
+      "id": 3,
+      "amount": 300
+    },
+    {
+      "id": 4,
+      "amount": null
+    }
+  ],
+  "sql_solution": "SELECT c.id, o.amount FROM customers c LEFT JOIN orders o ON c.id = o.customer_id AND o.amount > 150;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    customers.alias(\"c\")\n    .join(\n        orders.alias(\"o\"),\n        (col(\"c.id\") == col(\"o.customer_id\")) & (col(\"o.amount\") > 150),\n        \"left\"\n    )\n    .select(col(\"c.id\").alias(\"id\"), col(\"o.amount\").alias(\"amount\"))\n)"
+}

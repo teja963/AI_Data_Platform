@@ -1,0 +1,40 @@
+{
+  "id": 10,
+  "category": "Business",
+  "title": "Customers With Early Peak Spending",
+  "tags": [
+    "SEQUENCE"
+  ],
+  "description": "Find customers whose highest order amount appears within the first floor(total_orders / 2) orders after sorting each customer's orders by date.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 500,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "amount": 200,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 100,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 400,
+        "date": "2024-03-01"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    }
+  ],
+  "sql_solution": "WITH ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY date) rn, COUNT(*) OVER (PARTITION BY customer_id) total FROM orders) SELECT customer_id FROM ranked GROUP BY customer_id HAVING MAX(CASE WHEN rn <= total/2 THEN amount END) = MAX(amount);",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nranking_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")))\ncount_window = Window.partitionBy(\"customer_id\")\n\nranked_orders = (\n    orders.withColumn(\"rn\", row_number().over(ranking_window))\n    .withColumn(\"total\", count(lit(1)).over(count_window))\n)\n\nresult = (\n    ranked_orders.groupBy(\"customer_id\")\n    .agg(\n        max(\n            when(\n                col(\"rn\") <= floor(col(\"total\") / lit(2)).cast(\"int\"),\n                col(\"amount\")\n            )\n        ).alias(\"first_half_peak\"),\n        max(\"amount\").alias(\"max_amount\")\n    )\n    .filter(col(\"first_half_peak\") == col(\"max_amount\"))\n    .select(\"customer_id\")\n)"
+}

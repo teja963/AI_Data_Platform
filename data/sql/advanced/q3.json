@@ -1,0 +1,65 @@
+{
+  "id": 3,
+  "category": "Advanced",
+  "title": "Top 2 Orders Per Customer With Ties",
+  "tags": [
+    "DENSE_RANK"
+  ],
+  "description": "Retrieve the top 2 highest order amounts per customer, including ties.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 300
+      },
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 2,
+        "amount": 400
+      },
+      {
+        "customer_id": 2,
+        "amount": 300
+      },
+      {
+        "customer_id": 2,
+        "amount": 300
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1,
+      "amount": 300
+    },
+    {
+      "customer_id": 1,
+      "amount": 200
+    },
+    {
+      "customer_id": 1,
+      "amount": 200
+    },
+    {
+      "customer_id": 2,
+      "amount": 400
+    },
+    {
+      "customer_id": 2,
+      "amount": 300
+    },
+    {
+      "customer_id": 2,
+      "amount": 300
+    }
+  ],
+  "sql_solution": "SELECT customer_id, amount FROM (SELECT *, DENSE_RANK() OVER (PARTITION BY customer_id ORDER BY amount DESC) rnk FROM orders) WHERE rnk <= 2;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nranking_window = Window.partitionBy(\"customer_id\").orderBy(col(\"amount\").desc())\n\nresult = (\n    orders.withColumn(\"rnk\", dense_rank().over(ranking_window))\n    .filter(col(\"rnk\") <= 2)\n    .select(\"customer_id\", \"amount\")\n)"
+}

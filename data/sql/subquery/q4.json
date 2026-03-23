@@ -1,0 +1,45 @@
+{
+  "id": 4,
+  "category": "Subquery",
+  "title": "Orders Above Customer Average",
+  "tags": [
+    "CORRELATED"
+  ],
+  "description": "Find orders where the amount is greater than the average order amount of that same customer.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 100
+      },
+      {
+        "customer_id": 1,
+        "amount": 300
+      },
+      {
+        "customer_id": 2,
+        "amount": 200
+      },
+      {
+        "customer_id": 2,
+        "amount": 400
+      },
+      {
+        "customer_id": 3,
+        "amount": 150
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1,
+      "amount": 300
+    },
+    {
+      "customer_id": 2,
+      "amount": 400
+    }
+  ],
+  "sql_solution": "SELECT * FROM orders o WHERE amount > (SELECT AVG(amount) FROM orders WHERE customer_id = o.customer_id);",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\ncustomer_averages = orders.groupBy(\"customer_id\").agg(avg(\"amount\").alias(\"avg_amount\"))\n\nresult = (\n    orders.alias(\"o\")\n    .join(customer_averages.alias(\"a\"), col(\"o.customer_id\") == col(\"a.customer_id\"), \"inner\")\n    .filter(col(\"o.amount\") > col(\"a.avg_amount\"))\n    .select(col(\"o.customer_id\").alias(\"customer_id\"), col(\"o.amount\").alias(\"amount\"))\n)"
+}

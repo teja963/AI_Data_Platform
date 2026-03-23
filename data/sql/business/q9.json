@@ -1,0 +1,47 @@
+{
+  "id": 9,
+  "category": "Business",
+  "title": "Customers With Repeated Same Amount Orders",
+  "tags": [
+    "PATTERN"
+  ],
+  "description": "Find customers who have placed at least two orders with the same amount.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 100
+      },
+      {
+        "customer_id": 1,
+        "amount": 100
+      },
+      {
+        "customer_id": 2,
+        "amount": 200
+      },
+      {
+        "customer_id": 2,
+        "amount": 300
+      },
+      {
+        "customer_id": 3,
+        "amount": 400
+      },
+      {
+        "customer_id": 3,
+        "amount": 400
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "SELECT DISTINCT customer_id FROM orders GROUP BY customer_id, amount HAVING COUNT(*) > 1;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    orders.groupBy(\"customer_id\", \"amount\")\n    .agg(count(lit(1)).alias(\"order_count\"))\n    .filter(col(\"order_count\") > 1)\n    .select(\"customer_id\")\n    .distinct()\n)"
+}

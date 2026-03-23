@@ -1,0 +1,35 @@
+{
+  "id": 4,
+  "category": "Advanced",
+  "title": "Median Order Amount",
+  "tags": [
+    "WINDOW"
+  ],
+  "description": "Calculate the median order amount.",
+  "tables": {
+    "orders": [
+      {
+        "amount": 100
+      },
+      {
+        "amount": 200
+      },
+      {
+        "amount": 300
+      },
+      {
+        "amount": 400
+      },
+      {
+        "amount": 500
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "median": 300
+    }
+  ],
+  "sql_solution": "SELECT AVG(amount) median FROM (SELECT amount, ROW_NUMBER() OVER (ORDER BY amount) rn, COUNT(*) OVER () cnt FROM orders) WHERE rn IN ((cnt+1)/2, (cnt+2)/2);",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\norder_window = Window.orderBy(col(\"amount\"))\ncount_window = Window.orderBy(col(\"amount\")).rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)\n\nranked_orders = (\n    orders.withColumn(\"rn\", row_number().over(order_window))\n    .withColumn(\"cnt\", count(lit(1)).over(count_window))\n)\n\nmidpoint_orders = ranked_orders.filter(\n    (col(\"rn\") == floor((col(\"cnt\") + lit(1)) / lit(2)).cast(\"int\"))\n    | (col(\"rn\") == floor((col(\"cnt\") + lit(2)) / lit(2)).cast(\"int\"))\n)\n\nresult = midpoint_orders.agg(avg(\"amount\").alias(\"median\"))"
+}

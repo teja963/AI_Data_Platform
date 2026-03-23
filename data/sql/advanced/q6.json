@@ -1,0 +1,41 @@
+{
+  "id": 6,
+  "category": "Advanced",
+  "title": "Remove Duplicate Records",
+  "tags": [
+    "ROW_NUMBER"
+  ],
+  "description": "Identify duplicate records based on customer_id and date, keeping only the first occurrence.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-01-02"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-01-02"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1,
+      "date": "2024-01-01"
+    },
+    {
+      "customer_id": 2,
+      "date": "2024-01-02"
+    }
+  ],
+  "sql_solution": "SELECT customer_id, date FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id, date ORDER BY date) rn FROM orders) WHERE rn = 1;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\ndedupe_window = Window.partitionBy(\"customer_id\", \"date\").orderBy(to_date(col(\"date\")))\n\nresult = (\n    orders.withColumn(\"rn\", row_number().over(dedupe_window))\n    .filter(col(\"rn\") == 1)\n    .select(\"customer_id\", \"date\")\n)"
+}

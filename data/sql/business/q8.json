@@ -1,0 +1,47 @@
+{
+  "id": 8,
+  "category": "Business",
+  "title": "Customers With Largest Single Order Share",
+  "tags": [
+    "DISTRIBUTION"
+  ],
+  "description": "Find customers whose single largest order contributes more than 70% of their total spending.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 700
+      },
+      {
+        "customer_id": 1,
+        "amount": 100
+      },
+      {
+        "customer_id": 2,
+        "amount": 300
+      },
+      {
+        "customer_id": 2,
+        "amount": 300
+      },
+      {
+        "customer_id": 3,
+        "amount": 500
+      },
+      {
+        "customer_id": 3,
+        "amount": 50
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "SELECT customer_id FROM (SELECT customer_id, MAX(amount)*1.0/SUM(amount) ratio FROM orders GROUP BY customer_id) WHERE ratio > 0.7;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    orders.groupBy(\"customer_id\")\n    .agg((max(\"amount\") * lit(1.0) / sum(\"amount\")).alias(\"ratio\"))\n    .filter(col(\"ratio\") > 0.7)\n    .select(\"customer_id\")\n)"
+}

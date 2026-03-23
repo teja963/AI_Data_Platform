@@ -1,0 +1,52 @@
+{
+  "id": 5,
+  "category": "DeepComposite",
+  "title": "Count Customers With Orders Above Threshold",
+  "tags": [
+    "JOIN",
+    "DISTINCT",
+    "COUNT"
+  ],
+  "description": "Count how many unique customers have at least one order above 200.",
+  "tables": {
+    "customers": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      },
+      {
+        "id": 3
+      },
+      {
+        "id": 4
+      }
+    ],
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 300
+      },
+      {
+        "customer_id": 1,
+        "amount": 400
+      },
+      {
+        "customer_id": 2,
+        "amount": 100
+      },
+      {
+        "customer_id": 3,
+        "amount": 250
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "count": 2
+    }
+  ],
+  "sql_solution": "SELECT COUNT(DISTINCT customer_id) count FROM orders WHERE amount > 200;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = orders.filter(col(\"amount\") > 200).agg(countDistinct(\"customer_id\").alias(\"count\"))"
+}

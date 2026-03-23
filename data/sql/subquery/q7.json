@@ -1,0 +1,46 @@
+{
+  "id": 7,
+  "category": "Subquery",
+  "title": "Customers With No Low-Value Orders",
+  "tags": [
+    "NOT EXISTS"
+  ],
+  "description": "Find customers who have never placed an order with amount less than 100.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 1,
+        "amount": 150
+      },
+      {
+        "customer_id": 2,
+        "amount": 50
+      },
+      {
+        "customer_id": 3,
+        "amount": 300
+      },
+      {
+        "customer_id": 4,
+        "amount": 120
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    },
+    {
+      "customer_id": 4
+    }
+  ],
+  "sql_solution": "SELECT DISTINCT customer_id FROM orders o WHERE NOT EXISTS (SELECT 1 FROM orders WHERE customer_id = o.customer_id AND amount < 100);",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nlow_value_customers = orders.filter(col(\"amount\") < 100).select(\"customer_id\").distinct()\n\nresult = (\n    orders.select(\"customer_id\")\n    .distinct()\n    .join(low_value_customers, \"customer_id\", \"left_anti\")\n)"
+}

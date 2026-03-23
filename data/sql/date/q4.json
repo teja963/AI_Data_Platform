@@ -1,0 +1,50 @@
+{
+  "id": 4,
+  "category": "Date",
+  "title": "Monthly Revenue",
+  "tags": [
+    "GROUP BY",
+    "DATE"
+  ],
+  "description": "Calculate total revenue for each month based on order date.",
+  "tables": {
+    "orders": [
+      {
+        "amount": 100,
+        "date": "2024-01-01"
+      },
+      {
+        "amount": 200,
+        "date": "2024-01-15"
+      },
+      {
+        "amount": 300,
+        "date": "2024-02-01"
+      },
+      {
+        "amount": 150,
+        "date": "2024-02-20"
+      },
+      {
+        "amount": 400,
+        "date": "2024-03-10"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "month": "2024-01",
+      "total": 300
+    },
+    {
+      "month": "2024-02",
+      "total": 450
+    },
+    {
+      "month": "2024-03",
+      "total": 400
+    }
+  ],
+  "sql_solution": "SELECT substr(date,1,7) month, SUM(amount) total FROM orders GROUP BY month;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nmonthly_orders = orders.withColumn(\"month\", date_format(to_date(col(\"date\")), \"yyyy-MM\"))\n\nresult = monthly_orders.groupBy(\"month\").agg(sum(\"amount\").alias(\"total\"))"
+}

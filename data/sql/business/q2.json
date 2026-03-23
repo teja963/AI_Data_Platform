@@ -1,0 +1,53 @@
+{
+  "id": 2,
+  "category": "Business",
+  "title": "Customers With Declining Order Value",
+  "tags": [
+    "TREND"
+  ],
+  "description": "Find customers whose last order amount is lower than their first order amount. Assume each customer has at most one order on a given date.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 300,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "amount": 200,
+        "date": "2024-03-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 100,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 150,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 3,
+        "amount": 400,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 3,
+        "amount": 300,
+        "date": "2024-02-01"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "WITH ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY date) first_rn, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY date DESC) last_rn FROM orders) SELECT customer_id FROM ranked GROUP BY customer_id HAVING MAX(CASE WHEN first_rn = 1 THEN amount END) > MAX(CASE WHEN last_rn = 1 THEN amount END);",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nfirst_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")))\nlast_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")).desc())\n\nranked_orders = (\n    orders.withColumn(\"first_rn\", row_number().over(first_window))\n    .withColumn(\"last_rn\", row_number().over(last_window))\n)\n\nresult = (\n    ranked_orders.groupBy(\"customer_id\")\n    .agg(\n        max(when(col(\"first_rn\") == 1, col(\"amount\"))).alias(\"first_amount\"),\n        max(when(col(\"last_rn\") == 1, col(\"amount\"))).alias(\"last_amount\")\n    )\n    .filter(col(\"first_amount\") > col(\"last_amount\"))\n    .select(\"customer_id\")\n)"
+}

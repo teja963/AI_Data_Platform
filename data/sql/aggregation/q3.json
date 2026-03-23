@@ -1,0 +1,54 @@
+{
+  "id": 3,
+  "category": "Aggregation",
+  "title": "Customers With High Total Spending",
+  "tags": [
+    "GROUP BY",
+    "SUM"
+  ],
+  "description": "Find customers whose total spending exceeds 400 and who have placed more than one order. Return the customer id along with total spending.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 1,
+        "amount": 250
+      },
+      {
+        "customer_id": 2,
+        "amount": 100
+      },
+      {
+        "customer_id": 2,
+        "amount": 150
+      },
+      {
+        "customer_id": 3,
+        "amount": 300
+      },
+      {
+        "customer_id": 3,
+        "amount": 150
+      },
+      {
+        "customer_id": 4,
+        "amount": 50
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1,
+      "total": 450
+    },
+    {
+      "customer_id": 3,
+      "total": 450
+    }
+  ],
+  "sql_solution": "SELECT customer_id, SUM(amount) total FROM orders GROUP BY customer_id HAVING SUM(amount) > 400 AND COUNT(*) > 1;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    orders.groupBy(\"customer_id\")\n    .agg(\n        sum(\"amount\").alias(\"total\"),\n        count(lit(1)).alias(\"order_count\")\n    )\n    .filter((col(\"total\") > 400) & (col(\"order_count\") > 1))\n    .select(\"customer_id\", \"total\")\n)"
+}

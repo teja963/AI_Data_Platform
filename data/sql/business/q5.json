@@ -1,0 +1,47 @@
+{
+  "id": 5,
+  "category": "Business",
+  "title": "Customers With Category Concentration",
+  "tags": [
+    "DISTRIBUTION"
+  ],
+  "description": "Find customers who have placed all their orders in only one category.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "category": "A"
+      },
+      {
+        "customer_id": 1,
+        "category": "A"
+      },
+      {
+        "customer_id": 2,
+        "category": "A"
+      },
+      {
+        "customer_id": 2,
+        "category": "B"
+      },
+      {
+        "customer_id": 3,
+        "category": "C"
+      },
+      {
+        "customer_id": 3,
+        "category": "C"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "SELECT customer_id FROM orders GROUP BY customer_id HAVING COUNT(DISTINCT category) = 1;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    orders.groupBy(\"customer_id\")\n    .agg(countDistinct(\"category\").alias(\"category_count\"))\n    .filter(col(\"category_count\") == 1)\n    .select(\"customer_id\")\n)"
+}

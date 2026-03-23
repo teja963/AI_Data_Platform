@@ -1,0 +1,48 @@
+{
+  "id": 2,
+  "category": "Date",
+  "title": "Daily Order Count",
+  "tags": [
+    "GROUP BY",
+    "DATE"
+  ],
+  "description": "Calculate the total number of orders for each date.",
+  "tables": {
+    "orders": [
+      {
+        "date": "2024-01-01"
+      },
+      {
+        "date": "2024-01-01"
+      },
+      {
+        "date": "2024-01-02"
+      },
+      {
+        "date": "2024-01-03"
+      },
+      {
+        "date": "2024-01-03"
+      },
+      {
+        "date": "2024-01-03"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "date": "2024-01-01",
+      "count": 2
+    },
+    {
+      "date": "2024-01-02",
+      "count": 1
+    },
+    {
+      "date": "2024-01-03",
+      "count": 3
+    }
+  ],
+  "sql_solution": "SELECT date, COUNT(*) count FROM orders GROUP BY date;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = orders.groupBy(\"date\").agg(count(lit(1)).alias(\"count\"))"
+}

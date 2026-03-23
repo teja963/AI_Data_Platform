@@ -1,0 +1,39 @@
+{
+  "id": 6,
+  "category": "Business",
+  "title": "Customers Who Stopped Ordering",
+  "tags": [
+    "LIFECYCLE"
+  ],
+  "description": "Find customers whose last order was more than 60 days before '2024-04-01'.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-03-01"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-01-15"
+      },
+      {
+        "customer_id": 4,
+        "date": "2024-02-20"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "SELECT customer_id FROM orders GROUP BY customer_id HAVING julianday('2024-04-01') - julianday(MAX(date)) > 60;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    orders.groupBy(\"customer_id\")\n    .agg(datediff(lit(\"2024-04-01\").cast(\"date\"), max(to_date(col(\"date\")))).alias(\"days_since_last_order\"))\n    .filter(col(\"days_since_last_order\") > 60)\n    .select(\"customer_id\")\n)"
+}

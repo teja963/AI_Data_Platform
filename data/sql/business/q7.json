@@ -1,0 +1,44 @@
+{
+  "id": 7,
+  "category": "Business",
+  "title": "Customers With a Month-Over-Month Increase In Order Frequency",
+  "tags": [
+    "TREND"
+  ],
+  "description": "Find customers who have at least one month where their order count is greater than in the immediately previous observed month.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "month": 1
+      },
+      {
+        "customer_id": 1,
+        "month": 2
+      },
+      {
+        "customer_id": 1,
+        "month": 2
+      },
+      {
+        "customer_id": 2,
+        "month": 1
+      },
+      {
+        "customer_id": 2,
+        "month": 2
+      },
+      {
+        "customer_id": 3,
+        "month": 1
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    }
+  ],
+  "sql_solution": "WITH counts AS (SELECT customer_id, month, COUNT(*) cnt FROM orders GROUP BY customer_id, month), lagged AS (SELECT *, LAG(cnt) OVER (PARTITION BY customer_id ORDER BY month) prev FROM counts) SELECT DISTINCT customer_id FROM lagged WHERE prev IS NOT NULL AND cnt > prev;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nmonthly_counts = orders.groupBy(\"customer_id\", \"month\").agg(count(lit(1)).alias(\"cnt\"))\nlag_window = Window.partitionBy(\"customer_id\").orderBy(col(\"month\"))\n\nresult = (\n    monthly_counts.withColumn(\"prev\", lag(\"cnt\").over(lag_window))\n    .filter(col(\"prev\").isNotNull() & (col(\"cnt\") > col(\"prev\")))\n    .select(\"customer_id\")\n    .distinct()\n)"
+}

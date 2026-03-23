@@ -1,0 +1,76 @@
+{
+  "id": 1,
+  "category": "Aggregation",
+  "title": "Customers With High Average Spending",
+  "tags": [
+    "GROUP BY",
+    "HAVING"
+  ],
+  "description": "Find customers whose average order amount exceeds 250 and who have placed at least three orders. Return the customer name along with their average order amount.",
+  "tables": {
+    "customers": [
+      {
+        "id": 1,
+        "name": "Alice"
+      },
+      {
+        "id": 2,
+        "name": "Bob"
+      },
+      {
+        "id": 3,
+        "name": "Charlie"
+      },
+      {
+        "id": 4,
+        "name": "David"
+      }
+    ],
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 300
+      },
+      {
+        "customer_id": 1,
+        "amount": 400
+      },
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 2,
+        "amount": 100
+      },
+      {
+        "customer_id": 2,
+        "amount": 150
+      },
+      {
+        "customer_id": 3,
+        "amount": 500
+      },
+      {
+        "customer_id": 3,
+        "amount": 100
+      },
+      {
+        "customer_id": 3,
+        "amount": 300
+      },
+      {
+        "customer_id": 4,
+        "amount": 200
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "name": "Alice",
+      "avg_amount": 300
+    }
+  ],
+  "sql_solution": "SELECT c.name, AVG(o.amount) avg_amount FROM customers c JOIN orders o ON c.id = o.customer_id GROUP BY c.name HAVING AVG(o.amount) > 250 AND COUNT(*) >= 3;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\njoined_orders = (\n    customers.alias(\"c\")\n    .join(orders.alias(\"o\"), col(\"c.id\") == col(\"o.customer_id\"), \"inner\")\n    .select(\n        col(\"c.name\").alias(\"name\"),\n        col(\"o.amount\").alias(\"amount\")\n    )\n)\n\nresult = (\n    joined_orders.groupBy(\"name\")\n    .agg(\n        avg(\"amount\").alias(\"avg_amount\"),\n        count(lit(1)).alias(\"order_count\")\n    )\n    .filter((col(\"avg_amount\") > 250) & (col(\"order_count\") >= 3))\n    .select(\"name\", \"avg_amount\")\n)"
+}

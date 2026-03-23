@@ -1,0 +1,64 @@
+{
+  "id": 7,
+  "category": "Joins",
+  "title": "Customers Above Average Order Count",
+  "tags": [
+    "GROUP BY",
+    "SUBQUERY"
+  ],
+  "description": "Identify customers who have placed more orders than the average number of orders per customer. Return the customer name along with their total number of orders.",
+  "tables": {
+    "customers": [
+      {
+        "id": 1,
+        "name": "Alice"
+      },
+      {
+        "id": 2,
+        "name": "Bob"
+      },
+      {
+        "id": 3,
+        "name": "Charlie"
+      },
+      {
+        "id": 4,
+        "name": "David"
+      }
+    ],
+    "orders": [
+      {
+        "customer_id": 1
+      },
+      {
+        "customer_id": 1
+      },
+      {
+        "customer_id": 1
+      },
+      {
+        "customer_id": 2
+      },
+      {
+        "customer_id": 2
+      },
+      {
+        "customer_id": 3
+      },
+      {
+        "customer_id": 4
+      },
+      {
+        "customer_id": 4
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "name": "Alice",
+      "order_count": 3
+    }
+  ],
+  "sql_solution": "WITH counts AS (SELECT customer_id, COUNT(*) cnt FROM orders GROUP BY customer_id), avg_val AS (SELECT AVG(cnt) avg_cnt FROM counts) SELECT c.name, cnt FROM counts JOIN customers c ON counts.customer_id = c.id WHERE cnt > (SELECT avg_cnt FROM avg_val);",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\ncustomer_counts = orders.groupBy(\"customer_id\").agg(count(lit(1)).alias(\"cnt\"))\naverage_count = customer_counts.agg(avg(\"cnt\").alias(\"avg_cnt\"))\n\nresult = (\n    customer_counts.alias(\"cc\")\n    .join(customers.alias(\"c\"), col(\"cc.customer_id\") == col(\"c.id\"), \"inner\")\n    .crossJoin(average_count)\n    .filter(col(\"cc.cnt\") > col(\"avg_cnt\"))\n    .select(col(\"c.name\").alias(\"name\"), col(\"cc.cnt\").alias(\"cnt\"))\n)"
+}

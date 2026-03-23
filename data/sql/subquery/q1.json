@@ -1,0 +1,44 @@
+{
+  "id": 1,
+  "category": "Subquery",
+  "title": "Customers Above Average Order Amount",
+  "tags": [
+    "SUBQUERY",
+    "AVG"
+  ],
+  "description": "Find customers who have placed at least one order with an amount greater than the average order amount across all orders. Return distinct customer ids.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 1,
+        "amount": 300
+      },
+      {
+        "customer_id": 2,
+        "amount": 100
+      },
+      {
+        "customer_id": 3,
+        "amount": 400
+      },
+      {
+        "customer_id": 4,
+        "amount": 150
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "SELECT DISTINCT customer_id FROM orders WHERE amount > (SELECT AVG(amount) FROM orders);",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\naverage_order_amount = orders.agg(avg(\"amount\").alias(\"avg_amount\"))\n\nresult = (\n    orders.crossJoin(average_order_amount)\n    .filter(col(\"amount\") > col(\"avg_amount\"))\n    .select(\"customer_id\")\n    .distinct()\n)"
+}

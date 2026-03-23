@@ -1,0 +1,47 @@
+{
+  "id": 8,
+  "category": "Aggregation",
+  "title": "Customers With Equal Number Of Orders",
+  "tags": [
+    "GROUP BY"
+  ],
+  "description": "Find customers who have placed the same number of orders as at least one other customer. Return the customer id.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1
+      },
+      {
+        "customer_id": 1
+      },
+      {
+        "customer_id": 2
+      },
+      {
+        "customer_id": 2
+      },
+      {
+        "customer_id": 3
+      },
+      {
+        "customer_id": 4
+      },
+      {
+        "customer_id": 4
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 2
+    },
+    {
+      "customer_id": 4
+    }
+  ],
+  "sql_solution": "WITH counts AS (SELECT customer_id, COUNT(*) cnt FROM orders GROUP BY customer_id) SELECT customer_id FROM counts WHERE cnt IN (SELECT cnt FROM counts GROUP BY cnt HAVING COUNT(*) > 1);",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\ncustomer_counts = orders.groupBy(\"customer_id\").agg(count(lit(1)).alias(\"cnt\"))\n\nduplicate_counts = (\n    customer_counts.groupBy(\"cnt\")\n    .agg(count(lit(1)).alias(\"customer_count\"))\n    .filter(col(\"customer_count\") > 1)\n    .select(\"cnt\")\n)\n\nresult = (\n    customer_counts.alias(\"cc\")\n    .join(duplicate_counts.alias(\"dc\"), col(\"cc.cnt\") == col(\"dc.cnt\"), \"inner\")\n    .select(col(\"cc.customer_id\").alias(\"customer_id\"))\n)"
+}

@@ -1,0 +1,68 @@
+{
+  "id": 10,
+  "category": "Joins",
+  "title": "Customers Above Average Spending",
+  "tags": [
+    "GROUP BY",
+    "AGGREGATION"
+  ],
+  "description": "Find customers whose total spending is greater than the average total spending of all customers who have placed at least one order.",
+  "tables": {
+    "customers": [
+      {
+        "id": 1,
+        "name": "Alice"
+      },
+      {
+        "id": 2,
+        "name": "Bob"
+      },
+      {
+        "id": 3,
+        "name": "Charlie"
+      },
+      {
+        "id": 4,
+        "name": "David"
+      }
+    ],
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 1,
+        "amount": 300
+      },
+      {
+        "customer_id": 2,
+        "amount": 100
+      },
+      {
+        "customer_id": 3,
+        "amount": 400
+      },
+      {
+        "customer_id": 4,
+        "amount": 50
+      },
+      {
+        "customer_id": 4,
+        "amount": 60
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "name": "Alice",
+      "total": 500
+    },
+    {
+      "name": "Charlie",
+      "total": 400
+    }
+  ],
+  "sql_solution": "WITH totals AS (SELECT customer_id, SUM(amount) total FROM orders GROUP BY customer_id), avg_val AS (SELECT AVG(total) avg_total FROM totals) SELECT c.name, t.total FROM totals t JOIN customers c ON t.customer_id = c.id WHERE t.total > (SELECT avg_total FROM avg_val);",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\ncustomer_totals = orders.groupBy(\"customer_id\").agg(sum(\"amount\").alias(\"total\"))\naverage_total = customer_totals.agg(avg(\"total\").alias(\"avg_total\"))\n\nresult = (\n    customer_totals.alias(\"t\")\n    .join(customers.alias(\"c\"), col(\"t.customer_id\") == col(\"c.id\"), \"inner\")\n    .crossJoin(average_total)\n    .filter(col(\"t.total\") > col(\"avg_total\"))\n    .select(col(\"c.name\").alias(\"name\"), col(\"t.total\").alias(\"total\"))\n)"
+}

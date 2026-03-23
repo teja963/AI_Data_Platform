@@ -1,0 +1,70 @@
+{
+  "id": 6,
+  "category": "Joins",
+  "title": "Customers With Above-Average Latest Order",
+  "tags": [
+    "JOIN",
+    "WINDOW",
+    "AGGREGATION"
+  ],
+  "description": "Find customers whose most recent order amount is greater than the average order amount across all orders. Assume each customer has at most one order on a given date. Return the customer name along with the amount of their latest order.",
+  "tables": {
+    "customers": [
+      {
+        "id": 1,
+        "name": "Alice"
+      },
+      {
+        "id": 2,
+        "name": "Bob"
+      },
+      {
+        "id": 3,
+        "name": "Charlie"
+      },
+      {
+        "id": 4,
+        "name": "David"
+      }
+    ],
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 200,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "amount": 450,
+        "date": "2024-03-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 150,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 3,
+        "amount": 500,
+        "date": "2024-01-10"
+      },
+      {
+        "customer_id": 4,
+        "amount": 100,
+        "date": "2024-04-01"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "name": "Alice",
+      "amount": 450
+    },
+    {
+      "name": "Charlie",
+      "amount": 500
+    }
+  ],
+  "sql_solution": "WITH latest AS (SELECT customer_id, amount, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY date DESC) rn FROM orders), avg_val AS (SELECT AVG(amount) avg_amt FROM orders) SELECT c.name, l.amount FROM latest l JOIN customers c ON l.customer_id = c.id CROSS JOIN avg_val a WHERE l.rn = 1 AND l.amount > a.avg_amt;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nlatest_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")).desc())\n\nlatest_orders = orders.withColumn(\"rn\", row_number().over(latest_window))\naverage_order_amount = orders.agg(avg(\"amount\").alias(\"avg_amt\"))\n\nresult = (\n    latest_orders.alias(\"l\")\n    .join(customers.alias(\"c\"), col(\"l.customer_id\") == col(\"c.id\"), \"inner\")\n    .crossJoin(average_order_amount)\n    .filter((col(\"l.rn\") == 1) & (col(\"l.amount\") > col(\"avg_amt\")))\n    .select(col(\"c.name\").alias(\"name\"), col(\"l.amount\").alias(\"amount\"))\n)"
+}

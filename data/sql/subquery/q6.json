@@ -1,0 +1,45 @@
+{
+  "id": 6,
+  "category": "Subquery",
+  "title": "Customers With Orders In All Months",
+  "tags": [
+    "GROUP BY",
+    "SUBQUERY"
+  ],
+  "description": "Find customers who have placed orders in every distinct month present in the orders table.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "month": 1
+      },
+      {
+        "customer_id": 1,
+        "month": 2
+      },
+      {
+        "customer_id": 2,
+        "month": 1
+      },
+      {
+        "customer_id": 2,
+        "month": 2
+      },
+      {
+        "customer_id": 2,
+        "month": 3
+      },
+      {
+        "customer_id": 3,
+        "month": 1
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 2
+    }
+  ],
+  "sql_solution": "SELECT customer_id FROM orders GROUP BY customer_id HAVING COUNT(DISTINCT month) = (SELECT COUNT(DISTINCT month) FROM orders);",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nrequired_months = orders.agg(countDistinct(\"month\").alias(\"required_months\"))\n\nresult = (\n    orders.groupBy(\"customer_id\")\n    .agg(countDistinct(\"month\").alias(\"month_count\"))\n    .crossJoin(required_months)\n    .filter(col(\"month_count\") == col(\"required_months\"))\n    .select(\"customer_id\")\n)"
+}

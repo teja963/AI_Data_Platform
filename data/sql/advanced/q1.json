@@ -1,0 +1,55 @@
+{
+  "id": 1,
+  "category": "Advanced",
+  "title": "Consecutive Order Streaks",
+  "tags": [
+    "GAPS_ISLANDS"
+  ],
+  "description": "Identify customers who have placed orders on at least three consecutive days.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "date": "2024-01-02"
+      },
+      {
+        "customer_id": 1,
+        "date": "2024-01-03"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-01-03"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-02-02"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-02-03"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "WITH t AS (SELECT customer_id, date, julianday(date) - ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY date) grp FROM orders) SELECT DISTINCT customer_id FROM t GROUP BY customer_id, grp HAVING COUNT(*) >= 3;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nsequence_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")))\n\nstreaks = orders.withColumn(\n    \"grp\",\n    datediff(to_date(col(\"date\")), lit(\"1970-01-01\").cast(\"date\")) - row_number().over(sequence_window)\n)\n\nresult = (\n    streaks.groupBy(\"customer_id\", \"grp\")\n    .agg(count(lit(1)).alias(\"streak_length\"))\n    .filter(col(\"streak_length\") >= 3)\n    .select(\"customer_id\")\n    .distinct()\n)"
+}

@@ -1,0 +1,47 @@
+{
+  "id": 3,
+  "category": "Business",
+  "title": "Customers With Single-Day Bulk Orders",
+  "tags": [
+    "PATTERN"
+  ],
+  "description": "Find customers who placed more than one order on the same day.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-01-02"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-01-03"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-01-03"
+      },
+      {
+        "customer_id": 4,
+        "date": "2024-01-04"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "SELECT DISTINCT customer_id FROM orders GROUP BY customer_id, date HAVING COUNT(*) > 1;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    orders.groupBy(\"customer_id\", \"date\")\n    .agg(count(lit(1)).alias(\"order_count\"))\n    .filter(col(\"order_count\") > 1)\n    .select(\"customer_id\")\n    .distinct()\n)"
+}

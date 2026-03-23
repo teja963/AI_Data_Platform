@@ -1,0 +1,54 @@
+{
+  "id": 1,
+  "category": "Business",
+  "title": "Customers Who Switched Categories",
+  "tags": [
+    "SEQUENCE",
+    "LOGIC"
+  ],
+  "description": "Identify customers who made their first purchase in one category and their most recent purchase in a different category. Assume each customer has at most one purchase on a given date.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "category": "A",
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "category": "B",
+        "date": "2024-03-01"
+      },
+      {
+        "customer_id": 2,
+        "category": "A",
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "category": "A",
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 3,
+        "category": "C",
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 3,
+        "category": "D",
+        "date": "2024-04-01"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "WITH ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY date) first_rn, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY date DESC) last_rn FROM orders) SELECT customer_id FROM ranked GROUP BY customer_id HAVING MAX(CASE WHEN first_rn = 1 THEN category END) != MAX(CASE WHEN last_rn = 1 THEN category END);",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nfirst_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")))\nlast_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")).desc())\n\nranked_orders = (\n    orders.withColumn(\"first_rn\", row_number().over(first_window))\n    .withColumn(\"last_rn\", row_number().over(last_window))\n)\n\nresult = (\n    ranked_orders.groupBy(\"customer_id\")\n    .agg(\n        max(when(col(\"first_rn\") == 1, col(\"category\"))).alias(\"first_category\"),\n        max(when(col(\"last_rn\") == 1, col(\"category\"))).alias(\"last_category\")\n    )\n    .filter(col(\"first_category\") != col(\"last_category\"))\n    .select(\"customer_id\")\n)"
+}

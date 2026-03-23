@@ -1,0 +1,50 @@
+{
+  "id": 8,
+  "category": "Advanced",
+  "title": "Longest Increasing Order Streak",
+  "tags": [
+    "WINDOW"
+  ],
+  "description": "Find all customers whose longest strictly increasing order-amount streak is equal to the global maximum streak length.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 100,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "amount": 200,
+        "date": "2024-01-02"
+      },
+      {
+        "customer_id": 1,
+        "amount": 150,
+        "date": "2024-01-03"
+      },
+      {
+        "customer_id": 2,
+        "amount": 50,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 100,
+        "date": "2024-01-02"
+      },
+      {
+        "customer_id": 2,
+        "amount": 200,
+        "date": "2024-01-03"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 2
+    }
+  ],
+  "sql_solution": "WITH t AS (SELECT *, CASE WHEN amount > LAG(amount) OVER (PARTITION BY customer_id ORDER BY date) THEN 1 ELSE 0 END inc FROM orders), grp AS (SELECT *, SUM(CASE WHEN inc = 0 THEN 1 ELSE 0 END) OVER (PARTITION BY customer_id ORDER BY date) g FROM t) SELECT DISTINCT customer_id FROM grp GROUP BY customer_id, g HAVING COUNT(*) = (SELECT MAX(cnt) FROM (SELECT customer_id, g, COUNT(*) cnt FROM grp GROUP BY customer_id, g));",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nsequence_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")))\ngroup_window = (\n    Window.partitionBy(\"customer_id\")\n    .orderBy(to_date(col(\"date\")))\n    .rowsBetween(Window.unboundedPreceding, Window.currentRow)\n)\n\nincreasing_flags = (\n    orders.withColumn(\"prev_amount\", lag(\"amount\").over(sequence_window))\n    .withColumn(\n        \"inc\",\n        when(col(\"amount\") > col(\"prev_amount\"), lit(1)).otherwise(lit(0))\n    )\n)\n\nstreak_groups = increasing_flags.withColumn(\n    \"g\",\n    sum(when(col(\"inc\") == 0, lit(1)).otherwise(lit(0))).over(group_window)\n)\n\nstreak_counts = streak_groups.groupBy(\"customer_id\", \"g\").agg(count(lit(1)).alias(\"cnt\"))\nmax_streak = streak_counts.agg(max(\"cnt\").alias(\"max_cnt\"))\n\nresult = (\n    streak_counts.crossJoin(max_streak)\n    .filter(col(\"cnt\") == col(\"max_cnt\"))\n    .select(\"customer_id\")\n    .distinct()\n)"
+}

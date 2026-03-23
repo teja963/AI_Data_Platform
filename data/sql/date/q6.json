@@ -1,0 +1,45 @@
+{
+  "id": 6,
+  "category": "Date",
+  "title": "Customers With Orders Every Month",
+  "tags": [
+    "GROUP BY",
+    "DISTINCT"
+  ],
+  "description": "Find customers who have placed orders in every distinct month present in the dataset.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-03-01"
+      },
+      {
+        "customer_id": 3,
+        "date": "2024-01-01"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 2
+    }
+  ],
+  "sql_solution": "SELECT customer_id FROM orders GROUP BY customer_id HAVING COUNT(DISTINCT substr(date,1,7)) = (SELECT COUNT(DISTINCT substr(date,1,7)) FROM orders);",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nmonthly_orders = orders.withColumn(\"month\", date_format(to_date(col(\"date\")), \"yyyy-MM\"))\nrequired_months = monthly_orders.agg(countDistinct(\"month\").alias(\"required_months\"))\n\nresult = (\n    monthly_orders.groupBy(\"customer_id\")\n    .agg(countDistinct(\"month\").alias(\"month_count\"))\n    .crossJoin(required_months)\n    .filter(col(\"month_count\") == col(\"required_months\"))\n    .select(\"customer_id\")\n)"
+}

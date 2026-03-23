@@ -1,0 +1,62 @@
+{
+  "id": 4,
+  "category": "Aggregation",
+  "title": "Categories Within Spending Range",
+  "tags": [
+    "GROUP BY",
+    "HAVING"
+  ],
+  "description": "Find categories whose total order amount lies between 300 and 600 inclusive. Return the category and total amount.",
+  "tables": {
+    "orders": [
+      {
+        "category": "A",
+        "amount": 100
+      },
+      {
+        "category": "A",
+        "amount": 200
+      },
+      {
+        "category": "A",
+        "amount": 50
+      },
+      {
+        "category": "B",
+        "amount": 300
+      },
+      {
+        "category": "B",
+        "amount": 200
+      },
+      {
+        "category": "C",
+        "amount": 700
+      },
+      {
+        "category": "D",
+        "amount": 150
+      },
+      {
+        "category": "D",
+        "amount": 200
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "category": "A",
+      "total": 350
+    },
+    {
+      "category": "B",
+      "total": 500
+    },
+    {
+      "category": "D",
+      "total": 350
+    }
+  ],
+  "sql_solution": "SELECT category, SUM(amount) total FROM orders GROUP BY category HAVING SUM(amount) BETWEEN 300 AND 600;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    orders.groupBy(\"category\")\n    .agg(sum(\"amount\").alias(\"total\"))\n    .filter(col(\"total\").between(300, 600))\n)"
+}

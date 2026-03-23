@@ -1,0 +1,44 @@
+{
+  "id": 2,
+  "category": "Subquery",
+  "title": "Customers With Highest Spending",
+  "tags": [
+    "SUBQUERY",
+    "MAX"
+  ],
+  "description": "Find customers whose total spending is equal to the highest total spending among all customers.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 1,
+        "amount": 300
+      },
+      {
+        "customer_id": 2,
+        "amount": 400
+      },
+      {
+        "customer_id": 3,
+        "amount": 250
+      },
+      {
+        "customer_id": 4,
+        "amount": 500
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 4
+    }
+  ],
+  "sql_solution": "SELECT customer_id FROM (SELECT customer_id, SUM(amount) total FROM orders GROUP BY customer_id) WHERE total = (SELECT MAX(total) FROM (SELECT SUM(amount) total FROM orders GROUP BY customer_id));",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\ncustomer_totals = orders.groupBy(\"customer_id\").agg(sum(\"amount\").alias(\"total\"))\nmax_total = customer_totals.agg(max(\"total\").alias(\"max_total\"))\n\nresult = (\n    customer_totals.crossJoin(max_total)\n    .filter(col(\"total\") == col(\"max_total\"))\n    .select(\"customer_id\")\n)"
+}

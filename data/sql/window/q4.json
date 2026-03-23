@@ -1,0 +1,45 @@
+{
+  "id": 4,
+  "category": "Window",
+  "title": "Detect Consecutive Orders",
+  "tags": [
+    "LAG"
+  ],
+  "description": "Find orders where the difference between current and previous order date for a customer is exactly one day.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "date": "2024-01-02"
+      },
+      {
+        "customer_id": 1,
+        "date": "2024-01-05"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 2,
+        "date": "2024-02-02"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1,
+      "date": "2024-01-02"
+    },
+    {
+      "customer_id": 2,
+      "date": "2024-02-02"
+    }
+  ],
+  "sql_solution": "SELECT customer_id, date FROM (SELECT *, LAG(date) OVER (PARTITION BY customer_id ORDER BY date) prev_date FROM orders) WHERE DATE(date) = DATE(prev_date, '+1 day');",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\norder_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")))\n\nresult = (\n    orders.withColumn(\"prev_date\", lag(\"date\").over(order_window))\n    .filter(datediff(to_date(col(\"date\")), to_date(col(\"prev_date\"))) == 1)\n    .select(\"customer_id\", \"date\")\n)"
+}

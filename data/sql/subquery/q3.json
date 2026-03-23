@@ -1,0 +1,46 @@
+{
+  "id": 3,
+  "category": "Subquery",
+  "title": "Customers Without Orders",
+  "tags": [
+    "NOT EXISTS"
+  ],
+  "description": "Find customers who have not placed any orders.",
+  "tables": {
+    "customers": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      },
+      {
+        "id": 3
+      },
+      {
+        "id": 4
+      }
+    ],
+    "orders": [
+      {
+        "customer_id": 1
+      },
+      {
+        "customer_id": 2
+      },
+      {
+        "customer_id": 2
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "id": 3
+    },
+    {
+      "id": 4
+    }
+  ],
+  "sql_solution": "SELECT id FROM customers c WHERE NOT EXISTS (SELECT 1 FROM orders o WHERE o.customer_id = c.id);",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    customers.join(orders, customers.id == orders.customer_id, \"left_anti\")\n    .select(customers.id.alias(\"id\"))\n)"
+}

@@ -1,0 +1,45 @@
+{
+  "id": 8,
+  "category": "Window",
+  "title": "Dense Rank Orders",
+  "tags": [
+    "DENSE_RANK"
+  ],
+  "description": "Assign dense ranks to orders based on amount in descending order.",
+  "tables": {
+    "orders": [
+      {
+        "amount": 500
+      },
+      {
+        "amount": 400
+      },
+      {
+        "amount": 400
+      },
+      {
+        "amount": 300
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "amount": 500,
+      "rank": 1
+    },
+    {
+      "amount": 400,
+      "rank": 2
+    },
+    {
+      "amount": 400,
+      "rank": 2
+    },
+    {
+      "amount": 300,
+      "rank": 3
+    }
+  ],
+  "sql_solution": "SELECT amount, DENSE_RANK() OVER (ORDER BY amount DESC) rank FROM orders;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nranking_window = Window.orderBy(col(\"amount\").desc())\n\nresult = orders.withColumn(\"rank\", dense_rank().over(ranking_window)).select(\"amount\", \"rank\")"
+}

@@ -1,0 +1,61 @@
+{
+  "id": 2,
+  "category": "Window",
+  "title": "Rank Customers By Spending",
+  "tags": [
+    "RANK"
+  ],
+  "description": "Rank customers based on their total spending in descending order.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 1,
+        "amount": 300
+      },
+      {
+        "customer_id": 2,
+        "amount": 400
+      },
+      {
+        "customer_id": 3,
+        "amount": 150
+      },
+      {
+        "customer_id": 3,
+        "amount": 100
+      },
+      {
+        "customer_id": 4,
+        "amount": 500
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 4,
+      "total": 500,
+      "rank": 1
+    },
+    {
+      "customer_id": 1,
+      "total": 500,
+      "rank": 1
+    },
+    {
+      "customer_id": 2,
+      "total": 400,
+      "rank": 3
+    },
+    {
+      "customer_id": 3,
+      "total": 250,
+      "rank": 4
+    }
+  ],
+  "sql_solution": "SELECT customer_id, total, RANK() OVER (ORDER BY total DESC) rank FROM (SELECT customer_id, SUM(amount) total FROM orders GROUP BY customer_id);",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\ncustomer_totals = orders.groupBy(\"customer_id\").agg(sum(\"amount\").alias(\"total\"))\nranking_window = Window.orderBy(col(\"total\").desc())\n\nresult = customer_totals.withColumn(\"rank\", rank().over(ranking_window)).select(\"customer_id\", \"total\", \"rank\")"
+}

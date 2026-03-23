@@ -1,0 +1,70 @@
+{
+  "id": 2,
+  "category": "Joins",
+  "title": "High Value Customers with Consistent Orders",
+  "tags": [
+    "JOIN",
+    "GROUP BY",
+    "HAVING"
+  ],
+  "description": "Identify customers who have placed at least two orders and whose total spending across all their orders exceeds 500. Return the customer name along with their total spending.",
+  "tables": {
+    "customers": [
+      {
+        "id": 1,
+        "name": "Alice"
+      },
+      {
+        "id": 2,
+        "name": "Bob"
+      },
+      {
+        "id": 3,
+        "name": "Charlie"
+      },
+      {
+        "id": 4,
+        "name": "David"
+      }
+    ],
+    "orders": [
+      {
+        "id": 1,
+        "customer_id": 1,
+        "amount": 300
+      },
+      {
+        "id": 2,
+        "customer_id": 1,
+        "amount": 250
+      },
+      {
+        "id": 3,
+        "customer_id": 2,
+        "amount": 600
+      },
+      {
+        "id": 4,
+        "customer_id": 3,
+        "amount": 200
+      },
+      {
+        "id": 5,
+        "customer_id": 3,
+        "amount": 350
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "name": "Alice",
+      "total": 550
+    },
+    {
+      "name": "Charlie",
+      "total": 550
+    }
+  ],
+  "sql_solution": "SELECT c.name, SUM(o.amount) AS total FROM customers c JOIN orders o ON c.id = o.customer_id GROUP BY c.name HAVING SUM(o.amount) > 500 AND COUNT(o.id) >= 2;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\njoined_orders = (\n    customers.alias(\"c\")\n    .join(orders.alias(\"o\"), col(\"c.id\") == col(\"o.customer_id\"), \"inner\")\n    .select(\n        col(\"c.name\").alias(\"name\"),\n        col(\"o.amount\").alias(\"amount\"),\n        col(\"o.id\").alias(\"order_id\")\n    )\n)\n\nresult = (\n    joined_orders.groupBy(\"name\")\n    .agg(\n        sum(\"amount\").alias(\"total\"),\n        count(\"order_id\").alias(\"order_count\")\n    )\n    .filter((col(\"total\") > 500) & (col(\"order_count\") >= 2))\n    .select(\"name\", \"total\")\n)"
+}

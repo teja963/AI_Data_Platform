@@ -1,0 +1,55 @@
+{
+  "id": 1,
+  "category": "Window",
+  "title": "Latest Order Per Customer",
+  "tags": [
+    "ROW_NUMBER",
+    "PARTITION"
+  ],
+  "description": "Retrieve the most recent order for each customer along with the order amount. Assume each customer has at most one order on a given date.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 200,
+        "date": "2024-01-01"
+      },
+      {
+        "customer_id": 1,
+        "amount": 300,
+        "date": "2024-03-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 150,
+        "date": "2024-02-01"
+      },
+      {
+        "customer_id": 2,
+        "amount": 250,
+        "date": "2024-04-01"
+      },
+      {
+        "customer_id": 3,
+        "amount": 400,
+        "date": "2024-01-10"
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1,
+      "amount": 300
+    },
+    {
+      "customer_id": 2,
+      "amount": 250
+    },
+    {
+      "customer_id": 3,
+      "amount": 400
+    }
+  ],
+  "sql_solution": "SELECT customer_id, amount FROM (SELECT *, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY date DESC) rn FROM orders) WHERE rn = 1;",
+  "pyspark_solution": "from pyspark.sql.functions import *\nfrom pyspark.sql.window import Window\n\nlatest_window = Window.partitionBy(\"customer_id\").orderBy(to_date(col(\"date\")).desc())\n\nresult = (\n    orders.withColumn(\"rn\", row_number().over(latest_window))\n    .filter(col(\"rn\") == 1)\n    .select(\"customer_id\", \"amount\")\n)"
+}

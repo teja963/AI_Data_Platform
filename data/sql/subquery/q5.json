@@ -1,0 +1,56 @@
+{
+  "id": 5,
+  "category": "Subquery",
+  "title": "Customers Ordering All Products",
+  "tags": [
+    "NOT EXISTS",
+    "NESTED"
+  ],
+  "description": "Find customers who have ordered every product available in the products table.",
+  "tables": {
+    "products": [
+      {
+        "id": 1
+      },
+      {
+        "id": 2
+      },
+      {
+        "id": 3
+      }
+    ],
+    "orders": [
+      {
+        "customer_id": 1,
+        "product_id": 1
+      },
+      {
+        "customer_id": 1,
+        "product_id": 2
+      },
+      {
+        "customer_id": 1,
+        "product_id": 3
+      },
+      {
+        "customer_id": 2,
+        "product_id": 1
+      },
+      {
+        "customer_id": 2,
+        "product_id": 2
+      },
+      {
+        "customer_id": 3,
+        "product_id": 1
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    }
+  ],
+  "sql_solution": "SELECT DISTINCT customer_id FROM orders o1 WHERE NOT EXISTS (SELECT 1 FROM products p WHERE NOT EXISTS (SELECT 1 FROM orders o2 WHERE o2.customer_id = o1.customer_id AND o2.product_id = p.id));",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\ncustomer_ids = orders.select(\"customer_id\").distinct()\n\nmissing_products = (\n    customer_ids.alias(\"c\")\n    .crossJoin(products.alias(\"p\"))\n    .join(\n        orders.alias(\"o\"),\n        (col(\"c.customer_id\") == col(\"o.customer_id\")) & (col(\"p.id\") == col(\"o.product_id\")),\n        \"left_anti\"\n    )\n    .select(col(\"c.customer_id\").alias(\"customer_id\"))\n    .distinct()\n)\n\nresult = (\n    customer_ids.alias(\"c\")\n    .join(missing_products.alias(\"m\"), col(\"c.customer_id\") == col(\"m.customer_id\"), \"left_anti\")\n    .select(col(\"c.customer_id\").alias(\"customer_id\"))\n)"
+}

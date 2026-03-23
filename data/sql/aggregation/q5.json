@@ -1,0 +1,52 @@
+{
+  "id": 5,
+  "category": "Aggregation",
+  "title": "Customers With Only High-Value Orders",
+  "tags": [
+    "GROUP BY",
+    "CONDITIONAL"
+  ],
+  "description": "Find customers who have placed at least two orders and all their orders have an amount greater than 100. Return the customer id.",
+  "tables": {
+    "orders": [
+      {
+        "customer_id": 1,
+        "amount": 200
+      },
+      {
+        "customer_id": 1,
+        "amount": 150
+      },
+      {
+        "customer_id": 2,
+        "amount": 50
+      },
+      {
+        "customer_id": 2,
+        "amount": 200
+      },
+      {
+        "customer_id": 3,
+        "amount": 300
+      },
+      {
+        "customer_id": 3,
+        "amount": 400
+      },
+      {
+        "customer_id": 4,
+        "amount": 120
+      }
+    ]
+  },
+  "expected_output": [
+    {
+      "customer_id": 1
+    },
+    {
+      "customer_id": 3
+    }
+  ],
+  "sql_solution": "SELECT customer_id FROM orders GROUP BY customer_id HAVING COUNT(*) >= 2 AND MIN(amount) > 100;",
+  "pyspark_solution": "from pyspark.sql.functions import *\n\nresult = (\n    orders.groupBy(\"customer_id\")\n    .agg(\n        count(lit(1)).alias(\"order_count\"),\n        min(\"amount\").alias(\"min_amount\")\n    )\n    .filter((col(\"order_count\") >= 2) & (col(\"min_amount\") > 100))\n    .select(\"customer_id\")\n)"
+}
