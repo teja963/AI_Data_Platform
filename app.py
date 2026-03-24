@@ -2,36 +2,63 @@ import streamlit as st
 
 st.set_page_config(layout="wide")
 
-PRACTICE_MODULE_LABEL = "SQL + PySpark"
+DASHBOARD_SECTION_LABEL = "Dashboard"
+CONCEPTS_SECTION_LABEL = "Concepts"
+CODING_SECTION_LABEL = "Coding"
+SPARK_SECTION_LABEL = "Spark"
+SECTION_ORDER = [
+    DASHBOARD_SECTION_LABEL,
+    CONCEPTS_SECTION_LABEL,
+    CODING_SECTION_LABEL,
+    SPARK_SECTION_LABEL,
+]
 
 # 🔥 READ FROM URL
 query_params = st.query_params
 
 if "module" not in query_params:
-    st.query_params["module"] = PRACTICE_MODULE_LABEL
+    st.query_params["module"] = DASHBOARD_SECTION_LABEL
 
-selected_module = st.query_params.get("module", PRACTICE_MODULE_LABEL)
-if selected_module == "SQL":
-    selected_module = PRACTICE_MODULE_LABEL
+selected_module = st.query_params.get("module", DASHBOARD_SECTION_LABEL)
+legacy_module_map = {
+    "SQL": CODING_SECTION_LABEL,
+    "SQL + PySpark": CODING_SECTION_LABEL,
+    "PySpark": SPARK_SECTION_LABEL,
+}
+selected_module = legacy_module_map.get(selected_module, selected_module)
+
+if selected_module not in SECTION_ORDER:
+    selected_module = DASHBOARD_SECTION_LABEL
 
 module = st.sidebar.selectbox(
     "Choose Section",
-    [PRACTICE_MODULE_LABEL, "Dashboard"],
-    index=[PRACTICE_MODULE_LABEL, "Dashboard"].index(selected_module)
+    SECTION_ORDER,
+    index=SECTION_ORDER.index(selected_module),
 )
 
 # 🔥 SAVE TO URL (PERSISTS AFTER REFRESH)
 st.query_params["module"] = module
 
 
-# ---------------- SQL ----------------
-if module == PRACTICE_MODULE_LABEL:
+# ---------------- CODING ----------------
+if module == CODING_SECTION_LABEL:
     from modules.sql.ui import render_sql
     render_sql()
 
+# ---------------- CONCEPTS ----------------
+elif module == CONCEPTS_SECTION_LABEL:
+    from modules.concepts.ui import render_concepts
+    render_concepts()
+
+# ---------------- SPARK ----------------
+elif module == SPARK_SECTION_LABEL:
+    from modules.pyspark.ui import render_spark
+    render_spark()
+
 # ---------------- DASHBOARD ----------------
-elif module == "Dashboard":
+elif module == DASHBOARD_SECTION_LABEL:
     import matplotlib.pyplot as plt
+    from core.interview import load_interview_history
     from core.loader import load_questions
     from core.progress import load_progress
 
@@ -39,7 +66,7 @@ elif module == "Dashboard":
 
     modules = [
         {"label": "SQL", "question_module": "sql", "progress_track": "sql"},
-        {"label": "PySpark", "question_module": "sql", "progress_track": "pyspark"},
+        {"label": "Spark", "question_module": "sql", "progress_track": "pyspark"},
         {"label": "Python", "question_module": "python", "progress_track": "python"},
     ]
 
@@ -86,3 +113,37 @@ elif module == "Dashboard":
                 """,
                 unsafe_allow_html=True
             )
+
+    st.markdown("---")
+    st.subheader("Interview Simulator")
+
+    history = load_interview_history()
+
+    if not history:
+        st.info("No interview runs yet. Start one from the Interview Simulator workspace.")
+    else:
+        latest_run = history[-1]
+        best_run = max(history, key=lambda run: run.get("score_percent", 0))
+        average_score = round(
+            sum(run.get("score_percent", 0) for run in history) / len(history),
+            1,
+        )
+
+        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+        metric_col1.metric("Runs", len(history))
+        metric_col2.metric("Latest Score", f"{latest_run['score_percent']}%")
+        metric_col3.metric("Best Score", f"{best_run['score_percent']}%")
+        metric_col4.metric("Average Score", f"{average_score}%")
+
+        recent_runs = []
+        for run in reversed(history[-5:]):
+            recent_runs.append({
+                "finished_at": run["finished_at"],
+                "track": run["track"],
+                "score": f"{run['total_score']} / {run['max_score']}",
+                "accuracy": f"{run['correct_count']} / {run['total_questions']}",
+                "time_used": f"{run.get('elapsed_seconds', 0)}s",
+                "reason": run.get("finished_reason", "completed").replace("_", " ").title(),
+            })
+
+        st.dataframe(recent_runs, use_container_width=True, hide_index=True)

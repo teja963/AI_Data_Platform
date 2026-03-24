@@ -1,0 +1,43 @@
+{
+  "runs": [
+    {
+      "finished_at": "2026-03-24T01:00:25",
+      "track": "SQL",
+      "categories": [
+        "Advanced",
+        "Aggregation",
+        "Business",
+        "Date",
+        "DeepComposite",
+        "Joins",
+        "Subquery",
+        "Window"
+      ],
+      "difficulties": [
+        "Easy"
+      ],
+      "minutes_per_question": 8,
+      "total_questions": 1,
+      "correct_count": 1,
+      "attempted_count": 1,
+      "total_score": 88,
+      "max_score": 100,
+      "score_percent": 88.0,
+      "questions": [
+        {
+          "progress_key": "sql:aggregation:8",
+          "title": "Customers With Equal Number Of Orders",
+          "category": "Aggregation",
+          "difficulty": "Easy",
+          "attempts": 1,
+          "correct": true,
+          "skipped": false,
+          "time_spent_seconds": 300,
+          "score": 88
+        }
+      ],
+      "finished_reason": "completed",
+      "elapsed_seconds": 305
+    }
+  ]
+}
