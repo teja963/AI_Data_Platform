@@ -1,5 +1,6 @@
 import streamlit as st
 from core.ai import ask_ai   # ✅ IMPORT LLM INTERFACE
+from groq import Groq
 
 
 # ---------------- METRICS ----------------
@@ -217,33 +218,50 @@ def render_workers(state):
         if state["join"] == "Broadcast":
             st.markdown("🟢 Broadcast → No shuffle")
 
-# ---------------- AI CHAT ----------------
-def render_ai_chat(state):
+# ---------------- AI CHAT ----------------        
+def render_ai_chat():
     st.markdown("---")
-    st.subheader("💬 Ask Spark AI")
+    st.subheader("💬 Spark AI Assistant")
 
-    user_input = st.text_input("Ask about current execution...", key="ai_input")
+    # ---------------- SESSION INIT ----------------
+    if "chat_history" not in st.session_state:
+        st.session_state.chat_history = []
 
-    if st.button("Ask AI", key="ai_btn"):
-        if user_input:
-            context = f"""
-You are a Spark expert.
+    if "last_processed" not in st.session_state:
+        st.session_state.last_processed = ""
 
-Current Simulation:
-- Transformation: {state['transform']}
-- Partition: {state['partition']}
-- Join: {state['join']}
-- Debug: {state['debug']}
-- Executors: {state['executors']}
+    # ---------------- DISPLAY CHAT (TOP DOWN LIKE CHATGPT) ----------------
+    for chat in st.session_state.chat_history:
+        with st.chat_message("user"):
+            st.markdown(chat["user"])
 
-User Question:
-{user_input}
+        with st.chat_message("assistant"):
+            st.markdown(chat["assistant"])
 
-Explain clearly, practically, and relate to this scenario with neat labled diagrams.
-"""
+    # ---------------- INPUT ----------------
+    user_input = st.chat_input("Ask anything about Spark...")
 
-            response = ask_ai(context)
-            st.success(response)
+    # ---------------- PROCESS ----------------
+    if user_input:
+        # show user immediately
+        with st.chat_message("user"):
+            st.markdown(user_input)
+
+        # prevent duplicate processing
+        if user_input != st.session_state.last_processed:
+            st.session_state.last_processed = user_input
+
+            with st.chat_message("assistant"):
+                with st.spinner("Thinking..."):
+                    response = ask_ai(user_input)
+
+                st.markdown(response)
+
+            # save history
+            st.session_state.chat_history.append({
+                "user": user_input,
+                "assistant": response
+            })
 
 
 # ---------------- MAIN ----------------
@@ -264,22 +282,41 @@ def render_architecture_simulator(state):
 def render_spark():
     st.title("Spark Simulator")
 
+    # ---------------- CONTROLS ----------------
     c1, c2, c3, c4, c5 = st.columns(5)
 
     state = {
-        "transform": c1.selectbox("Transform", ["Narrow", "Wide"], key="t"),
-        "partition": c2.selectbox("Partition", ["None", "Repartition", "Coalesce"], key="p"),
-        "join": c3.selectbox("Join", ["Broadcast", "Shuffle"], key="j"),
-        "debug": c4.selectbox("Debug", ["Normal", "Spill", "OOM", "Skew"], key="d"),
-        "executors": c5.slider("Executors", 1, 4, 2, key="e"),
+        "transform": c1.selectbox(
+            "Transform",
+            ["Narrow", "Wide"],
+            key="transform_select"
+        ),
+        "partition": c2.selectbox(
+            "Partition",
+            ["None", "Repartition", "Coalesce"],
+            key="partition_select"
+        ),
+        "join": c3.selectbox(
+            "Join",
+            ["Broadcast", "Shuffle"],
+            key="join_select"
+        ),
+        "debug": c4.selectbox(
+            "Debug",
+            ["Normal", "Spill", "OOM", "Skew"],
+            key="debug_select"
+        ),
+        "executors": c5.slider(
+            "Executors",
+            1, 4, 2,
+            key="executor_slider"
+        ),
     }
 
     st.markdown("---")
+
+    # ---------------- SPARK ARCHITECTURE ----------------
     render_architecture_simulator(state)
 
-     # 🔥 NEW FEATURE
-    render_ai_chat(state)
-
-
-# 🔥 RUN
-render_spark()
+    # ---------------- AI CHAT (ADD-ON ONLY) ----------------
+    render_ai_chat()
