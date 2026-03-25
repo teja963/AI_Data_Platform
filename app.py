@@ -52,7 +52,7 @@ elif module == CONCEPTS_SECTION_LABEL:
 
 # ---------------- SPARK ----------------
 elif module == SPARK_SECTION_LABEL:
-    from modules.pyspark.ui import render_spark
+    from modules.spark.ui import render_spark
     render_spark()
 
 # ---------------- DASHBOARD ----------------
