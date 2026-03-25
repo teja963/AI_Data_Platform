@@ -2,43 +2,54 @@ import streamlit as st
 
 st.set_page_config(layout="wide")
 
+# ---------------- SECTION LABELS ----------------
 DASHBOARD_SECTION_LABEL = "Dashboard"
 CONCEPTS_SECTION_LABEL = "Concepts"
 CODING_SECTION_LABEL = "Coding"
 SPARK_SECTION_LABEL = "Spark"
+DATA_MODELING_SECTION_LABEL = "Data Modelling"  # ✅ NEW
+
 SECTION_ORDER = [
     DASHBOARD_SECTION_LABEL,
     CONCEPTS_SECTION_LABEL,
     CODING_SECTION_LABEL,
     SPARK_SECTION_LABEL,
+    DATA_MODELING_SECTION_LABEL,  # ✅ NEW
 ]
 
-# 🔥 READ FROM URL
+# ---------------- URL PARAM HANDLING ----------------
 query_params = st.query_params
 
 if "module" not in query_params:
     st.query_params["module"] = DASHBOARD_SECTION_LABEL
 
 selected_module = st.query_params.get("module", DASHBOARD_SECTION_LABEL)
+
 legacy_module_map = {
     "SQL": CODING_SECTION_LABEL,
     "SQL + PySpark": CODING_SECTION_LABEL,
     "PySpark": SPARK_SECTION_LABEL,
 }
+
 selected_module = legacy_module_map.get(selected_module, selected_module)
 
 if selected_module not in SECTION_ORDER:
     selected_module = DASHBOARD_SECTION_LABEL
 
+# ---------------- SIDEBAR ----------------
 module = st.sidebar.selectbox(
     "Choose Section",
     SECTION_ORDER,
     index=SECTION_ORDER.index(selected_module),
 )
 
-# 🔥 SAVE TO URL (PERSISTS AFTER REFRESH)
+# 🔥 Persist selection in URL
 st.query_params["module"] = module
 
+
+# =========================================================
+# ---------------- ROUTING ----------------
+# =========================================================
 
 # ---------------- CODING ----------------
 if module == CODING_SECTION_LABEL:
@@ -54,6 +65,11 @@ elif module == CONCEPTS_SECTION_LABEL:
 elif module == SPARK_SECTION_LABEL:
     from modules.spark.ui import render_spark
     render_spark()
+
+# ---------------- DATA MODELLING (NEW) ----------------
+elif module == DATA_MODELING_SECTION_LABEL:
+    from modules.datamodeling.ui import render_datamodeling
+    render_datamodeling()
 
 # ---------------- DASHBOARD ----------------
 elif module == DASHBOARD_SECTION_LABEL:
