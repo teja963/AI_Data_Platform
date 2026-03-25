@@ -4,17 +4,20 @@ import streamlit as st
 # ---------------- METRICS ENGINE ----------------
 def compute_metrics(state):
     time = 2
-    shuffle = "Low"
+    shuffle = "None"
     status = "Success"
 
+    # Transform
     if state["transform"] == "Wide":
         time += 2
         shuffle = "High"
 
+    # Join
     if state["join"] == "Shuffle":
         time += 2
         shuffle = "High"
 
+    # Partition
     if state["partition"] == "Repartition":
         time += 3
         shuffle = "Very High"
@@ -23,6 +26,7 @@ def compute_metrics(state):
         time -= 1
         shuffle = "None"
 
+    # Debug
     if state["debug"] == "Spill":
         time += 3
 
@@ -32,6 +36,12 @@ def compute_metrics(state):
     if state["debug"] == "OOM":
         status = "Failed"
 
+    # Executor scaling benefit
+    if state["executors"] >= 3:
+        time -= 1
+
+    time = max(1, time)
+
     return time, shuffle, status
 
 
@@ -40,7 +50,7 @@ def render_driver():
     with st.container(border=True):
         st.markdown("### Driver")
 
-        st.markdown("**Job**")
+        st.markdown("**Job → Stages → Tasks**")
 
         components = [
             "SparkSession",
@@ -48,7 +58,7 @@ def render_driver():
             "Logical Plan",
             "Catalyst",
             "Physical Plan",
-            "DAG Scheduler (Stages)",
+            "DAG Scheduler",
         ]
 
         for i, comp in enumerate(components):
@@ -80,13 +90,13 @@ def render_core(core_id, state, highlight=False):
     if is_skew:
         if highlight:
             color = "#fecaca"
-            opacity = 1
+            util = "100%"
         else:
             color = "#f1f5f9"
-            opacity = 0.4
+            util = "20%"
     else:
         color = "#f1f5f9"
-        opacity = 1
+        util = "50%"
 
     partitions = 2
     if state["partition"] == "Repartition":
@@ -98,7 +108,7 @@ def render_core(core_id, state, highlight=False):
         ["<div style='width:8px;height:8px;background:#64748b;margin:1px;border-radius:2px'></div>" for _ in range(partitions)]
     )
 
-    return f"<div style='width:80px;height:70px;background:{color};opacity:{opacity};border:1px solid #cbd5e1;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:4px;font-size:13px;font-weight:600'>Core {core_id}<div style='display:flex;flex-wrap:wrap;width:35px;justify-content:center'>{parts}</div></div>"
+    return f"<div style='width:80px;height:75px;background:{color};border:1px solid #cbd5e1;border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;margin:4px;font-size:12px;font-weight:600'>Core {core_id}<div style='font-size:10px'>{util}</div><div style='display:flex;flex-wrap:wrap;width:35px;justify-content:center'>{parts}</div></div>"
 
 
 # ---------------- EXECUTOR ----------------
@@ -108,18 +118,21 @@ def render_executor(idx, state):
 
     mem_color = "#fecaca" if (is_spill or is_oom) else "#f8fafc"
 
-    disk_color = "#e5e7eb"
-    if is_spill:
-        disk_color = "#bbf7d0"
     if is_oom:
         disk_color = "#fecaca"
+        disk_label = "Disk Full"
+    elif is_spill:
+        disk_color = "#bbf7d0"
+        disk_label = "Write ↑"
+    else:
+        disk_color = "#e5e7eb"
+        disk_label = "Idle"
 
     time, shuffle, status = compute_metrics(state)
 
     with st.container(border=True):
         st.markdown(f"**Executor {idx}**")
 
-        # ONLY 2 CORES
         core_html = "".join([
             render_core(1, state, highlight=(idx == 1)),
             render_core(2, state)
@@ -138,9 +151,9 @@ def render_executor(idx, state):
         st.markdown(mem_html, unsafe_allow_html=True)
 
         # DISK
-        st.markdown(f"<div style='margin-top:6px;padding:6px;background:{disk_color};text-align:center;font-size:13px;border-radius:6px'>Disk</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='margin-top:6px;padding:6px;background:{disk_color};text-align:center;font-size:13px;border-radius:6px'>{disk_label}</div>", unsafe_allow_html=True)
 
-        # METRICS (DYNAMIC)
+        # METRICS
         st.markdown(f"<div style='font-size:12px'>⏱ {time}s &nbsp;&nbsp; 🔀 {shuffle} &nbsp;&nbsp; {'✔ Success' if status=='Success' else '❌ Failed'}</div>", unsafe_allow_html=True)
 
 
