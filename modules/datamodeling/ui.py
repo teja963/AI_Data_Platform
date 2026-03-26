@@ -2,6 +2,67 @@ import streamlit as st
 import pandas as pd
 from core.ai import ask_ai
 import random
+from datetime import datetime
+
+# =========================================================
+# 🔹 ENTRY POINT
+# =========================================================
+
+def render_datamodeling():
+
+    render_title("📊 Data Modelling")
+
+    tab_labels = [
+        "Fundamentals",
+        "Dimensional Modeling",
+        "Architecture",
+        "Distributed",
+        "Interview Mode"
+    ]
+
+    # =====================================================
+    # 🔥 STEP 1: READ FROM URL
+    # =====================================================
+    query_params = st.query_params
+
+    selected = query_params.get("dm_tab", "Fundamentals")
+
+    if selected not in tab_labels:
+        selected = "Fundamentals"
+
+    # =====================================================
+    # 🔥 STEP 2: TAB-LIKE UI (REPLACES st.tabs)
+    # =====================================================
+    selected_tab = st.radio(
+        "",
+        tab_labels,
+        index=tab_labels.index(selected),
+        horizontal=True
+    )
+
+    # =====================================================
+    # 🔥 STEP 3: UPDATE URL (CRITICAL)
+    # =====================================================
+    st.query_params["dm_tab"] = selected_tab
+
+    # =====================================================
+    # 🔥 STEP 4: RENDER CONTENT (NOW WORKS PERFECTLY)
+    # =====================================================
+    if selected_tab == "Fundamentals":
+        show_fundamentals()
+
+    elif selected_tab == "Dimensional Modeling":
+        show_dimensional_modeling()
+
+    elif selected_tab == "Architecture":
+        show_architecture()
+
+    elif selected_tab == "Distributed":
+        show_distributed_modeling()
+
+    elif selected_tab == "Interview Mode":
+        show_interview_mode()
+
 
 # =========================================================
 # 🔹 UI COMPONENTS (FULL CONTROL)
@@ -110,39 +171,6 @@ def render_ai_chat(section_key, title, topic):
 
         with st.chat_message("assistant"):
             st.markdown(response)
-
-
-
-# =========================================================
-# 🔹 ENTRY POINT
-# =========================================================
-
-def render_datamodeling():
-    render_title("📊 Data Modelling")
-
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "Fundamentals",
-        "Dimensional Modeling",
-        "Architecture",
-        "Distributed",
-        "Interview Mode"
-    ])
-
-    with tab1:
-        show_fundamentals()
-
-    with tab2:
-        show_dimensional_modeling()
-
-    with tab3:
-        show_architecture()
-
-    with tab4:
-        show_distributed_modeling()
-
-    with tab5:
-        show_interview_mode()
-
 
 # =========================================================
 # 🔹 FUNDAMENTALS
@@ -470,55 +498,137 @@ def show_fundamentals():
         )
 
 # =========================================================
-# 2. DIMENSIONAL MODELING (your page 7.2)
+# 2. DIMENSIONAL MODELING 
 # =========================================================
 def show_dimensional_modeling():
+    
     st.header("Dimensional Modeling")
+    # =====================================================
+    # 🔹 FACT vs DIMENSION
+    # =====================================================
 
-    st.markdown("""
-    - Fact Tables → metrics  
-    - Dimension Tables → context  
-    """)
+    st.markdown("### 🔥 Fact vs Dimension")
 
-    st.subheader("Example")
+    df_compare = pd.DataFrame([
+        ["Definition", "Stores measurable metrics for analysis", "Stores descriptive attributes for context"],
+        ["Purpose", "Used for aggregations (SUM, COUNT)", "Used for filtering & grouping"],
+        ["Data Type", "Numeric values", "Text / categorical"],
+        ["Keys", "Contains foreign keys", "Contains primary keys"],
+        ["Example", "sales_amt, quantity", "customer_name, city"]
+    ], columns=["Aspect", "Fact Table", "Dimension Table"])
 
-    st.code("""
-    Sales_Fact(
-        date_id,
-        product_id,
-        customer_id,
-        sales_qty,
-        sales_amt
-    )
-    """)
+    st.dataframe(df_compare, use_container_width=True, hide_index=True)
 
-    st.code("""
-    Product_Dim(product_id, name, category)
-    Customer_Dim(customer_id, name, city)
-    """)
+    # ---------------- EXAMPLE TABLES ----------------
+    st.markdown("### 📊 Example Tables")
 
-    st.subheader("Grain")
+    col1, col2 = st.columns(2)
 
-    st.markdown("""
-    - Transaction level  
-    - Daily level  
-    - Monthly level  
-    """)
+    with col1:
+        st.markdown("**Fact Table: Sales_Fact**")
+        df_fact = pd.DataFrame([
+            ["20240101", "P101", "C201", "500"],
+            ["20240102", "P102", "C202", "300"]
+        ], columns=["date_id", "product_id", "customer_id", "sales_amt"])
 
-    st.subheader("Fact Types")
+        st.dataframe(df_fact, hide_index=True)
 
-    fact_type = st.selectbox("Choose", [
-        "Event Fact",
-        "Factless Fact"
-    ])
+    with col2:
+        st.markdown("**Dimension Table: Customer_Dim**")
+        df_dim = pd.DataFrame([
+            ["C201", "John", "Bangalore"],
+            ["C202", "Mike", "Chennai"]
+        ], columns=["customer_id", "name", "city"])
 
-    if fact_type == "Event Fact":
-        st.write("Tracks events like login, clicks")
+        st.dataframe(df_dim, hide_index=True)
 
-    elif fact_type == "Factless Fact":
-        st.write("No measures, only relationships")
+    # ---------------- VISUAL DIAGRAM ----------------
+    st.markdown("### 🔷 Relationship Diagram")
 
+    col_left, col_center, col_right = st.columns([1,2,1])
 
+    with col_center:
+        st.markdown("**⬆️ Dimensions connect to Fact**")
+
+        c1, c2, c3 = st.columns(3)
+
+        with c1:
+            st.info("Customer_dim")
+            st.info("Product_dim")
+
+        with c2:
+            st.success("Sales_Fact\n(Metrics)")
+
+        with c3:
+            st.info("Date_dim")
+            st.info("Store_dim")
+
+    # =====================================================
+    # 🔹 GRAIN (VISUAL + STRUCTURED)
+    # =====================================================
+
+    # ---------------- DEFINITION TABLE ----------------
+    st.markdown("### 🔥 Grain Definition")
+
+    df_grain_def = pd.DataFrame([
+        ["Definition", "Grain defines what a single row in a fact table represents"],
+        ["Purpose", "Ensures correct level of detail for analysis"],
+        ["Impact", "Directly affects aggregation and query results"]
+    ], columns=["Aspect", "Explanation"])
+
+    st.dataframe(df_grain_def, use_container_width=True, hide_index=True)
+
+    # ---------------- EXAMPLES ----------------
+    st.markdown("### 📊 Grain Examples (Real-world)")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**Transaction Grain (Correct - Detailed)**")
+
+        df_txn = pd.DataFrame([
+            ["1001", "iPhone", "800"],
+            ["1002", "Laptop", "1200"]
+        ], columns=["order_id", "product", "amount"])
+
+        st.dataframe(df_txn, hide_index=True)
+
+    with col2:
+        st.markdown("**Daily Grain (Aggregated - Less Detail)**")
+
+        df_daily = pd.DataFrame([
+            ["2024-01-01", "5000"],
+            ["2024-01-02", "7000"]
+        ], columns=["date", "total_sales"])
+
+        st.dataframe(df_daily, hide_index=True)
+
+    # ---------------- VISUAL FLOW ----------------
+    st.markdown("### 🔷 Grain Selection Flow")
+
+    c1, c2, c3 = st.columns(3)
+
+    with c1:
+        st.info("Raw Data\n(Transactions)")
+
+    with c2:
+        st.warning("Choose Grain\n(Level of Detail)")
+
+    with c3:
+        st.success("Fact Table\n(Final Structure)")
+
+    # ---------------- WHY IMPORTANT ----------------
+    st.markdown("### 🚨 Why Grain is Critical")
+
+    df_importance = pd.DataFrame([
+        ["Wrong Grain", "Leads to incorrect aggregations"],
+        ["Too High Level", "Loss of detailed insights"],
+        ["Too Low Level", "Heavy queries, performance issues"],
+        ["Correct Grain", "Accurate + efficient analytics"]
+    ], columns=["Scenario", "Impact"])
+
+    st.dataframe(df_importance, use_container_width=True, hide_index=True)
+  
 # =========================================================
 # 3. DATA WAREHOUSE ARCHITECTURE
 # =========================================================

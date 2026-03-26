@@ -7,24 +7,31 @@ DASHBOARD_SECTION_LABEL = "Dashboard"
 CONCEPTS_SECTION_LABEL = "Concepts"
 CODING_SECTION_LABEL = "Coding"
 SPARK_SECTION_LABEL = "Spark"
-DATA_MODELING_SECTION_LABEL = "Data Modelling"  # ✅ NEW
+DATA_MODELING_SECTION_LABEL = "Data Modelling"
 
 SECTION_ORDER = [
     DASHBOARD_SECTION_LABEL,
     CONCEPTS_SECTION_LABEL,
     CODING_SECTION_LABEL,
     SPARK_SECTION_LABEL,
-    DATA_MODELING_SECTION_LABEL,  # ✅ NEW
+    DATA_MODELING_SECTION_LABEL,
 ]
 
 # ---------------- URL PARAM HANDLING ----------------
 query_params = st.query_params
 
-if "module" not in query_params:
-    st.query_params["module"] = DASHBOARD_SECTION_LABEL
+# ✅ STEP 1: Initialize session FIRST (source of truth)
+if "module" not in st.session_state:
+    st.session_state["module"] = DASHBOARD_SECTION_LABEL
 
-selected_module = st.query_params.get("module", DASHBOARD_SECTION_LABEL)
+# ✅ STEP 2: If URL has module → override session
+if "module" in query_params:
+    st.session_state["module"] = query_params["module"]
 
+# ✅ STEP 3: Use session as final value
+selected_module = st.session_state["module"]
+
+# ---------------- LEGACY MAP ----------------
 legacy_module_map = {
     "SQL": CODING_SECTION_LABEL,
     "SQL + PySpark": CODING_SECTION_LABEL,
@@ -43,7 +50,8 @@ module = st.sidebar.selectbox(
     index=SECTION_ORDER.index(selected_module),
 )
 
-# 🔥 Persist selection in URL
+# ✅ STEP 4: Sync BOTH (CRITICAL)
+st.session_state["module"] = module
 st.query_params["module"] = module
 
 
@@ -51,27 +59,22 @@ st.query_params["module"] = module
 # ---------------- ROUTING ----------------
 # =========================================================
 
-# ---------------- CODING ----------------
 if module == CODING_SECTION_LABEL:
     from modules.sql.ui import render_sql
     render_sql()
 
-# ---------------- CONCEPTS ----------------
 elif module == CONCEPTS_SECTION_LABEL:
     from modules.concepts.ui import render_concepts
     render_concepts()
 
-# ---------------- SPARK ----------------
 elif module == SPARK_SECTION_LABEL:
     from modules.spark.ui import render_spark
     render_spark()
 
-# ---------------- DATA MODELLING (NEW) ----------------
 elif module == DATA_MODELING_SECTION_LABEL:
     from modules.datamodeling.ui import render_datamodeling
     render_datamodeling()
 
-# ---------------- DASHBOARD ----------------
 elif module == DASHBOARD_SECTION_LABEL:
     import matplotlib.pyplot as plt
     from core.interview import load_interview_history
@@ -136,7 +139,7 @@ elif module == DASHBOARD_SECTION_LABEL:
     history = load_interview_history()
 
     if not history:
-        st.info("No interview runs yet. Start one from the Interview Simulator workspace.")
+        st.info("No interview runs yet.")
     else:
         latest_run = history[-1]
         best_run = max(history, key=lambda run: run.get("score_percent", 0))
