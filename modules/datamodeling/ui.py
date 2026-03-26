@@ -104,8 +104,6 @@ def render_code(text):
 # =========================================================
 
 def render_ai_chat(section_key, title, topic):
-    import streamlit as st
-    from core.ai import ask_ai
 
     st.markdown("---")
     st.markdown(f"### 💬 {title}")
@@ -501,173 +499,326 @@ def show_fundamentals():
 # 2. DIMENSIONAL MODELING 
 # =========================================================
 def show_dimensional_modeling():
-    
+
     st.header("Dimensional Modeling")
-    # =====================================================
-    # 🔹 FACT vs DIMENSION
-    # =====================================================
 
-    st.markdown("### 🔥 Fact vs Dimension")
-
-    df_compare = pd.DataFrame([
-        ["Definition", "Stores measurable metrics for analysis", "Stores descriptive attributes for context"],
-        ["Purpose", "Used for aggregations (SUM, COUNT)", "Used for filtering & grouping"],
-        ["Data Type", "Numeric values", "Text / categorical"],
-        ["Keys", "Contains foreign keys", "Contains primary keys"],
-        ["Example", "sales_amt, quantity", "customer_name, city"]
-    ], columns=["Aspect", "Fact Table", "Dimension Table"])
-
-    st.dataframe(df_compare, use_container_width=True, hide_index=True)
-
-    # ---------------- EXAMPLE TABLES ----------------
-    st.markdown("### 📊 Example Tables")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.markdown("**Fact Table: Sales_Fact**")
-        df_fact = pd.DataFrame([
-            ["20240101", "P101", "C201", "500"],
-            ["20240102", "P102", "C202", "300"]
-        ], columns=["date_id", "product_id", "customer_id", "sales_amt"])
-
-        st.dataframe(df_fact, hide_index=True)
-
-    with col2:
-        st.markdown("**Dimension Table: Customer_Dim**")
-        df_dim = pd.DataFrame([
-            ["C201", "John", "Bangalore"],
-            ["C202", "Mike", "Chennai"]
-        ], columns=["customer_id", "name", "city"])
-
-        st.dataframe(df_dim, hide_index=True)
-
-    # ---------------- VISUAL DIAGRAM ----------------
-    st.markdown("### 🔷 Relationship Diagram")
-
-    col_left, col_center, col_right = st.columns([1,2,1])
-
-    with col_center:
-        st.markdown("**⬆️ Dimensions connect to Fact**")
-
-        c1, c2, c3 = st.columns(3)
-
-        with c1:
-            st.info("Customer_dim")
-            st.info("Product_dim")
-
-        with c2:
-            st.success("Sales_Fact\n(Metrics)")
-
-        with c3:
-            st.info("Date_dim")
-            st.info("Store_dim")
+    tab1, tab2, tab3 = st.tabs([
+        "Core Concepts",
+        "Schemas & Dimensions",
+        "Dimensional Changes (SCD)"
+    ])
 
     # =====================================================
-    # 🔹 GRAIN (VISUAL + STRUCTURED)
+    # 🔹 TAB 1
     # =====================================================
+    with tab1:
 
-    # ---------------- DEFINITION TABLE ----------------
-    st.markdown("### 🔥 Grain Definition")
+        st.markdown("### 🔥 Fact vs Dimension")
 
-    df_grain_def = pd.DataFrame([
-        ["Definition", "Grain defines what a single row in a fact table represents"],
-        ["Purpose", "Ensures correct level of detail for analysis"],
-        ["Impact", "Directly affects aggregation and query results"]
-    ], columns=["Aspect", "Explanation"])
 
-    st.dataframe(df_grain_def, use_container_width=True, hide_index=True)
+        df_compare = pd.DataFrame([
+            ["Definition", "Stores measurable metrics for analysis", "Stores descriptive attributes for context"],
+            ["Purpose", "Used for aggregations (SUM, COUNT)", "Used for filtering & grouping"],
+            ["Data Type", "Numeric values", "Text / categorical"],
+            ["Keys", "Contains foreign keys", "Contains primary keys"],
+            ["Example", "sales_amt, quantity", "customer_name, city"]
+        ], columns=["Aspect", "Fact Table", "Dimension Table"])
 
-    # ---------------- EXAMPLES ----------------
-    st.markdown("### 📊 Grain Examples (Real-world)")
+        st.dataframe(df_compare, use_container_width=True, hide_index=True)
 
-    col1, col2 = st.columns(2)
+        # ---------------- EXAMPLE TABLES ----------------
+        st.markdown("### 📊 Example Tables")
 
-    with col1:
-        st.markdown("**Transaction Grain (Correct - Detailed)**")
+        col1, col2 = st.columns(2)
 
-        df_txn = pd.DataFrame([
-            ["1001", "iPhone", "800"],
-            ["1002", "Laptop", "1200"]
-        ], columns=["order_id", "product", "amount"])
+        with col1:
+            st.markdown("**Fact Table: Sales_Fact**")
+            df_fact = pd.DataFrame([
+                ["20240101", "P101", "C201", "500"],
+                ["20240102", "P102", "C202", "300"]
+            ], columns=["date_id", "product_id", "customer_id", "sales_amt"])
 
-        st.dataframe(df_txn, hide_index=True)
+            st.dataframe(df_fact, hide_index=True)
 
-    with col2:
-        st.markdown("**Daily Grain (Aggregated - Less Detail)**")
+        with col2:
+            st.markdown("**Dimension Table: Customer_Dim**")
+            df_dim = pd.DataFrame([
+                ["C201", "John", "Bangalore"],
+                ["C202", "Mike", "Chennai"]
+            ], columns=["customer_id", "name", "city"])
 
-        df_daily = pd.DataFrame([
-            ["2024-01-01", "5000"],
-            ["2024-01-02", "7000"]
-        ], columns=["date", "total_sales"])
+            st.dataframe(df_dim, hide_index=True)
 
-        st.dataframe(df_daily, hide_index=True)
+        # ---------------- VISUAL DIAGRAM ----------------
+        st.markdown("### 🔷 Relationship Diagram")
 
-    # ---------------- VISUAL FLOW ----------------
-    st.markdown("### 🔷 Grain Selection Flow")
+        col_left, col_center, col_right = st.columns([1,2,1])
 
-    c1, c2, c3 = st.columns(3)
+        with col_center:
+            st.markdown("**⬆️ Dimensions connect to Fact**")
 
-    with c1:
-        st.info("Raw Data\n(Transactions)")
+            c1, c2, c3 = st.columns(3)
 
-    with c2:
-        st.warning("Choose Grain\n(Level of Detail)")
+            with c1:
+                st.info("Customer_dim")
+                st.info("Product_dim")
 
-    with c3:
-        st.success("Fact Table\n(Final Structure)")
+            with c2:
+                st.success("Sales_Fact\n(Metrics)")
 
-    # ---------------- WHY IMPORTANT ----------------
-    st.markdown("### 🚨 Why Grain is Critical")
+            with c3:
+                st.info("Date_dim")
+                st.info("Store_dim")
 
-    df_importance = pd.DataFrame([
-        ["Wrong Grain", "Leads to incorrect aggregations"],
-        ["Too High Level", "Loss of detailed insights"],
-        ["Too Low Level", "Heavy queries, performance issues"],
-        ["Correct Grain", "Accurate + efficient analytics"]
-    ], columns=["Scenario", "Impact"])
+        # =====================================================
+        # 🔹 KEYS (FIXED CONNECTED ROOT + BETTER DEFINITIONS)
+        # =====================================================
+        st.subheader("Keys")
 
-    st.dataframe(df_importance, use_container_width=True, hide_index=True)
+        center = st.columns([1,2,1])
+        with center[1]:
+            st.markdown("""
+            <div style="
+                text-align:center;
+                padding:10px;
+                border:2px solid #4CAF50;
+                border-radius:8px;
+                font-weight:bold;">
+                KEYS
+            </div>
+            """, unsafe_allow_html=True)
 
-    # =====================================================
-    # 🔹 KEYS (FIXED CONNECTED ARROWS)
-    # =====================================================
-    st.subheader("Keys")
-
-    # ---------------- ROOT NODE ----------------
-    center = st.columns([1,2,1])
-
-    with center[1]:
+        # 🔥 CONNECT ROOT TO LINE (FIX)
         st.markdown("""
-        <div style="
-            text-align:center;
-            padding:10px;
-            border:2px solid #4CAF50;
-            border-radius:8px;
-            font-weight:bold;">
-            KEYS
+        <div style="display:flex;justify-content:center;">
+            <div style="width:2px;height:20px;background:#999;"></div>
         </div>
         """, unsafe_allow_html=True)
 
-    # ---------------- MAIN CONNECTOR LINE ----------------
-    st.markdown("""
-    <div style="
-        width:100%;
-        height:2px;
-        background:#999;
-        margin-top:10px;
-        margin-bottom:5px;">
-    </div>
-    """, unsafe_allow_html=True)
+        # MAIN LINE
+        st.markdown("""
+        <div style="width:100%;height:2px;background:#999;margin-bottom:5px;"></div>
+        """, unsafe_allow_html=True)
 
-    # ---------------- DOWN ARROWS (ALIGNED) ----------------
-    arrow_cols = st.columns(7)
+        # ARROWS
+        arrow_cols = st.columns(7)
+        for col in arrow_cols:
+            with col:
+                st.markdown("""
+                <div style="text-align:center;">
+                    <div style="width:2px;height:16px;background:#999;margin:auto;"></div>
+                    <div style="width:0;height:0;
+                        border-left:4px solid transparent;
+                        border-right:4px solid transparent;
+                        border-top:6px solid #999;
+                        margin:auto;"></div>
+                </div>
+                """, unsafe_allow_html=True)
 
-    for col in arrow_cols:
-        with col:
+        # BOXES (DETAILED DEFINITIONS)
+        k1,k2,k3,k4,k5,k6,k7 = st.columns(7)
+
+        box = "padding:8px;border:2px solid #2196F3;border-radius:8px;font-size:12px;text-align:center;"
+
+        k1.markdown(f"<div style='{box}'><b>Primary Key</b><br>Uniquely identifies each row</div>", unsafe_allow_html=True)
+        k2.markdown(f"<div style='{box}'><b>Foreign Key</b><br>Connects fact & dimension tables</div>", unsafe_allow_html=True)
+        k3.markdown(f"<div style='{box}'><b>Natural Key</b><br>Business identifier like email/id</div>", unsafe_allow_html=True)
+        k4.markdown(f"<div style='{box}'><b>Surrogate Key</b><br>System-generated key (used in SCD)</div>", unsafe_allow_html=True)
+        k5.markdown(f"<div style='{box}'><b>Composite Key</b><br>Combination of multiple columns</div>", unsafe_allow_html=True)
+        k6.markdown(f"<div style='{box}'><b>Candidate Key</b><br>Possible primary keys</div>", unsafe_allow_html=True)
+        k7.markdown(f"<div style='{box}'><b>Alternate Key</b><br>Unused candidate key</div>", unsafe_allow_html=True)
+
+        # EXAMPLE
+        st.markdown("### 📊 Example")
+
+        c1,c2 = st.columns(2)
+
+        c1.dataframe(pd.DataFrame([
+            [1,"C101","john@email.com","Bangalore"],
+            [2,"C102","mike@email.com","Chennai"]
+        ],columns=["cust_key (PK)","cust_id (NK)","email","city"]),hide_index=True)
+
+        c2.dataframe(pd.DataFrame([
+            [1,500],
+            [2,300]
+        ],columns=["cust_key (FK)","sales_amt"]),hide_index=True)
+
+
+        # =====================================================
+        # 🔹 GRAIN + MEASURES (SIDE BY SIDE)
+        # =====================================================
+        left,right = st.columns(2)
+
+        # ---------------- GRAIN ----------------
+        with left:
+            st.subheader("Grain")
+
+            st.dataframe(pd.DataFrame([
+                ["Definition","Defines what one row represents"],
+                ["Purpose","Controls level of detail"],
+                ["Impact","Affects aggregation accuracy"]
+            ],columns=["Aspect","Explanation"]),hide_index=True)
+
+            st.markdown("**Example**")
+
+            st.dataframe(pd.DataFrame([
+                ["1001","iPhone","800"],
+                ["1002","Laptop","1200"]
+            ],columns=["order_id","product","amount"]),hide_index=True)
+
+            st.dataframe(pd.DataFrame([
+                ["2024-01-01","5000"],
+                ["2024-01-02","7000"]
+            ],columns=["date","total_sales"]),hide_index=True)
+
+            st.dataframe(pd.DataFrame([
+                ["Wrong Grain","Incorrect results"],
+                ["Too High","Loss of detail"],
+                ["Too Low","Performance issues"]
+            ],columns=["Scenario","Impact"]),hide_index=True)
+
+        # ---------------- MEASURES ----------------
+        with right:
+            st.subheader("Measures")
+
+            st.dataframe(pd.DataFrame([
+                ["Definition","Numeric values in fact table"],
+                ["Usage","Used in aggregations"]
+            ],columns=["Aspect","Explanation"]),hide_index=True)
+
+            st.markdown("### Types")
+
+            m1,m2,m3 = st.columns(3)
+
+            m1.markdown("<div style='border:2px solid #4CAF50;padding:8px;text-align:center'><b>Additive</b><br>Can sum across all dims<br>Ex: sales</div>", unsafe_allow_html=True)
+            m2.markdown("<div style='border:2px solid #ff9800;padding:8px;text-align:center'><b>Semi</b><br>Limited aggregation<br>Ex: balance</div>", unsafe_allow_html=True)
+            m3.markdown("<div style='border:2px solid #f44336;padding:8px;text-align:center'><b>Non</b><br>No aggregation<br>Ex: ratio</div>", unsafe_allow_html=True)
+
+
+        render_ai_chat("dim_core","Ask about Core Concepts","Dimensional Modeling Core Concepts")
+
+
+    # =====================================================
+    # 🔹 TAB 2
+    # =====================================================
+    with tab2:
+
+        col1, col2 = st.columns(2)
+
+        # ---------------- STAR ----------------
+        with col1:
+            st.subheader("Star Schema")
+
             st.markdown("""
+        <div style='text-align:center;font-size:12px'>
+
+        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>
+        Date_dim
+        </div>
+
+        <div>↓</div>
+
+        <div style='display:flex;justify-content:center;align-items:center;gap:6px'>
+
+        <div style='padding:6px;border:2px solid #4CAF50'>
+        Customer_dim
+        </div>
+
+        <div>→</div>
+
+        <div style='padding:8px;border:2px solid #2196F3;background:#eef7ff'>
+        <b>Sales_fact</b>
+        </div>
+
+        <div>←</div>
+
+        <div style='padding:6px;border:2px solid #4CAF50'>
+        Product_dim
+        </div>
+
+        </div>
+
+        <div>↑</div>
+
+        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>
+        Store_dim
+        </div>
+
+        </div>
+        """, unsafe_allow_html=True)
+
+
+        # ---------------- SNOWFLAKE ----------------
+        with col2:
+            st.subheader("Snowflake Schema")
+
+            st.markdown("""
+        <div style='text-align:center;font-size:12px'>
+
+        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Category</div>
+        <div>↓</div>
+        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Product</div>
+        <div>↓</div>
+
+        <div style='display:flex;justify-content:center;align-items:center;gap:8px'>
+
+        <div style='padding:6px;border:2px solid #4CAF50'>Date</div>
+
+        <div>→</div>
+
+        <div style='padding:8px;border:2px solid #2196F3;background:#eef7ff'>
+        <b>Sales_fact</b>
+        </div>
+
+        <div>←</div>
+
+        <div style='padding:6px;border:2px solid #4CAF50'>Store</div>
+
+        </div>
+
+        <div>↑</div>
+        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Customer</div>
+        <div>↑</div>
+        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Region</div>
+
+        </div>
+        """, unsafe_allow_html=True)
+
+        render_ai_chat("dim_schema","Ask about Schemas","Star & Snowflake")
+
+
+    # =====================================================
+    # 🔹 TAB 3
+    # =====================================================
+    with tab3:
+
+        st.subheader("Dimension Types")
+
+        # ROOT
+        center = st.columns([1,2,1])
+        with center[1]:
+            st.markdown("""
+            <div style='text-align:center;border:2px solid #4CAF50;padding:10px;font-weight:bold'>
+            DIMENSION TYPES
+            </div>
+            """, unsafe_allow_html=True)
+
+        # CONNECTOR
+        st.markdown("""
+        <div style='display:flex;justify-content:center'>
+            <div style='width:2px;height:20px;background:#999'></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        # MAIN LINE
+        st.markdown("<div style='width:100%;height:2px;background:#999'></div>", unsafe_allow_html=True)
+
+        # ARROWS
+        arrow_cols = st.columns(7)
+        for col in arrow_cols:
+            col.markdown("""
             <div style="text-align:center;">
-                <div style="width:2px;height:18px;background:#999;margin:auto;"></div>
+                <div style="width:2px;height:14px;background:#999;margin:auto;"></div>
                 <div style="width:0;height:0;
                     border-left:4px solid transparent;
                     border-right:4px solid transparent;
@@ -676,98 +827,161 @@ def show_dimensional_modeling():
             </div>
             """, unsafe_allow_html=True)
 
-    # ---------------- CHILD NODES ----------------
-    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
+        # BOXES WITH BETTER DEFINITIONS
+        cols = st.columns(7)
 
-    box_style = """
-        padding:8px;
-        border:2px solid #2196F3;
-        border-radius:8px;
-        font-size:12px;
-        text-align:center;
-    """
+        box = "border:2px solid #4CAF50;padding:8px;font-size:12px;text-align:center"
 
-    with k1:
-        st.markdown(f"""
-        <div style="{box_style}">
-        <b>Primary Key</b><br>
-        Unique identifier
-        </div>
-        """, unsafe_allow_html=True)
+        cols[0].markdown(f"<div style='{box}'><b>Conformed</b><br>Shared across multiple fact tables ensuring consistent reporting</div>", unsafe_allow_html=True)
+        cols[1].markdown(f"<div style='{box}'><b>Role Playing</b><br>Same dimension reused for different roles like order_date, ship_date</div>", unsafe_allow_html=True)
+        cols[2].markdown(f"<div style='{box}'><b>Degenerate</b><br>Dimension key stored in fact table without separate dimension table</div>", unsafe_allow_html=True)
+        cols[3].markdown(f"<div style='{box}'><b>Junk</b><br>Combines multiple low-cardinality flags into a single dimension</div>", unsafe_allow_html=True)
+        cols[4].markdown(f"<div style='{box}'><b>Bridge</b><br>Handles many-to-many relationships between dimensions</div>", unsafe_allow_html=True)
+        cols[5].markdown(f"<div style='{box}'><b>Hierarchical</b><br>Represents parent-child relationships like country → state → city</div>", unsafe_allow_html=True)
+        cols[6].markdown(f"<div style='{box}'><b>Factless</b><br>Stores relationships/events without numeric measures</div>", unsafe_allow_html=True)
 
-    with k2:
-        st.markdown(f"""
-        <div style="{box_style}">
-        <b>Foreign Key</b><br>
-        Links tables
-        </div>
-        """, unsafe_allow_html=True)
+        # =====================================================
+        # 🔥 SCD TYPE 2 (SIMULATOR + FIXED UI + IMPLEMENTATION)
+        # =====================================================
+        st.subheader("SCD Type 2 Simulator")
 
-    with k3:
-        st.markdown(f"""
-        <div style="{box_style}">
-        <b>Natural Key</b><br>
-        Business identifier
-        </div>
-        """, unsafe_allow_html=True)
+        cities = ["Chennai", "Bangalore", "Hyderabad", "Mumbai"]
 
-    with k4:
-        st.markdown(f"""
-        <div style="{box_style}">
-        <b>Surrogate Key</b><br>
-        System-generated
-        </div>
-        """, unsafe_allow_html=True)
+        # =====================================================
+        # 🔹 INIT STATE
+        # =====================================================
+        if "scd_adv" not in st.session_state:
+            st.session_state.scd_adv = pd.DataFrame([
+                [1, "John", "Chennai", "2020-01-01", None, "Y"]
+            ], columns=["id", "name", "city", "start_date", "end_date", "current"])
 
-    with k5:
-        st.markdown(f"""
-        <div style="{box_style}">
-        <b>Composite Key</b><br>
-        Multiple columns
-        </div>
-        """, unsafe_allow_html=True)
 
-    with k6:
-        st.markdown(f"""
-        <div style="{box_style}">
-        <b>Candidate Key</b><br>
-        Possible PK
-        </div>
-        """, unsafe_allow_html=True)
+        # =====================================================
+        # 🔹 FORM (ALIGNMENT FIXED)
+        # =====================================================
+        with st.form("scd_form"):
 
-    with k7:
-        st.markdown(f"""
-        <div style="{box_style}">
-        <b>Alternate Key</b><br>
-        Not selected PK
-        </div>
-        """, unsafe_allow_html=True)
+            c1, c2 = st.columns([2,1])
 
-    # ---------------- EXAMPLE ----------------
-    st.markdown("### 📊 Example")
+            with c1:
+                new_city = st.selectbox("New City", cities)
 
-    col1, col2 = st.columns(2)
+            with c2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                apply = st.form_submit_button("Apply Movement")
 
-    with col1:
-        st.markdown("**Customer_Dim**")
-        st.dataframe(
-            pd.DataFrame([
-                [1, "C101", "john@email.com", "Bangalore"],
-                [2, "C102", "mike@email.com", "Chennai"]
-            ], columns=["cust_key (PK)", "cust_id (NK)", "email", "city"]),
-            hide_index=True
+
+        # =====================================================
+        # 🔹 PROCESS LOGIC (UNCHANGED)
+        # =====================================================
+        before = st.session_state.scd_adv.copy()
+
+        if apply:
+            df = before.copy()
+
+            # expire old record
+            df.loc[df["current"] == "Y", "end_date"] = str(datetime.now().date())
+            df.loc[df["current"] == "Y", "current"] = "N"
+
+            # insert new record
+            new_row = pd.DataFrame([
+                [1, "John", new_city, str(datetime.now().date()), None, "Y"]
+            ], columns=df.columns)
+
+            df = pd.concat([df, new_row], ignore_index=True)
+
+            st.session_state.scd_adv = df
+
+        after = st.session_state.scd_adv
+
+
+        # =====================================================
+        # 🔹 SIDE-BY-SIDE VIEW
+        # =====================================================
+        c1, c2 = st.columns(2)
+
+        with c1:
+            st.markdown("### Before")
+            st.dataframe(before, use_container_width=False, hide_index=True)
+
+        with c2:
+            st.markdown("### After")
+            st.dataframe(after, use_container_width=False, hide_index=True)
+
+
+        # =====================================================
+        # 🔹 FLOW EXPLANATION
+        # =====================================================
+        st.markdown("""
+        **Flow:**
+        - Old Row → Expired (end_date updated, current = N)  
+        - New Row → Inserted (current = Y)  
+        - Full History → Preserved  
+        """)
+
+
+        # =====================================================
+        # 🔥 IMPLEMENTATION (OPTIMIZED WITH TOGGLE)
+        # =====================================================
+        st.subheader("SCD Type 2 Implementation")
+
+        mode = st.radio(
+            "Choose Implementation",
+            ["SQL", "PySpark"],
+            horizontal=True
         )
 
-    with col2:
-        st.markdown("**Sales_Fact**")
-        st.dataframe(
-            pd.DataFrame([
-                [1, 500],
-                [2, 300]
-            ], columns=["cust_key (FK)", "sales_amt"]),
-            hide_index=True
-        )
-  
+        # ---------------- SQL ----------------
+        if mode == "SQL":
+            st.code("""
+        -- STEP 1: Expire existing record
+        UPDATE dim_customer
+        SET end_date = CURRENT_DATE, current = 'N'
+        WHERE customer_id = 1 AND current = 'Y';
+
+        -- STEP 2: Insert new record
+        INSERT INTO dim_customer (customer_id, name, city, start_date, end_date, current)
+        VALUES (1, 'John', 'Bangalore', CURRENT_DATE, NULL, 'Y');
+        """)
+
+        # ---------------- PYSPARK ----------------
+        else:
+            st.code("""
+        from pyspark.sql.functions import current_date, lit
+
+        # STEP 1: Separate current and history
+        current_df = df.filter("current = 'Y'")
+        history_df = df.filter("current = 'N'")
+
+        # STEP 2: Expire current records
+        expired_df = current_df.withColumn("end_date", current_date()) \\
+                            .withColumn("current", lit("N"))
+
+        # STEP 3: Create new record
+        new_data = [(1, "John", "Bangalore", None, None, "Y")]
+
+        new_df = spark.createDataFrame(new_data, df.columns) \\
+                    .withColumn("start_date", current_date())
+
+        # STEP 4: Merge all data
+        final_df = history_df.union(expired_df).union(new_df)
+        """)
+
+        # =====================================================
+        # 🔥 KEY TAKEAWAY
+        # =====================================================
+        st.markdown("""
+        ### 🔥 Key Flow
+
+        - Existing active row → **expired (end_date updated)**
+        - New row → **inserted with current = Y**
+        - Old data → **preserved (history maintained)**
+
+        👉 This is the core of **Slowly Changing Dimension Type 2**
+        """)
+
+
+        render_ai_chat("dim_scd","Ask about SCD","SCD Type 2")
 # =========================================================
 # 3. DATA WAREHOUSE ARCHITECTURE
 # =========================================================
