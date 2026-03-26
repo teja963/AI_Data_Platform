@@ -628,6 +628,145 @@ def show_dimensional_modeling():
     ], columns=["Scenario", "Impact"])
 
     st.dataframe(df_importance, use_container_width=True, hide_index=True)
+
+    # =====================================================
+    # 🔹 KEYS (FIXED CONNECTED ARROWS)
+    # =====================================================
+    st.subheader("Keys")
+
+    # ---------------- ROOT NODE ----------------
+    center = st.columns([1,2,1])
+
+    with center[1]:
+        st.markdown("""
+        <div style="
+            text-align:center;
+            padding:10px;
+            border:2px solid #4CAF50;
+            border-radius:8px;
+            font-weight:bold;">
+            KEYS
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ---------------- MAIN CONNECTOR LINE ----------------
+    st.markdown("""
+    <div style="
+        width:100%;
+        height:2px;
+        background:#999;
+        margin-top:10px;
+        margin-bottom:5px;">
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ---------------- DOWN ARROWS (ALIGNED) ----------------
+    arrow_cols = st.columns(7)
+
+    for col in arrow_cols:
+        with col:
+            st.markdown("""
+            <div style="text-align:center;">
+                <div style="width:2px;height:18px;background:#999;margin:auto;"></div>
+                <div style="width:0;height:0;
+                    border-left:4px solid transparent;
+                    border-right:4px solid transparent;
+                    border-top:6px solid #999;
+                    margin:auto;"></div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # ---------------- CHILD NODES ----------------
+    k1, k2, k3, k4, k5, k6, k7 = st.columns(7)
+
+    box_style = """
+        padding:8px;
+        border:2px solid #2196F3;
+        border-radius:8px;
+        font-size:12px;
+        text-align:center;
+    """
+
+    with k1:
+        st.markdown(f"""
+        <div style="{box_style}">
+        <b>Primary Key</b><br>
+        Unique identifier
+        </div>
+        """, unsafe_allow_html=True)
+
+    with k2:
+        st.markdown(f"""
+        <div style="{box_style}">
+        <b>Foreign Key</b><br>
+        Links tables
+        </div>
+        """, unsafe_allow_html=True)
+
+    with k3:
+        st.markdown(f"""
+        <div style="{box_style}">
+        <b>Natural Key</b><br>
+        Business identifier
+        </div>
+        """, unsafe_allow_html=True)
+
+    with k4:
+        st.markdown(f"""
+        <div style="{box_style}">
+        <b>Surrogate Key</b><br>
+        System-generated
+        </div>
+        """, unsafe_allow_html=True)
+
+    with k5:
+        st.markdown(f"""
+        <div style="{box_style}">
+        <b>Composite Key</b><br>
+        Multiple columns
+        </div>
+        """, unsafe_allow_html=True)
+
+    with k6:
+        st.markdown(f"""
+        <div style="{box_style}">
+        <b>Candidate Key</b><br>
+        Possible PK
+        </div>
+        """, unsafe_allow_html=True)
+
+    with k7:
+        st.markdown(f"""
+        <div style="{box_style}">
+        <b>Alternate Key</b><br>
+        Not selected PK
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ---------------- EXAMPLE ----------------
+    st.markdown("### 📊 Example")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown("**Customer_Dim**")
+        st.dataframe(
+            pd.DataFrame([
+                [1, "C101", "john@email.com", "Bangalore"],
+                [2, "C102", "mike@email.com", "Chennai"]
+            ], columns=["cust_key (PK)", "cust_id (NK)", "email", "city"]),
+            hide_index=True
+        )
+
+    with col2:
+        st.markdown("**Sales_Fact**")
+        st.dataframe(
+            pd.DataFrame([
+                [1, 500],
+                [2, 300]
+            ], columns=["cust_key (FK)", "sales_amt"]),
+            hide_index=True
+        )
   
 # =========================================================
 # 3. DATA WAREHOUSE ARCHITECTURE
