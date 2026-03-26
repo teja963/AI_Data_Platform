@@ -42,38 +42,75 @@ def render_code(text):
 # 🔹 AI PROMPT (STRONG - FAANG LEVEL)
 # =========================================================
 
-def generate_ai_questions(topic):
-    domain = random.choice([
-        "e-commerce", "banking", "ride-sharing",
-        "streaming platforms", "healthcare"
-    ])
+def render_ai_chat(section_key, title, topic):
+    import streamlit as st
+    from core.ai import ask_ai
 
-    prompt = f"""
-    You are a senior data engineer interviewer at Amazon, Google, or Microsoft.
+    st.markdown("---")
+    st.markdown(f"### 💬 {title}")
 
-    Generate 5 HIGH-QUALITY interview questions WITH ANSWERS on {topic}.
+    chat_key = f"{section_key}_chat"
+    input_key = f"{section_key}_chat_input"   # ✅ UNIQUE KEY
 
-    Requirements:
-    - Mix conceptual + scenario-based + system design questions
-    - Use real-world systems ({domain})
-    - Questions must feel like FAANG interviews
-    - Avoid generic textbook questions
-    - Each answer must be precise, structured, and practical
-    - Include reasoning + small schema/example if needed
+    if chat_key not in st.session_state:
+        st.session_state[chat_key] = []
 
-    Format STRICTLY:
+    # Display chat history
+    for chat in st.session_state[chat_key]:
+        if chat["role"] == "user":
+            with st.chat_message("user"):
+                st.markdown(chat["content"])
+        else:
+            with st.chat_message("assistant"):
+                st.markdown(chat["content"])
 
-    Q1: Question
+    # ✅ FIXED HERE
+    user_input = st.chat_input("Ask anything...", key=input_key)
 
-    Answer:
-    - Point 1
-    - Point 2
-    - Example (if needed)
+    if user_input:
+        st.session_state[chat_key].append({
+            "role": "user",
+            "content": user_input
+        })
 
-    Ensure variety and no repetition.
-    """
+        with st.chat_message("user"):
+            st.markdown(user_input)
 
-    return ask_ai(prompt)
+        prompt = f"""
+            You are a senior data engineer at Amazon, Google, or Microsoft.
+
+            Answer the following question on {topic}.
+
+            Question:
+            {user_input}
+
+            Requirements:
+            - Clear and well-detailed structured answer
+            - Must include at least 2 real-world examples (different domains if possible)
+            - Provide interview-ready explanation with reasoning
+            - Include edge cases, trade-offs, or pitfalls if applicable
+            - Use bullet points for clarity
+            - Keep explanation concise but insightful (avoid unnecessary verbosity)
+            - If applicable, include schema/table examples
+            - Avoid generic textbook answers — make it practical and scenario-driven
+
+            Format:
+            - Definition (if applicable)
+            - Explanation
+            - Real-world examples
+            - Edge cases / interview insights
+            """
+
+        response = ask_ai(prompt)
+
+        st.session_state[chat_key].append({
+            "role": "assistant",
+            "content": response
+        })
+
+        with st.chat_message("assistant"):
+            st.markdown(response)
+
 
 
 # =========================================================
@@ -83,24 +120,28 @@ def generate_ai_questions(topic):
 def render_datamodeling():
     render_title("📊 Data Modelling")
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "Fundamentals",
         "Dimensional Modeling",
         "Architecture",
-        "Distributed"
+        "Distributed",
+        "Interview Mode"
     ])
 
     with tab1:
         show_fundamentals()
 
     with tab2:
-        st.info("Coming next...")
+        show_dimensional_modeling()
 
     with tab3:
-        st.info("Coming next...")
+        show_architecture()
 
     with tab4:
-        st.info("Coming next...")
+        show_distributed_modeling()
+
+    with tab5:
+        show_interview_mode()
 
 
 # =========================================================
@@ -243,8 +284,11 @@ def show_fundamentals():
         # ---------------- AI ----------------
         st.markdown("---")
 
-        if st.button("Generate Normalization Q&A", key="norm_q"):
-            st.markdown(generate_ai_questions("Normalization"))
+        render_ai_chat(
+                section_key="normalization",
+                title="Ask about Normalization (1NF, 2NF, 3NF, BCNF)",
+                topic="Data Modeling Normalization"
+            )
 
     # =====================================================
     # 🟢 OLTP vs OLAP
@@ -275,8 +319,11 @@ def show_fundamentals():
 
         st.markdown("---")
 
-        if st.button("Generate OLTP/OLAP Q&A", key="olap_q"):
-            st.markdown(generate_ai_questions("OLTP vs OLAP"))
+        render_ai_chat(
+            section_key="oltp_olap",
+            title="Ask about OLTP vs OLAP",
+            topic="OLTP vs OLAP systems in real-world data engineering"
+        )
 
     # =====================================================
     # 🔵 ER MODELING
@@ -416,8 +463,11 @@ def show_fundamentals():
         # =====================================================
         st.markdown("---")
 
-        if st.button("Generate ER Q&A", key="er_q"):
-            st.markdown(generate_ai_questions("ER Modeling"))
+        render_ai_chat(
+            section_key="er_modeling",
+            title="Ask about ER Modeling",
+            topic="Entity Relationship Modeling and schema design"
+        )
 
 # =========================================================
 # 2. DIMENSIONAL MODELING (your page 7.2)
