@@ -5,6 +5,7 @@ st.set_page_config(layout="wide")
 # ---------------- SECTION LABELS ----------------
 DASHBOARD_SECTION_LABEL = "Dashboard"
 CONCEPTS_SECTION_LABEL = "Concepts"
+GENAI_SECTION_LABEL = "GenAI"
 CODING_SECTION_LABEL = "Coding"
 PYTHON_SECTION_LABEL = "Python"
 SPARK_SECTION_LABEL = "Spark"
@@ -14,6 +15,7 @@ PROJECTS_SECTION_LABEL = "Projects"
 SECTION_ORDER = [
     DASHBOARD_SECTION_LABEL,
     CONCEPTS_SECTION_LABEL,
+    GENAI_SECTION_LABEL,
     CODING_SECTION_LABEL,
     PYTHON_SECTION_LABEL,
     SPARK_SECTION_LABEL,
@@ -74,6 +76,10 @@ elif module == PYTHON_SECTION_LABEL:
 elif module == CONCEPTS_SECTION_LABEL:
     from modules.concepts.ui import render_concepts
     render_concepts()
+
+elif module == GENAI_SECTION_LABEL:
+    from modules.genai.ui import render_genai
+    render_genai()
 
 elif module == SPARK_SECTION_LABEL:
     from modules.spark.ui import render_spark

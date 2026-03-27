@@ -623,6 +623,115 @@ target in unique_values""",
         "tip": "Lists preserve order, sets give fast membership checks, and dictionaries are the default tool for hashing problems.",
     },
     {
+        "title": "List Operations And Mutability",
+        "concept": "Lists are ordered and mutable, so they are the default structure for sequences you need to update.",
+        "keywords": "append, extend, insert, remove, pop, sort, reverse, slicing, copy, list comprehension",
+        "syntax": """nums = [10, 20, 30]
+
+nums.append(40)          # [10, 20, 30, 40]
+nums.extend([50, 60])    # [10, 20, 30, 40, 50, 60]
+nums.insert(1, 15)       # insert at index
+nums.remove(20)          # remove first matching value
+last = nums.pop()        # remove from end
+first = nums.pop(0)      # remove by index
+
+nums.sort()              # in-place ascending
+nums.sort(reverse=True)  # in-place descending
+ordered = sorted(nums)   # returns a new list
+
+nums[1:4]                # slicing
+nums[::-1]               # reverse copy
+clone = nums[:]          # shallow copy
+
+filtered = [x for x in nums if x % 2 == 0]""",
+        "tip": "Because lists are mutable, copying matters. `a = b` shares the same list, while slicing or list() creates a new one.",
+    },
+    {
+        "title": "Tuple Operations And Immutability",
+        "concept": "Tuples are ordered like lists but immutable, so they work well for fixed pairs, coordinates, and dictionary keys.",
+        "keywords": "tuple, packing, unpacking, count, index, immutable, hashable",
+        "syntax": """pair = (user_id, amount)
+triple = 1, 2, 3         # tuple packing
+
+a, b, c = triple         # unpacking
+head, *tail = triple
+
+single = (5,)            # trailing comma matters
+pair.count(user_id)
+pair.index(amount)
+
+records = {
+    ("us", "prod"): 120,
+    ("eu", "prod"): 95,
+}""",
+        "tip": "Use tuples when the shape is fixed and should not change. That is why they appear often in keys like `(hour, device_id)`.",
+    },
+    {
+        "title": "Set Operations And Membership",
+        "concept": "Sets remove duplicates and give fast membership checks, which is why they are common in dedupe and lookup problems.",
+        "keywords": "set, add, remove, discard, union, intersection, difference, symmetric_difference, membership",
+        "syntax": """left = {1, 2, 3}
+right = {3, 4, 5}
+
+left.add(4)
+left.discard(10)         # safe if value does not exist
+left.remove(2)           # raises if missing
+
+left | right             # union
+left & right             # intersection
+left - right             # difference
+left ^ right             # symmetric difference
+
+3 in left
+unique_items = set(items)""",
+        "tip": "Sets are unordered. If the output must preserve original order, pair a set with a list instead of returning the set directly.",
+    },
+    {
+        "title": "Dictionary Operations And Update Patterns",
+        "concept": "Dictionaries are the main interview tool for hashing, grouping, memoization, and frequency counting.",
+        "keywords": "get, setdefault, update, pop, keys, values, items, dict comprehension",
+        "syntax": """counts = {}
+counts["click"] = counts.get("click", 0) + 1
+
+grouped = {}
+grouped.setdefault("us", []).append({"id": 1})
+
+record = {"id": 1, "status": "new"}
+record.update({"status": "done", "updated_at": "2024-01-01"})
+removed = record.pop("status", None)
+
+for key, value in record.items():
+    ...
+
+flipped = {value: key for key, value in record.items()}""",
+        "tip": "Use `get()` for safe reads, `setdefault()` for grouped lists, and remember that duplicate keys overwrite older values unless you design around it.",
+    },
+    {
+        "title": "String Operations And Type Conversion",
+        "concept": "String handling shows up everywhere in coding rounds: parsing, cleanup, normalization, tokenization, and formatting.",
+        "keywords": "strip, split, join, replace, find, startswith, endswith, lower, upper, title, isdigit, int, float, str",
+        "syntax": """text = "  Order-101 | ERROR  "
+
+clean = text.strip()
+parts = clean.split("|")
+joined = "-".join(["a", "b", "c"])
+
+clean.lower()
+clean.upper()
+clean.replace("ERROR", "FAILED")
+clean.startswith("Order")
+clean.endswith("ERROR")
+clean.find("101")
+
+"123".isdigit()
+num = int("123")
+price = float("19.95")
+label = str(404)
+
+f"order={num}, price={price}" """,
+        "tip": "Do cleanup before conversion. In interviews, parsing bugs usually come from splitting too early or casting before trimming.",
+    },
+    {
         "title": "Loops, Branching, And Comprehensions",
         "concept": "Write concise transformations without losing clarity when conditions or filters appear.",
         "keywords": "for, while, if, elif, else, break, continue, list comprehension, dict comprehension",

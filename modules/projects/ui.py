@@ -502,7 +502,7 @@ with beam.Pipeline(options=options) as p:
             ],
         },
     ],
-    "Anka AI": [],
+    "ScanAI": [],
 }
 
 
