@@ -54,7 +54,7 @@ def load_questions(module):
         return questions
 
     if not os.path.isdir(legacy_path):
-        return []
+        return load_question_bank(module)
 
     questions = []
 
@@ -62,6 +62,22 @@ def load_questions(module):
         if file_name.endswith(".json"):
             file_path = os.path.join(legacy_path, file_name)
             questions.append(_load_question_file(file_path, module))
+
+    return questions or load_question_bank(module)
+
+
+def load_question_bank(module):
+    if module != "python":
+        return []
+
+    from modules.python.bank import get_python_questions
+
+    questions = []
+    for question in get_python_questions():
+        normalized = dict(question)
+        normalized["category"] = normalized.get("category", "Others")
+        normalized["progress_key"] = build_question_key(module, normalized)
+        questions.append(normalized)
 
     return questions
 

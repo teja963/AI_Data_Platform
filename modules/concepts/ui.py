@@ -585,6 +585,209 @@ step_2.show(truncate=False)""",
 ]
 
 
+PYTHON_CONCEPT_SECTIONS = [
+    {
+        "title": "Core Script Skeleton And Input Handling",
+        "concept": "Start from a small, interview-ready Python script and know how to accept values from function parameters or stdin.",
+        "keywords": "def, return, if __name__ == '__main__', input(), split(), map(), print()",
+        "syntax": """def solve(<arg_1>, <arg_2>):
+    # business logic
+    return <result>
+
+
+if __name__ == "__main__":
+    raw = input().strip()
+    parts = raw.split()
+    values = list(map(int, parts))
+    answer = solve(values)
+    print(answer)""",
+        "tip": "For evaluated coding questions, keep the logic in a function. If raw input is required, parse it in the main block and pass structured values into solve().",
+    },
+    {
+        "title": "Lists, Tuples, Sets, And Dictionaries",
+        "concept": "Use the right built-in collection for order, uniqueness, membership checks, or key-value lookups.",
+        "keywords": "list, tuple, set, dict, append, pop, get, items, enumerate, in",
+        "syntax": """values = [1, 2, 3]
+pair = (user_id, total)
+unique_values = set(values)
+lookup = {"a": 1, "b": 2}
+
+values.append(4)
+lookup.get("a", 0)
+for key, value in lookup.items():
+    ...
+for index, value in enumerate(values):
+    ...
+
+target in unique_values""",
+        "tip": "Lists preserve order, sets give fast membership checks, and dictionaries are the default tool for hashing problems.",
+    },
+    {
+        "title": "Loops, Branching, And Comprehensions",
+        "concept": "Write concise transformations without losing clarity when conditions or filters appear.",
+        "keywords": "for, while, if, elif, else, break, continue, list comprehension, dict comprehension",
+        "syntax": """for value in values:
+    if value < 0:
+        continue
+    if value == target:
+        break
+
+filtered = [value for value in values if value % 2 == 0]
+squares = {value: value * value for value in values}
+
+left = 0
+while left < len(values):
+    left += 1""",
+        "tip": "Comprehensions are great for one clean transformation. If the logic becomes branch-heavy, switch back to an explicit loop.",
+    },
+    {
+        "title": "Functions, Arguments, And Reusable Helpers",
+        "concept": "Structure code into small helpers, return values clearly, and avoid hidden side effects.",
+        "keywords": "def, return, args, kwargs, default arguments, docstring, helper function",
+        "syntax": """def normalize_name(name, fallback="unknown"):
+    cleaned = name.strip()
+    return cleaned or fallback
+
+
+def build_record(user_id, **extra_fields):
+    return {"user_id": user_id, **extra_fields}
+
+
+def outer(values):
+    def helper(value):
+        return value * 2
+
+    return [helper(value) for value in values]""",
+        "tip": "In interview code, prefer pure helpers that accept input and return output cleanly. That makes debugging and testing much easier.",
+    },
+    {
+        "title": "Strings, Parsing, And Regular Expressions",
+        "concept": "Clean text, split payloads, and extract structured values from unstructured strings.",
+        "keywords": "split, join, strip, lower, upper, replace, startswith, endswith, re.search, re.findall, re.sub",
+        "syntax": """import re
+
+parts = line.split("|", 3)
+normalized = text.strip().lower()
+joined = ",".join(values)
+
+match = re.search(r"order=(\\d+)", payload)
+all_ids = re.findall(r"\\d+", payload)
+cleaned = re.sub(r"\\s+", " ", text).strip()""",
+        "tip": "Use plain split or replace first. Reach for regex only when the structure is truly irregular.",
+    },
+    {
+        "title": "Hashing Helpers And Collections Module",
+        "concept": "Use standard library helpers for counters, grouped values, queue-like structures, and combinations.",
+        "keywords": "Counter, defaultdict, deque, namedtuple, combinations, heapq",
+        "syntax": """from collections import Counter, defaultdict, deque
+from itertools import combinations
+import heapq
+
+counts = Counter(events)
+grouped = defaultdict(list)
+grouped[user_id].append(record)
+
+queue = deque([1, 2, 3])
+queue.appendleft(0)
+queue.pop()
+
+smallest = heapq.nsmallest(3, values)
+pairs = list(combinations(values, 2))""",
+        "tip": "For data engineering and interview problems, Counter and defaultdict solve a surprising number of grouping and counting tasks quickly.",
+    },
+    {
+        "title": "Sorting, Searching, And Complexity Thinking",
+        "concept": "Know the common sort patterns and the time-complexity trade-offs behind them.",
+        "keywords": "sorted, sort, key, reverse, lambda, bisect_left, O(n), O(log n), O(n log n)",
+        "syntax": """from bisect import bisect_left
+
+ordered = sorted(records, key=lambda row: (row["region"], -row["score"]))
+values.sort(reverse=True)
+
+position = bisect_left(sorted_values, target)
+
+# Common interview targets
+# single pass + hashmap -> O(n)
+# sort first -> O(n log n)
+# binary search -> O(log n) after sorting""",
+        "tip": "If the question needs order plus efficient lookup, decide early whether a hashmap or sorting-first approach gives the cleaner complexity.",
+    },
+    {
+        "title": "Files, CSV, JSON, And Path Handling",
+        "concept": "Read and write local files safely using the standard library.",
+        "keywords": "open, with, csv.DictReader, json.load, json.dump, pathlib.Path, read_text, write_text",
+        "syntax": """import csv
+import json
+from pathlib import Path
+
+with open("input.csv", "r", newline="") as file_obj:
+    reader = csv.DictReader(file_obj)
+    rows = list(reader)
+
+with open("input.json", "r") as file_obj:
+    payload = json.load(file_obj)
+
+Path("output.txt").write_text("done")
+json.dump(payload, open("output.json", "w"), indent=2)""",
+        "tip": "Always use context managers for file I/O in coding rounds. It keeps resource handling correct and the code easier to explain.",
+    },
+    {
+        "title": "Datetime, Math, And Utility Modules",
+        "concept": "Handle timestamps, intervals, rounding, and lightweight statistics with the standard library.",
+        "keywords": "datetime, timedelta, strptime, fromisoformat, round, math.ceil, math.floor, statistics",
+        "syntax": """from datetime import datetime, timedelta
+import math
+
+ts = datetime.fromisoformat("2024-01-01T10:00:00+00:00")
+next_run = ts + timedelta(minutes=5)
+lag_minutes = int((datetime.now(ts.tzinfo) - ts).total_seconds() // 60)
+
+math.ceil(throughput / capacity)
+round(value, 2)""",
+        "tip": "For data engineering questions, timestamp parsing and safe integer rounding come up constantly in sizing, freshness, and retention problems.",
+    },
+    {
+        "title": "Requests, APIs, And Retry Patterns",
+        "concept": "Make HTTP calls, parse JSON responses, and keep retry logic idempotent.",
+        "keywords": "requests.get, requests.post, timeout, raise_for_status, json, backoff, retry",
+        "syntax": """import requests
+import time
+
+response = requests.get(url, timeout=30)
+response.raise_for_status()
+payload = response.json()
+
+for attempt in range(3):
+    try:
+        response = requests.post(url, json=body, timeout=30)
+        response.raise_for_status()
+        break
+    except requests.RequestException:
+        time.sleep(2 ** attempt)""",
+        "tip": "In production-style answers, mention timeout, retry, idempotency key or checkpoint, and how failures should be surfaced.",
+    },
+    {
+        "title": "Pandas, NumPy, And Tabular Transformations",
+        "concept": "Use vectorized operations for grouped analytics, deduplication, and missing-value cleanup.",
+        "keywords": "DataFrame, assign, groupby, agg, merge, sort_values, drop_duplicates, fillna, to_datetime, numpy array",
+        "syntax": """import pandas as pd
+import numpy as np
+
+df["event_ts"] = pd.to_datetime(df["event_ts"])
+result = (
+    df.sort_values(["user_id", "event_ts"])
+      .drop_duplicates(["user_id"], keep="last")
+      .groupby("region", as_index=False)
+      .agg(total_amount=("amount", "sum"))
+)
+
+vector = np.array(values, dtype=float)
+normalized = (vector - vector.mean()) / vector.std()""",
+        "tip": "In pandas questions, avoid mutating the original DataFrame unless the prompt explicitly wants in-place changes.",
+    },
+]
+
+
 def render_reference_section(section, language):
     with st.container(border=True):
         st.markdown(f"### {section['title']}")
@@ -628,15 +831,15 @@ def render_concepts():
         "means, which keywords belong to it, and the reusable syntax patterns you can apply in interviews."
     )
     st.info(
-        "The SQL side is written in MySQL-style interview syntax. The PySpark side is independent and covers "
-        "DataFrame API concepts end to end, including entry points, read and write flows, complex types, and execution behavior."
+        "The SQL side is written in MySQL-style interview syntax. PySpark covers DataFrame API concepts end to end, "
+        "and Python now includes interview-ready syntax for data structures, files, APIs, pandas, and complexity patterns."
     )
     st.caption(
-        "The layout is now optimized for studying: use the full page width, switch between SQL and PySpark tabs, "
+        "The layout is now optimized for studying: use the full page width, switch between SQL, PySpark, and Python tabs, "
         "and focus on one concept at a time when you want a cleaner reading flow."
     )
 
-    sql_tab, pyspark_tab = st.tabs(["SQL Reference", "PySpark Reference"])
+    sql_tab, pyspark_tab, python_tab = st.tabs(["SQL Reference", "PySpark Reference", "Python Reference"])
 
     with sql_tab:
         render_reference_tab(
@@ -654,4 +857,13 @@ def render_concepts():
             sections=PYSPARK_CONCEPT_SECTIONS,
             language="python",
             key_prefix="pyspark_reference",
+        )
+
+    with python_tab:
+        render_reference_tab(
+            title="Python Reference",
+            caption="Interview-ready Python syntax covering core coding, data structures, files, APIs, pandas, and data-engineering utility patterns.",
+            sections=PYTHON_CONCEPT_SECTIONS,
+            language="python",
+            key_prefix="python_reference",
         )

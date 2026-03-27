@@ -18,6 +18,9 @@ DIFFICULTY_BY_CATEGORY = {
 
 
 def get_question_difficulty(question):
+    if question.get("difficulty"):
+        return question["difficulty"]
+
     return DIFFICULTY_BY_CATEGORY.get(question.get("category", ""), "Medium")
 
 

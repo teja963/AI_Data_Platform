@@ -1,13 +1,15 @@
 from groq import Groq
 import streamlit as st
 
+
 def get_client():
     try:
         return Groq(api_key=st.secrets["GROQ_API_KEY"])
     except:
         return None
 
-def ask_ai(prompt):
+
+def ask_ai(prompt, system_prompt="You are a SQL expert helping a student. Be clear and structured."):
     client = get_client()
 
     if client is None:
@@ -17,7 +19,7 @@ def ask_ai(prompt):
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",  # ✅ UPDATED MODEL
             messages=[
-                {"role": "system", "content": "You are a SQL expert helping a student. Be clear and structured."},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ]
         )

@@ -6,15 +6,19 @@ st.set_page_config(layout="wide")
 DASHBOARD_SECTION_LABEL = "Dashboard"
 CONCEPTS_SECTION_LABEL = "Concepts"
 CODING_SECTION_LABEL = "Coding"
+PYTHON_SECTION_LABEL = "Python"
 SPARK_SECTION_LABEL = "Spark"
 DATA_MODELING_SECTION_LABEL = "Data Modelling"
+PROJECTS_SECTION_LABEL = "Projects"
 
 SECTION_ORDER = [
     DASHBOARD_SECTION_LABEL,
     CONCEPTS_SECTION_LABEL,
     CODING_SECTION_LABEL,
+    PYTHON_SECTION_LABEL,
     SPARK_SECTION_LABEL,
     DATA_MODELING_SECTION_LABEL,
+    PROJECTS_SECTION_LABEL,
 ]
 
 # ---------------- URL PARAM HANDLING ----------------
@@ -63,6 +67,10 @@ if module == CODING_SECTION_LABEL:
     from modules.sql.ui import render_sql
     render_sql()
 
+elif module == PYTHON_SECTION_LABEL:
+    from modules.python.ui import render_python
+    render_python()
+
 elif module == CONCEPTS_SECTION_LABEL:
     from modules.concepts.ui import render_concepts
     render_concepts()
@@ -74,6 +82,10 @@ elif module == SPARK_SECTION_LABEL:
 elif module == DATA_MODELING_SECTION_LABEL:
     from modules.datamodeling.ui import render_datamodeling
     render_datamodeling()
+
+elif module == PROJECTS_SECTION_LABEL:
+    from modules.projects.ui import render_projects
+    render_projects()
 
 elif module == DASHBOARD_SECTION_LABEL:
     import matplotlib.pyplot as plt
