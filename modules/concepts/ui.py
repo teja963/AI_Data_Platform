@@ -645,6 +645,16 @@ clone = nums[:]          # shallow copy
 
 filtered = [x for x in nums if x % 2 == 0]""",
         "tip": "Because lists are mutable, copying matters. `a = b` shares the same list, while slicing or list() creates a new one.",
+        "operations": [
+            ("append(x)", "Add one item at the end."),
+            ("extend(iterable)", "Append multiple items in order."),
+            ("insert(i, x)", "Insert at a specific index."),
+            ("pop([i])", "Remove and return the last item or the item at index i."),
+            ("remove(x)", "Remove the first matching value."),
+            ("sort(key=..., reverse=...)", "Sort in place."),
+            ("sorted(values)", "Return a new sorted list."),
+            ("values[start:stop:step]", "Slice without mutating the original list."),
+        ],
     },
     {
         "title": "Tuple Operations And Immutability",
@@ -665,6 +675,13 @@ records = {
     ("eu", "prod"): 95,
 }""",
         "tip": "Use tuples when the shape is fixed and should not change. That is why they appear often in keys like `(hour, device_id)`.",
+        "operations": [
+            ("tuple(values)", "Create a tuple from any iterable."),
+            ("a, b = pair", "Unpack directly into variables."),
+            ("pair.count(x)", "Count occurrences of a value."),
+            ("pair.index(x)", "Find the first position of a value."),
+            ("(key1, key2)", "Use tuple values as dictionary keys."),
+        ],
     },
     {
         "title": "Set Operations And Membership",
@@ -685,6 +702,16 @@ left ^ right             # symmetric difference
 3 in left
 unique_items = set(items)""",
         "tip": "Sets are unordered. If the output must preserve original order, pair a set with a list instead of returning the set directly.",
+        "operations": [
+            ("set(values)", "Create a unique-value collection."),
+            ("value in seen", "O(1)-style membership check in common cases."),
+            ("add(x)", "Insert one element."),
+            ("discard(x)", "Remove safely without raising if missing."),
+            ("remove(x)", "Remove and raise if the value is absent."),
+            ("left | right", "Union."),
+            ("left & right", "Intersection."),
+            ("left - right", "Difference."),
+        ],
     },
     {
         "title": "Dictionary Operations And Update Patterns",
@@ -705,6 +732,16 @@ for key, value in record.items():
 
 flipped = {value: key for key, value in record.items()}""",
         "tip": "Use `get()` for safe reads, `setdefault()` for grouped lists, and remember that duplicate keys overwrite older values unless you design around it.",
+        "operations": [
+            ("lookup[key]", "Read a required key; raises if missing."),
+            ("lookup.get(key, default)", "Read safely with a fallback."),
+            ("setdefault(key, [])", "Initialize grouped collections in one step."),
+            ("update({...})", "Merge new values into an existing dict."),
+            ("pop(key, default)", "Remove and return a value safely."),
+            ("keys()", "Iterate over keys."),
+            ("values()", "Iterate over values."),
+            ("items()", "Iterate over key-value pairs."),
+        ],
     },
     {
         "title": "String Operations And Type Conversion",
@@ -730,6 +767,16 @@ label = str(404)
 
 f"order={num}, price={price}" """,
         "tip": "Do cleanup before conversion. In interviews, parsing bugs usually come from splitting too early or casting before trimming.",
+        "operations": [
+            ("strip()", "Remove leading and trailing whitespace."),
+            ("split(sep, maxsplit)", "Tokenize a string."),
+            ("join(values)", "Combine many strings with one separator."),
+            ("replace(old, new)", "Swap substrings."),
+            ("startswith(prefix)", "Check a prefix quickly."),
+            ("endswith(suffix)", "Check a suffix quickly."),
+            ("find(substring)", "Return the first index or -1."),
+            ("isdigit()", "Validate simple numeric text before casting."),
+        ],
     },
     {
         "title": "Loops, Branching, And Comprehensions",
@@ -783,6 +830,13 @@ match = re.search(r"order=(\\d+)", payload)
 all_ids = re.findall(r"\\d+", payload)
 cleaned = re.sub(r"\\s+", " ", text).strip()""",
         "tip": "Use plain split or replace first. Reach for regex only when the structure is truly irregular.",
+        "operations": [
+            ("line.split('|', 3)", "Split only the first separators and keep the rest untouched."),
+            ("re.search(pattern, text)", "Find the first match object."),
+            ("re.findall(pattern, text)", "Return every non-overlapping match."),
+            ("re.sub(pattern, repl, text)", "Rewrite matched text."),
+            ("match.group(1)", "Extract a captured subgroup from the match."),
+        ],
     },
     {
         "title": "Hashing Helpers And Collections Module",
@@ -833,12 +887,38 @@ with open("input.csv", "r", newline="") as file_obj:
     reader = csv.DictReader(file_obj)
     rows = list(reader)
 
+with open("output.csv", "w", newline="") as file_obj:
+    writer = csv.DictWriter(file_obj, fieldnames=["id", "amount"])
+    writer.writeheader()
+    writer.writerows(rows)
+
 with open("input.json", "r") as file_obj:
     payload = json.load(file_obj)
 
+json_text = json.dumps(payload, indent=2, sort_keys=True)
 Path("output.txt").write_text("done")
-json.dump(payload, open("output.json", "w"), indent=2)""",
+json.dump(payload, open("output.json", "w"), indent=2)
+
+path = Path("data")
+path.exists()
+path.glob("*.csv")
+path.read_text()
+path.write_text("done")""",
         "tip": "Always use context managers for file I/O in coding rounds. It keeps resource handling correct and the code easier to explain.",
+        "operations": [
+            ("open(path, mode)", "Open a local file for reading or writing."),
+            ("csv.reader(file_obj)", "Read raw CSV rows as lists."),
+            ("csv.DictReader(file_obj)", "Read CSV rows as dictionaries keyed by headers."),
+            ("csv.writer(file_obj)", "Write list-based CSV rows."),
+            ("csv.DictWriter(file_obj, fieldnames=...)", "Write dictionary-based CSV rows."),
+            ("json.load(file_obj)", "Parse JSON from an open file handle."),
+            ("json.loads(text)", "Parse JSON from a string."),
+            ("json.dump(obj, file_obj)", "Write JSON to a file handle."),
+            ("json.dumps(obj)", "Serialize JSON to a string."),
+            ("Path.exists()", "Check whether a path exists."),
+            ("Path.glob(pattern)", "Iterate over matching files."),
+            ("Path.read_text() / write_text()", "Read or write whole text files quickly."),
+        ],
     },
     {
         "title": "Datetime, Math, And Utility Modules",
@@ -862,18 +942,32 @@ round(value, 2)""",
         "syntax": """import requests
 import time
 
-response = requests.get(url, timeout=30)
+session = requests.Session()
+response = session.get(url, params={"region": "apac"}, timeout=30)
 response.raise_for_status()
 payload = response.json()
+headers = response.headers
+raw_body = response.text
 
 for attempt in range(3):
     try:
-        response = requests.post(url, json=body, timeout=30)
+        response = session.post(url, json=body, headers={"X-Idempotency-Key": "job-1"}, timeout=30)
         response.raise_for_status()
         break
     except requests.RequestException:
         time.sleep(2 ** attempt)""",
         "tip": "In production-style answers, mention timeout, retry, idempotency key or checkpoint, and how failures should be surfaced.",
+        "operations": [
+            ("requests.Session()", "Reuse connections across many calls."),
+            ("session.get(..., params=..., headers=..., timeout=...)", "Common read request pattern."),
+            ("session.post(..., json=...)", "Send JSON request bodies."),
+            ("session.put(...) / session.delete(...)", "Handle update and delete endpoints."),
+            ("response.status_code", "Check the raw HTTP status."),
+            ("response.raise_for_status()", "Fail fast on non-2xx responses."),
+            ("response.json()", "Parse JSON payloads."),
+            ("response.text", "Read the raw response body."),
+            ("requests.RequestException", "Catch request, timeout, and connection failures."),
+        ],
     },
     {
         "title": "Pandas, NumPy, And Tabular Transformations",
@@ -902,6 +996,10 @@ def render_reference_section(section, language):
         st.markdown(f"### {section['title']}")
         st.markdown(f"**What it refers to**: {section['concept']}")
         st.markdown(f"**Key syntax / keywords**: `{section['keywords']}`")
+        if section.get("operations"):
+            st.markdown("**Common operations index**")
+            for operation_name, operation_summary in section["operations"]:
+                st.markdown(f"- `{operation_name}`: {operation_summary}")
         st.code(section["syntax"], language=language, wrap_lines=True)
         st.markdown(f"**How to think about it**: {section['tip']}")
 

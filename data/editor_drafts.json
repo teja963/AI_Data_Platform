@@ -1,0 +1,6 @@
+{
+  "drafts": {
+    "python_practice::python:files_&_json:13": "def summarize_csv_file(path):\n    # Write only this function for submission.\n    with open(path, 'r', newline='\\n') as file_obj:\n        readers = csv.DictReader(file_obj)\n        print(readers)\n        rows = list(readers)\n        print(rows)",
+    "python_practice::python:files_&_json:14": "import json\n\ndef merge_jsonl_files(paths):\n    latest = {}\n\n    for path in paths:\n        with open(path, \"r\") as file_obj:\n            for line in file_obj:\n                line = line.strip()\n                if not line:\n                    continue\n                record = json.loads(line)\n                latest[record[\"id\"]] = record\n\n    return [latest[key] for key in latest]"
+  }
+}

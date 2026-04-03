@@ -5,6 +5,7 @@ import uuid
 import streamlit as st
 
 from core.ai import ask_ai
+from core.editor import clear_editor_draft, render_code_editor, set_editor_draft
 from core.interview import (
     append_interview_run,
     build_history_entry,
@@ -378,19 +379,23 @@ def render_practice_workspace(questions):
                     "Restart Streamlit from your virtual environment and try again."
                 )
 
-        query_key = f"query_{question_key}_{editor_mode.lower()}"
+        draft_key = f"sql_practice::{question_key}::{editor_mode.lower()}"
         starter_template = build_editor_starter(question, editor_mode)
 
         helper_col1, helper_col2 = st.columns(2)
         if helper_col1.button("Load Starter", key=f"practice_starter_{question_key}_{editor_mode}"):
-            st.session_state[query_key] = starter_template
+            set_editor_draft(draft_key, starter_template)
+            st.rerun()
         if helper_col2.button("Clear Draft", key=f"practice_clear_{question_key}_{editor_mode}"):
-            st.session_state[query_key] = ""
+            clear_editor_draft(draft_key)
+            st.rerun()
 
-        query = st.text_area(
-            f"Write {editor_mode}",
+        st.caption("Tab inserts indentation. Drafts are preserved automatically while you move across sections.")
+        query = render_code_editor(
+            draft_key=draft_key,
+            language="sql" if editor_mode == "SQL" else "python",
+            starter=starter_template,
             height=500,
-            key=query_key,
             placeholder=starter_template,
         )
 
@@ -423,9 +428,29 @@ def render_practice_workspace(questions):
         explain = c_b.button("Explain", key=f"practice_explain_{question_key}_{editor_mode}")
 
         if hint:
-            st.write(ask_ai(f"Hint for {editor_mode}:\n{question['description']}"))
+            st.write(
+                ask_ai(
+                    f"Question:\n{question['description']}",
+                    system_prompt=(
+                        f"You are a {editor_mode} interview coach. Give only 2 or 3 directional hints. "
+                        "Do not provide the final query, final code, or a near-complete solution."
+                    ),
+                )
+            )
         elif explain and query.strip():
-            st.write(ask_ai(f"Explain this {editor_mode} code:\n{query}"))
+            st.write(
+                ask_ai(
+                    (
+                        f"Question:\n{question['description']}\n\n"
+                        f"Candidate {editor_mode} code:\n```{ 'sql' if editor_mode == 'SQL' else 'python' }\n{query}\n```"
+                    ),
+                    system_prompt=(
+                        f"You are a {editor_mode} interview coach. Explain only what the candidate's current code does, "
+                        "what mistakes it likely has, and whether it matches the prompt. "
+                        "Do not provide corrected code or the final solution."
+                    ),
+                )
+            )
 
         with st.expander("Show Solution"):
             sql_tab, pyspark_tab = st.tabs(["SQL", "PySpark"])
@@ -700,21 +725,25 @@ def render_active_interview():
                 "or the last DataFrame variable you create."
             )
 
-        query_key = f"interview_query_{session_id}_{question_key}_{interview_state['editor_mode'].lower()}"
+        draft_key = f"sql_interview::{session_id}::{question_key}::{interview_state['editor_mode'].lower()}"
         starter_template = build_editor_starter(current_question, interview_state["editor_mode"])
 
         helper_col1, helper_col2 = st.columns(2)
         if helper_col1.button("Load Starter", key=f"interview_starter_{question_key}", disabled=is_locked):
-            st.session_state[query_key] = starter_template
+            set_editor_draft(draft_key, starter_template)
+            st.rerun()
         if helper_col2.button("Clear Draft", key=f"interview_clear_{question_key}", disabled=is_locked):
-            st.session_state[query_key] = ""
+            clear_editor_draft(draft_key)
+            st.rerun()
 
-        query = st.text_area(
-            f"Write {interview_state['editor_mode']}",
+        st.caption("Tab inserts indentation. Drafts stay in place while you move through the interview.")
+        query = render_code_editor(
+            draft_key=draft_key,
+            language="sql" if interview_state["editor_mode"] == "SQL" else "python",
+            starter=starter_template,
             height=500,
-            key=query_key,
-            disabled=is_locked,
             placeholder=starter_template,
+            disabled=is_locked,
         )
 
         button_col1, button_col2, button_col3 = st.columns(3)
@@ -834,14 +863,15 @@ def render_interview_workspace(questions):
     render_interview_setup(questions)
 
 
-def render_sql():
+def render_sql(show_sidebar_title=True):
     questions = load_questions("sql")
 
     if not questions:
         st.error("No SQL questions found.")
         return
 
-    st.sidebar.title("Coding Workspace")
+    if show_sidebar_title:
+        st.sidebar.title("Coding Workspace")
 
     initial_workspace = get_query_param("workspace", WORKSPACES[0])
     if initial_workspace not in WORKSPACES:

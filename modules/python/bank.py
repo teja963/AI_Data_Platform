@@ -1,6 +1,10 @@
+from pathlib import Path
 from textwrap import dedent
 
 import pandas as pd
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+FIXTURE_ROOT = REPO_ROOT / "data" / "python_fixtures"
 
 
 def _parse_arg_names(signature):
@@ -24,6 +28,8 @@ def _describe_value(value):
     if isinstance(value, list):
         if not value:
             return "list"
+        if all(isinstance(item, str) and item.startswith("__TMP__/") for item in value):
+            return "list[path string]"
         sample = value[0]
         if isinstance(sample, dict):
             return "list[dict]"
@@ -44,14 +50,19 @@ def _describe_value(value):
 def _build_input_format(signature, tests):
     arg_names = _parse_arg_names(signature)
     if not tests:
-        return ["Use the function arguments shown in the signature."]
+        return ["The evaluator passes the function arguments directly."]
 
     sample_args = tests[0].get("args", ())
     details = []
     for index, arg_name in enumerate(arg_names):
         value = sample_args[index] if index < len(sample_args) else None
-        details.append(f"`{arg_name}`: {_describe_value(value)}")
-    return details or ["Use the function arguments shown in the signature."]
+        if isinstance(value, str) and value.startswith("__TMP__/"):
+            details.append(f"`{arg_name}` is passed as one readable local file path string. Use the provided path exactly as shown.")
+        elif isinstance(value, list) and value and all(isinstance(item, str) and item.startswith("__TMP__/") for item in value):
+            details.append(f"`{arg_name}` is passed as a list of readable local file path strings. Use the provided paths in the same order.")
+        else:
+            details.append(f"`{arg_name}` is passed as `{_describe_value(value)}`.")
+    return details or ["The evaluator passes the function arguments directly."]
 
 
 def _build_output_format(tests):
@@ -60,26 +71,47 @@ def _build_output_format(tests):
     return f"Return a value shaped like `{_describe_value(tests[0]['expected'])}`."
 
 
-def _default_constraints(category, difficulty, tags):
-    constraints = [
-        "Write a correct solution for the full function contract, not only the happy path.",
-        "Keep the output format exactly as requested by the evaluator.",
-    ]
+def _constraint_for_arg(name, value):
+    if isinstance(value, list):
+        if value and all(isinstance(item, str) and item.startswith("__TMP__/") for item in value):
+            return f"`{name}` is a list of valid readable local file paths provided by the evaluator."
+        if value and isinstance(value[0], dict):
+            return f"`0 <= len({name}) <= 10^4`; each element is a record dictionary matching the prompt."
+        if value and isinstance(value[0], list):
+            return f"`0 <= len({name}) <= 10^4`; nested list shape follows the examples."
+        if value and isinstance(value[0], str):
+            return f"`0 <= len({name}) <= 10^5`; string elements may repeat unless the prompt says otherwise."
+        return f"`0 <= len({name}) <= 10^5`."
+    if isinstance(value, tuple):
+        return f"`{name}` is passed as a tuple-shaped argument exactly as shown in the examples."
+    if isinstance(value, dict):
+        return f"`{name}` is a dictionary input; preserve required keys and output shape."
+    if isinstance(value, str):
+        if value.startswith("__TMP__/"):
+            return f"`{name}` is a valid readable local file path provided by the evaluator."
+        return f"`0 <= len({name}) <= 10^5`."
+    if isinstance(value, int):
+        if name in {"k", "window", "batch_size", "retries", "threshold_minutes"}:
+            return f"`0 <= {name} <= 10^5`."
+        return f"`{name}` fits within standard Python integer handling."
+    if isinstance(value, float):
+        return f"`{name}` is numeric; preserve required precision."
+    if isinstance(value, pd.DataFrame):
+        columns = ", ".join(f"`{column}`" for column in value.columns)
+        return f"`{name}` is a pandas DataFrame containing columns {columns}."
+    return f"`{name}` follows the type shown in the examples."
 
-    if "sliding-window" in tags or "hashmap" in tags:
-        constraints.append("Target an efficient solution, ideally O(n) when the pattern allows it.")
-    elif category == "Pandas & NumPy":
-        constraints.append("Return a clean final DataFrame or array without mutating the input unexpectedly.")
-    elif category in {"Files & JSON", "Cloud & APIs", "Data Pipelines"}:
-        constraints.append("Keep the solution idempotent and safe for repeated runs where it matters.")
-    else:
-        constraints.append("Aim for O(n) to O(n log n) unless the prompt clearly needs something else.")
 
-    if difficulty == "Medium":
-        constraints.append("Handle duplicates, no-match cases, and ordering rules carefully.")
-    else:
-        constraints.append("Favor readability first, but still avoid unnecessary nested scans.")
+def _default_constraints(signature, tests):
+    arg_names = _parse_arg_names(signature)
+    sample_args = tests[0].get("args", ()) if tests else ()
+    constraints = []
 
+    for index, arg_name in enumerate(arg_names):
+        value = sample_args[index] if index < len(sample_args) else None
+        constraints.append(_constraint_for_arg(arg_name, value))
+
+    constraints.append("Return exactly the output type and ordering described in the prompt.")
     return constraints
 
 
@@ -113,13 +145,25 @@ def _default_edge_cases(tests, tags):
     return deduped or ["Cover empty or minimal input sizes and preserve the requested output shape."]
 
 
-def _build_examples(tests):
+def _replace_fixture_placeholders(value, question_id):
+    if isinstance(value, str) and value.startswith("__TMP__/"):
+        return str(FIXTURE_ROOT / f"question_{question_id}" / value.replace("__TMP__/", "", 1))
+    if isinstance(value, list):
+        return [_replace_fixture_placeholders(item, question_id) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_replace_fixture_placeholders(item, question_id) for item in value)
+    if isinstance(value, dict):
+        return {key: _replace_fixture_placeholders(item, question_id) for key, item in value.items()}
+    return value
+
+
+def _build_examples(question_id, tests):
     examples = []
     for index, test in enumerate(tests[:2], start=1):
         examples.append(
             {
                 "label": f"Example {index}",
-                "inputs": test.get("args", ()),
+                "inputs": _replace_fixture_placeholders(test.get("args", ()), question_id),
                 "expected": test["expected"],
                 "files": test.get("files", {}),
             }
@@ -131,23 +175,37 @@ def _function_starter(signature):
     return dedent(
         f"""
         def {signature}:
-            # Write your solution here.
+            # Write only this function for submission.
             pass
         """
     ).strip()
 
 
-def _script_starter(signature, tests):
+def _practice_fixture_paths(question_id, tests):
+    files = tests[0].get("files", {}) if tests else {}
+    return [str(FIXTURE_ROOT / f"question_{question_id}" / relative_path) for relative_path in files]
+
+
+def _script_starter(question_id, signature, tests):
     entry_point = signature.split("(", 1)[0]
     sample_args = tests[0].get("args", ()) if tests else ()
+    practice_files = _practice_fixture_paths(question_id, tests)
 
     if any(isinstance(value, pd.DataFrame) for value in sample_args):
         sample_block = "    # Build a small DataFrame here when you want to test locally.\n    print('Create a DataFrame sample, then call the function.')"
-    elif any(isinstance(value, str) and value.startswith("__TMP__/") for value in sample_args):
-        sample_block = (
-            "    # Replace these placeholder paths with local files when you practise end to end.\n"
-            f"    print(\"Example: {entry_point}('/path/to/local/file')\")"
-        )
+    elif practice_files:
+        rendered_args = []
+        fixture_iter = iter(practice_files)
+        for value in sample_args:
+            if isinstance(value, str) and value.startswith("__TMP__/"):
+                try:
+                    replacement = next(fixture_iter)
+                except StopIteration:
+                    replacement = str(FIXTURE_ROOT / f"question_{question_id}" / value.replace("__TMP__/", "", 1))
+                rendered_args.append(repr(replacement))
+            else:
+                rendered_args.append(repr(value))
+        sample_block = f"    print({entry_point}({', '.join(rendered_args)}))"
     else:
         sample_literal = ", ".join(repr(value) for value in sample_args)
         if sample_literal:
@@ -158,7 +216,7 @@ def _script_starter(signature, tests):
     return dedent(
         f"""
         def {signature}:
-            # Write your solution here.
+            # Use this template only for local scratch practice.
             pass
 
 
@@ -196,16 +254,18 @@ def _question(
         "entry_point": signature.split("(", 1)[0],
         "description": description,
         "hint": hint,
+        "submission_mode": "Write only the function shown below for submission. The evaluator calls your function directly with prepared arguments.",
         "starter_code": _function_starter(signature),
-        "script_starter": _script_starter(signature, tests),
+        "script_starter": _script_starter(question_id, signature, tests),
         "solution": dedent(solution).strip(),
         "tests": tests,
         "tags": tags,
-        "constraints": constraints or _default_constraints(category, difficulty, tags),
+        "constraints": constraints or _default_constraints(signature, tests),
         "edge_cases": edge_cases or _default_edge_cases(tests, tags),
         "input_format": input_format or _build_input_format(signature, tests),
         "output_format": output_format or _build_output_format(tests),
-        "examples": examples or _build_examples(tests),
+        "examples": examples or _build_examples(question_id, tests),
+        "practice_fixture_paths": _practice_fixture_paths(question_id, tests),
     }
 
 

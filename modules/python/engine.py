@@ -1,12 +1,18 @@
 import builtins
+import csv
 import copy
+import functools
+import heapq
 import io
+import itertools
 import json
 import math
 import os
 import re
+import statistics
 import tempfile
 import traceback
+from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict, deque
 from contextlib import redirect_stdout
 from datetime import date, datetime, timedelta
@@ -19,6 +25,11 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     np = None
 
+try:
+    import requests
+except ImportError:  # pragma: no cover - optional dependency
+    requests = None
+
 
 def _build_namespace():
     namespace = {
@@ -26,19 +37,28 @@ def _build_namespace():
         "Counter": Counter,
         "defaultdict": defaultdict,
         "deque": deque,
+        "bisect_left": bisect_left,
+        "bisect_right": bisect_right,
+        "csv": csv,
         "date": date,
         "datetime": datetime,
         "timedelta": timedelta,
+        "functools": functools,
+        "heapq": heapq,
+        "itertools": itertools,
         "json": json,
         "math": math,
         "os": os,
         "Path": Path,
         "pd": pd,
         "re": re,
+        "statistics": statistics,
     }
 
     if np is not None:
         namespace["np"] = np
+    if requests is not None:
+        namespace["requests"] = requests
 
     return namespace
 
@@ -137,7 +157,7 @@ def _preview(value):
     return value
 
 
-def run_python_question(question, code):
+def _execute_candidate_code(question, code):
     namespace = _build_namespace()
     stdout_buffer = io.StringIO()
 
@@ -146,53 +166,86 @@ def run_python_question(question, code):
             exec(code, namespace, namespace)
     except Exception:
         return {
-            "passed": False,
+            "namespace": None,
+            "function": None,
             "error": traceback.format_exc(limit=3),
-            "results": [],
-            "stdout": stdout_buffer.getvalue(),
+            "definition_stdout": stdout_buffer.getvalue(),
         }
 
     function_name = question["entry_point"]
     function = namespace.get(function_name)
     if not callable(function):
         return {
-            "passed": False,
+            "namespace": namespace,
+            "function": None,
             "error": f"Define a callable function named `{function_name}` before running.",
+            "definition_stdout": stdout_buffer.getvalue(),
+        }
+
+    return {
+        "namespace": namespace,
+        "function": function,
+        "error": None,
+        "definition_stdout": stdout_buffer.getvalue(),
+    }
+
+
+def _execute_test(function, test, compare_expected):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        for relative_path, content in test.get("files", {}).items():
+            _write_fixture_file(temp_dir, relative_path, content)
+
+        args = _resolve_placeholders(test.get("args", ()), temp_dir)
+        kwargs = _resolve_placeholders(test.get("kwargs", {}), temp_dir)
+        test_stdout = io.StringIO()
+
+        try:
+            with redirect_stdout(test_stdout):
+                actual = function(*copy.deepcopy(args), **copy.deepcopy(kwargs))
+
+            files_ok, files_message = _check_expected_files(test.get("expected_files", {}), temp_dir)
+            if not files_ok:
+                return False, files_message, None, test_stdout.getvalue()
+
+            if compare_expected:
+                passed, message = _compare_values(actual, test["expected"], test)
+                return passed, message or "Passed", actual, test_stdout.getvalue()
+
+            return True, "Executed successfully.", actual, test_stdout.getvalue()
+        except Exception:
+            return False, traceback.format_exc(limit=2), None, test_stdout.getvalue()
+
+
+def _run_tests(question, code, tests, compare_expected, label_prefix):
+    execution = _execute_candidate_code(question, code)
+    if execution["error"]:
+        return {
+            "passed": False,
+            "error": execution["error"],
             "results": [],
-            "stdout": stdout_buffer.getvalue(),
+            "stdout": execution["definition_stdout"],
         }
 
     results = []
     all_passed = True
+    combined_stdout = execution["definition_stdout"]
 
-    for index, test in enumerate(question["tests"], start=1):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            for relative_path, content in test.get("files", {}).items():
-                _write_fixture_file(temp_dir, relative_path, content)
-
-            args = _resolve_placeholders(test.get("args", ()), temp_dir)
-            kwargs = _resolve_placeholders(test.get("kwargs", {}), temp_dir)
-
-            try:
-                actual = function(*copy.deepcopy(args), **copy.deepcopy(kwargs))
-                files_ok, files_message = _check_expected_files(test.get("expected_files", {}), temp_dir)
-                if not files_ok:
-                    passed = False
-                    message = files_message
-                else:
-                    passed, message = _compare_values(actual, test["expected"], test)
-            except Exception:
-                actual = None
-                passed = False
-                message = traceback.format_exc(limit=2)
+    for index, test in enumerate(tests, start=1):
+        passed, message, actual, test_stdout = _execute_test(
+            execution["function"],
+            test,
+            compare_expected=compare_expected,
+        )
+        combined_stdout += test_stdout
 
         results.append(
             {
-                "test": f"Test {index}",
+                "test": f"{label_prefix} {index}",
                 "passed": passed,
-                "message": message or "Passed",
-                "expected": _preview(test["expected"]),
+                "message": message,
+                "expected": _preview(test["expected"]) if compare_expected else None,
                 "actual": _preview(actual),
+                "stdout": test_stdout,
             }
         )
         all_passed = all_passed and passed
@@ -201,5 +254,26 @@ def run_python_question(question, code):
         "passed": all_passed,
         "error": None,
         "results": results,
-        "stdout": stdout_buffer.getvalue(),
+        "stdout": combined_stdout,
     }
+
+
+def preview_python_question(question, code, max_examples=2):
+    preview_tests = question["tests"][:max_examples]
+    return _run_tests(
+        question,
+        code,
+        tests=preview_tests,
+        compare_expected=False,
+        label_prefix="Preview",
+    )
+
+
+def run_python_question(question, code):
+    return _run_tests(
+        question,
+        code,
+        tests=question["tests"],
+        compare_expected=True,
+        label_prefix="Test",
+    )

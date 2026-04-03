@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from core.ai import ask_ai
+from core.editor import clear_editor_draft, render_code_editor, set_editor_draft
 from core.interview import (
     append_interview_run,
     build_history_entry,
@@ -18,10 +19,9 @@ from core.interview import (
 )
 from core.loader import group_by_category, load_questions
 from core.progress import clear_progress, load_progress, save_progress
-from modules.concepts.ui import PYTHON_CONCEPT_SECTIONS, render_reference_tab
-from modules.python.engine import run_python_question
+from modules.python.engine import preview_python_question, run_python_question
 
-WORKSPACES = ["Reference", "Practice", "Interview Simulator"]
+WORKSPACES = ["Practice", "Interview Simulator"]
 INTERVIEW_DIFFICULTIES = ["Easy", "Medium"]
 INTERVIEW_STATE_KEY = "python_interview_state"
 INTERVIEW_REPORT_KEY = "python_interview_report"
@@ -102,28 +102,47 @@ def render_result_panel(execution):
         return
 
     results = execution.get("results", [])
+    show_expected = any(item.get("expected") is not None for item in results)
     passed_count = sum(1 for item in results if item["passed"])
-    metric_col1, metric_col2, metric_col3 = st.columns(3)
-    metric_col1.metric("Passed", passed_count)
-    metric_col2.metric("Failed", len(results) - passed_count)
-    metric_col3.metric("Coverage", f"{passed_count}/{len(results)}")
+
+    if show_expected:
+        metric_col1, metric_col2, metric_col3 = st.columns(3)
+        metric_col1.metric("Passed", passed_count)
+        metric_col2.metric("Failed", len(results) - passed_count)
+        metric_col3.metric("Coverage", f"{passed_count}/{len(results)}")
+    else:
+        metric_col1, metric_col2 = st.columns(2)
+        metric_col1.metric("Run Status", "Executed" if passed_count == len(results) else "Execution Error")
+        metric_col2.metric("Example Inputs", len(results))
 
     for item in results:
         with st.container(border=True):
             header_col1, header_col2 = st.columns([1, 4])
             with header_col1:
-                st.markdown(f"**{'PASS' if item['passed'] else 'FAIL'}**")
+                if show_expected:
+                    badge = "PASS" if item["passed"] else "FAIL"
+                else:
+                    badge = "RUN" if item["passed"] else "ERROR"
+                st.markdown(f"**{badge}**")
             with header_col2:
                 st.markdown(f"**{item['test']}**")
                 st.caption(item["message"])
 
-            detail_col1, detail_col2 = st.columns(2)
-            with detail_col1:
-                st.markdown("**Expected**")
-                render_wrapped_value(item["expected"])
-            with detail_col2:
-                st.markdown("**Actual**")
+            if show_expected:
+                detail_col1, detail_col2 = st.columns(2)
+                with detail_col1:
+                    st.markdown("**Expected**")
+                    render_wrapped_value(item["expected"])
+                with detail_col2:
+                    st.markdown("**Actual**")
+                    render_wrapped_value(item["actual"])
+            else:
+                st.markdown("**Actual Output**")
                 render_wrapped_value(item["actual"])
+
+            if item.get("stdout"):
+                st.markdown("**Captured Print Output**")
+                st.code(item["stdout"], language="text", wrap_lines=True)
 
     if execution.get("stdout"):
         with st.expander("Captured Output"):
@@ -142,12 +161,18 @@ def render_question_content(question, show_solution_note=True):
     prompt_tab, examples_tab, evaluator_tab = st.tabs(["Prompt", "Examples", "Evaluator"])
 
     with prompt_tab:
+        st.info(question["submission_mode"])
+        if question.get("practice_fixture_paths"):
+            st.caption("Sample practice files for local runs:")
+            for path in question["practice_fixture_paths"]:
+                st.markdown(f"- `{path}`")
+
         st.markdown("#### Problem")
         st.write(question["description"])
 
         contract_col1, contract_col2 = st.columns(2)
         with contract_col1:
-            st.markdown("#### Function Contract")
+            st.markdown("#### What To Write")
             render_wrapped_value(f"def {question['signature']}:")
             st.markdown("#### Input Format")
             for item in question["input_format"]:
@@ -161,7 +186,7 @@ def render_question_content(question, show_solution_note=True):
 
         if show_solution_note:
             st.caption(
-                "Run uses the evaluator directly. You can load either a clean function starter or a script-style starter for local scratch practice."
+                "Submit expects only the function. Use the main-template button only when you want optional local scratch practice."
             )
 
     with examples_tab:
@@ -181,16 +206,15 @@ def render_question_content(question, show_solution_note=True):
                     st.markdown("**Expected Output**")
                     render_wrapped_value(example["expected"])
 
-        st.markdown("#### Edge Cases To Think About")
-        for item in question["edge_cases"]:
-            st.markdown(f"- {item}")
-
     with evaluator_tab:
-        st.markdown(f"- Hidden evaluator depth: `{len(question['tests'])}` tests")
+        st.markdown(f"- Base regression cases: `{len(question['tests'])}`")
         st.markdown(f"- Function name required: `{question['entry_point']}`")
-        st.markdown("- Preferred practice flow: write the function, then use the script starter if you also want a main block for scratch execution.")
+        st.markdown("- Submission mode: function only")
+        st.markdown("- `input()` and `__main__` are not required for submission")
+        st.markdown("- `Run` previews your function output on the visible examples")
+        st.markdown("- `Submit` validates against the full backend evaluator")
         if any(test.get("files") for test in question["tests"]):
-            st.markdown("- Includes file-based test cases")
+            st.markdown("- File paths are passed into the function by the evaluator")
         if any(isinstance(test["expected"], pd.DataFrame) for test in question["tests"]):
             st.markdown("- Includes pandas-style result validation")
 
@@ -213,15 +237,27 @@ def render_ai_tools(question, code, button_prefix):
         if not code.strip():
             st.warning("Write some code first so the explanation has something to inspect.")
         else:
+            preview = preview_python_question(question, code)
+            preview_lines = []
+            if preview.get("error"):
+                preview_lines.append(f"Execution error: {preview['error']}")
+            else:
+                for item in preview.get("results", []):
+                    preview_lines.append(
+                        f"{item['test']}: status={item['message']} actual={preview_value(item.get('actual'))!r}"
+                    )
             st.write(
                 ask_ai(
                     (
                         f"Question:\n{question['description']}\n\n"
-                        f"Candidate code:\n```python\n{code}\n```"
+                        f"Candidate code:\n```python\n{code}\n```\n\n"
+                        f"Observed execution summary:\n" + "\n".join(preview_lines)
                     ),
                     system_prompt=(
                         "You are a Python interview coach for a data engineering candidate. "
-                        "Explain correctness, edge cases, and time complexity in concise language."
+                        "Explain only what the candidate's current code does, what mistakes or runtime errors it has, "
+                        "and whether it matches the prompt. Do not provide replacement code, corrected code, "
+                        "pseudocode, or the full solution. Keep the explanation concise and code-free."
                     ),
                 )
             )
@@ -230,23 +266,10 @@ def render_ai_tools(question, code, button_prefix):
         st.code(question["solution"], language="python", wrap_lines=True)
 
 
-def render_reference_workspace():
-    st.title("Python Reference")
-    st.write(
-        "Study Python syntax, standard library helpers, data-engineering utilities, and pandas patterns before jumping into coding questions."
-    )
-    render_reference_tab(
-        title="Python Reference",
-        caption="Reusable syntax patterns for interviews, coding rounds, and data-engineering implementation work.",
-        sections=PYTHON_CONCEPT_SECTIONS,
-        language="python",
-        key_prefix="python_workspace_reference",
-    )
-
-
 def render_practice_workspace(questions):
     grouped = group_by_category(questions)
     categories = list(grouped.keys())
+    difficulty_rank = {"Medium": 0, "Easy": 1, "Hard": 2}
 
     initial_category = get_query_param("py_category", categories[0])
     if initial_category not in grouped:
@@ -265,7 +288,10 @@ def render_practice_workspace(questions):
     selected_category = st.sidebar.selectbox("Category", categories, key="python_category")
     st.query_params["py_category"] = selected_category
 
-    category_questions = grouped[selected_category]
+    category_questions = sorted(
+        grouped[selected_category],
+        key=lambda question: (difficulty_rank.get(question.get("difficulty", "Medium"), 9), question["id"]),
+    )
     category_keys = {question["progress_key"] for question in category_questions}
 
     selected_question_key = get_query_param("py_question", category_questions[0]["progress_key"])
@@ -284,7 +310,7 @@ def render_practice_workspace(questions):
     st.sidebar.markdown("### Questions")
     for question in category_questions:
         question_key = question["progress_key"]
-        label = f"{question['id']}. {question['title']}"
+        label = f"{question['id']}. {question['title']} ({question['difficulty']})"
         if question_key == selected_question_key:
             label = "▶ " + label
         if question_key in solved:
@@ -295,7 +321,7 @@ def render_practice_workspace(questions):
 
     question = next(item for item in category_questions if item["progress_key"] == selected_question_key)
     result_key = f"python_result_{selected_question_key}"
-    editor_key = f"python_editor_{selected_question_key}"
+    draft_key = f"python_practice::{selected_question_key}"
     starter = question["starter_code"]
 
     left_col, right_col = st.columns([3, 4])
@@ -305,18 +331,23 @@ def render_practice_workspace(questions):
 
     with right_col:
         st.subheader("Editor")
+        st.caption("Tab inserts indentation. The editor syncs live, so Run always uses the latest code on screen and drafts stay preserved.")
         helper_col1, helper_col2, helper_col3 = st.columns(3)
-        if helper_col1.button("Function Starter", key=f"{selected_question_key}_starter"):
-            st.session_state[editor_key] = starter
-        if helper_col2.button("Script Starter", key=f"{selected_question_key}_script_starter"):
-            st.session_state[editor_key] = question["script_starter"]
+        if helper_col1.button("Function Template", key=f"{selected_question_key}_starter"):
+            set_editor_draft(draft_key, starter)
+            st.rerun()
+        if helper_col2.button("Main Template", key=f"{selected_question_key}_script_starter"):
+            set_editor_draft(draft_key, question["script_starter"])
+            st.rerun()
         if helper_col3.button("Clear Draft", key=f"{selected_question_key}_clear"):
-            st.session_state[editor_key] = ""
+            clear_editor_draft(draft_key)
+            st.rerun()
 
-        code = st.text_area(
-            "Write Python",
+        code = render_code_editor(
+            draft_key=draft_key,
+            language="python",
+            starter=starter,
             height=520,
-            key=editor_key,
             placeholder=starter,
         )
 
@@ -326,10 +357,13 @@ def render_practice_workspace(questions):
 
         if run or submit:
             if not code.strip():
-                st.warning("Write a Python function before running the evaluator.")
+                st.warning("Write a Python function before running.")
             else:
-                execution = run_python_question(question, code)
-                st.session_state[result_key] = execution
+                execution = preview_python_question(question, code) if run else run_python_question(question, code)
+                st.session_state[result_key] = {
+                    "mode": "preview" if run else "submit",
+                    "execution": execution,
+                }
                 render_result_panel(execution)
 
                 if submit:
@@ -339,7 +373,8 @@ def render_practice_workspace(questions):
                     else:
                         st.error("Some tests are still failing. Refine the solution and submit again.")
         elif result_key in st.session_state:
-            render_result_panel(st.session_state[result_key])
+            stored_result = st.session_state[result_key]
+            render_result_panel(stored_result.get("execution", stored_result))
 
         render_ai_tools(question, code, f"practice_{selected_question_key}")
 
@@ -586,7 +621,7 @@ def render_active_interview():
     question_key = question["progress_key"]
     session_id = interview_state["session_id"]
     result_key = f"python_interview_result_{session_id}_{question_key}"
-    editor_key = f"python_interview_editor_{session_id}_{question_key}"
+    draft_key = f"python_interview::{session_id}::{question_key}"
 
     total_elapsed = int(time.time() - interview_state["started_at"])
     remaining_total = max(interview_state["total_duration_seconds"] - total_elapsed, 0)
@@ -612,11 +647,13 @@ def render_active_interview():
 
     with right_col:
         st.subheader("Editor")
-        code = st.text_area(
-            "Write Python",
+        st.caption("Tab inserts indentation. The editor syncs live, so Run uses the latest code on screen and drafts stay preserved.")
+        code = render_code_editor(
+            draft_key=draft_key,
+            language="python",
+            starter=question["starter_code"],
             height=520,
-            key=editor_key,
-            placeholder=question["script_starter"],
+            placeholder=question["starter_code"],
             disabled=is_locked,
         )
 
@@ -627,10 +664,13 @@ def render_active_interview():
 
         if run or submit:
             if not code.strip():
-                st.warning("Write a Python function before running the evaluator.")
+                st.warning("Write a Python function before running.")
             else:
-                execution = run_python_question(question, code)
-                st.session_state[result_key] = execution
+                execution = preview_python_question(question, code) if run else run_python_question(question, code)
+                st.session_state[result_key] = {
+                    "mode": "preview" if run else "submit",
+                    "execution": execution,
+                }
                 render_result_panel(execution)
 
                 attempts = current_result.get("attempts", 0) + 1
@@ -667,7 +707,7 @@ def render_active_interview():
 
         stored_result = st.session_state.get(result_key)
         if stored_result and not (run or submit):
-            render_result_panel(stored_result)
+            render_result_panel(stored_result.get("execution", stored_result))
 
         if skip:
             interview_state["results"][question_key] = {
@@ -719,13 +759,14 @@ def render_interview_workspace(questions):
     render_interview_setup(questions)
 
 
-def render_python():
+def render_python(show_sidebar_title=True):
     questions = load_questions("python")
     if not questions:
         st.error("No Python questions found.")
         return
 
-    st.sidebar.title("Python Workspace")
+    if show_sidebar_title:
+        st.sidebar.title("Python Workspace")
 
     initial_workspace = get_query_param("py_workspace", WORKSPACES[0])
     if initial_workspace not in WORKSPACES:
@@ -737,9 +778,7 @@ def render_python():
     workspace = st.sidebar.radio("Workspace", WORKSPACES, key="python_workspace")
     st.query_params["py_workspace"] = workspace
 
-    if workspace == "Reference":
-        render_reference_workspace()
-    elif workspace == "Practice":
+    if workspace == "Practice":
         render_practice_workspace(questions)
     else:
         render_interview_workspace(questions)

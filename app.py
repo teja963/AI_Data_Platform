@@ -17,7 +17,6 @@ SECTION_ORDER = [
     CONCEPTS_SECTION_LABEL,
     GENAI_SECTION_LABEL,
     CODING_SECTION_LABEL,
-    PYTHON_SECTION_LABEL,
     SPARK_SECTION_LABEL,
     DATA_MODELING_SECTION_LABEL,
     PROJECTS_SECTION_LABEL,
@@ -42,9 +41,13 @@ legacy_module_map = {
     "SQL": CODING_SECTION_LABEL,
     "SQL + PySpark": CODING_SECTION_LABEL,
     "PySpark": SPARK_SECTION_LABEL,
+    PYTHON_SECTION_LABEL: CODING_SECTION_LABEL,
 }
 
 selected_module = legacy_module_map.get(selected_module, selected_module)
+
+if query_params.get("module") == PYTHON_SECTION_LABEL and "coding_track" not in st.query_params:
+    st.query_params["coding_track"] = "Python"
 
 if selected_module not in SECTION_ORDER:
     selected_module = DASHBOARD_SECTION_LABEL
@@ -54,6 +57,7 @@ module = st.sidebar.selectbox(
     "Choose Section",
     SECTION_ORDER,
     index=SECTION_ORDER.index(selected_module),
+    label_visibility="collapsed",
 )
 
 # ✅ STEP 4: Sync BOTH (CRITICAL)
@@ -66,12 +70,8 @@ st.query_params["module"] = module
 # =========================================================
 
 if module == CODING_SECTION_LABEL:
-    from modules.sql.ui import render_sql
-    render_sql()
-
-elif module == PYTHON_SECTION_LABEL:
-    from modules.python.ui import render_python
-    render_python()
+    from modules.coding.ui import render_coding
+    render_coding()
 
 elif module == CONCEPTS_SECTION_LABEL:
     from modules.concepts.ui import render_concepts
