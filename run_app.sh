@@ -13,4 +13,4 @@ else
   exit 1
 fi
 
-exec "$PYTHON_BIN" -m streamlit run "$ROOT_DIR/app.py"
+exec "$PYTHON_BIN" -m streamlit run "$ROOT_DIR/app.py" --server.runOnSave true --server.fileWatcherType watchdog

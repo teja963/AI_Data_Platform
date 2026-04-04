@@ -28,3 +28,20 @@ def ask_ai(prompt, system_prompt="You are a SQL expert helping a student. Be cle
 
     except Exception as e:
         return f"❌ AI Error: {str(e)}"
+
+
+def review_sql(user_query, expected_solution):
+    prompt = f"""
+User Query:
+{user_query}
+
+Expected Solution:
+{expected_solution}
+
+Give:
+1. Mistakes
+2. Optimization
+3. Better approach
+"""
+
+    return ask_ai(prompt, system_prompt="You are an expert SQL reviewer. Provide concise, actionable feedback.")

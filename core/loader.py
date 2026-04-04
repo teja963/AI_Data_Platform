@@ -29,6 +29,35 @@ def _load_question_file(file_path, module, category=None):
 
 
 def load_questions(module):
+    # Prefer DB-stored questions if present (fast path), otherwise fall back to JSON files
+    try:
+        from core.db import SessionLocal
+        from core.models import Question
+
+        session = SessionLocal()
+        db_rows = session.query(Question).filter_by(module=module).all()
+        if db_rows:
+            questions = []
+            for r in db_rows:
+                try:
+                    payload = json.loads(getattr(r, "payload", "{}"))
+                except Exception:
+                    payload = {}
+
+                # ensure compatibility with existing UI keys
+                payload["category"] = payload.get("category", getattr(r, "category", "Others"))
+                payload["difficulty"] = payload.get("difficulty", getattr(r, "difficulty", "Medium"))
+                payload["id"] = payload.get("id", getattr(r, "id", None))
+                payload["progress_key"] = build_question_key(module, payload)
+                questions.append(payload)
+
+            session.close()
+            return questions
+        session.close()
+    except Exception:
+        # DB not available or error — fall back to filesystem loader
+        pass
+
     nested_path = os.path.join("data", module)
     legacy_path = os.path.join("data", f"{module}_questions")
 
