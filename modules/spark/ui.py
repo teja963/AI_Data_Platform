@@ -1,6 +1,5 @@
 import streamlit as st
 from core.ai import ask_ai   # ✅ IMPORT LLM INTERFACE
-from groq import Groq
 
 
 # ---------------- METRICS ----------------
@@ -91,9 +90,8 @@ def render_stage_pipeline(state):
         active = 3
 
     def chip(name, idx):
-        bg = "#2563eb" if idx == active else "#e5e7eb"
-        color = "white" if idx == active else "black"
-        return f"<span style='padding:3px 8px;border-radius:12px;background:{bg};color:{color};font-size:11px'>{name}</span>"
+        class_name = "spark-chip-active" if idx == active else "spark-chip-idle"
+        return f"<span class='{class_name}' style='padding:3px 8px;border-radius:12px;font-size:11px'>{name}</span>"
 
     st.markdown(
         f"<div style='text-align:center;margin-top:6px'>{chip('Job',0)} → {chip('S1',1)} → {chip('S2',2)} → {chip('S3',3)}</div>",
@@ -117,7 +115,7 @@ def render_driver(state):
 
         for i, comp in enumerate(components):
             st.markdown(
-                f"<div style='text-align:center;border:1px solid #ccc;padding:5px;margin:2px;border-radius:5px'>{comp}</div>",
+                f"<div class='dm-box' style='text-align:center;padding:5px;margin:2px;border-radius:5px;font-size:12px;'>{comp}</div>",
                 unsafe_allow_html=True
             )
             if i < len(components) - 1:
@@ -133,22 +131,27 @@ def render_cluster():
         st.markdown("### Cluster Manager")
 
         st.markdown(
-            "<div style='text-align:center;background:#fef3c7;padding:5px;border-radius:5px'>YARN / Kubernetes / Standalone</div>",
+            "<div class='dm-box' style='text-align:center;padding:5px;border-radius:5px;'>YARN / Kubernetes / Standalone</div>",
             unsafe_allow_html=True
         )
         st.markdown(
-            "<div style='text-align:center;background:#fef3c7;padding:5px;border-radius:5px'>Resources → Launch</div>",
+            "<div class='dm-box' style='text-align:center;padding:5px;border-radius:5px;'>Resources → Launch</div>",
             unsafe_allow_html=True
         )
 
 
 # ---------------- CORE ----------------
 def render_core(core_id, state, executor_id):
+    is_skew = state["debug"] == "Skew"
+    # Identify the hot core: Executor 2 (or any even index), Core 1
+    is_hot = is_skew and (executor_id % 2 == 0 and core_id == 1)
+    extra_class = "spark-mem-error" if is_hot else ""
+
     return f"""
-    <div style='width:65px;height:75px;background:#f1f5f9;
+    <div class='dm-box {extra_class}' style='width:65px;height:75px;
     border:1px solid #ccc;border-radius:6px;
     display:flex;flex-direction:column;align-items:center;justify-content:center;
-    font-size:12px'>
+    font-size:12px;'>
     Core {core_id}
     {render_partitions(state, core_id, executor_id)}
     </div>
@@ -162,8 +165,9 @@ def render_executor(idx, state):
     is_spill = state["debug"] == "Spill"
     is_oom = state["debug"] == "OOM"
 
-    mem_color = "#fee2e2" if (is_spill or is_oom) else "#f8fafc"
-    disk_color = "#fecaca" if is_oom else "#bbf7d0" if is_spill else "#e5e7eb"
+    # Define classes for stateful styling
+    mem_class = "spark-mem-error" if (is_spill or is_oom) else ""
+    disk_class = "spark-disk-error" if is_oom else "spark-disk-spill" if is_spill else ""
 
     with st.container(border=True):
         st.markdown(f"Executor {idx}")
@@ -175,16 +179,20 @@ def render_executor(idx, state):
             st.markdown(render_core(2, state, idx), unsafe_allow_html=True)
 
         st.markdown(f"""
-        <div style='border:1px dashed #999;padding:5px;border-radius:6px;background:{mem_color}'>
-            <div style='text-align:center'>Unified Memory</div>
-            <div style='display:flex'>
-                <div style='flex:1;background:#dbeafe;text-align:center'>⚡ Execution</div>
-                <div style='flex:1;background:#dcfce7;text-align:center'>💾 Storage</div>
+        <div style='border:1px dashed #999;padding:8px;border-radius:8px;margin-top:8px;'>
+            <div style='text-align:center;font-weight:bold;margin-bottom:8px;font-size:12px;'>Unified Memory</div>
+            <div style='display:flex;gap:6px;'>
+                <div class='dm-box {mem_class}' style='flex:1;text-align:center;font-size:10px;padding:6px;border-radius:6px;min-height:45px;display:flex;align-items:center;justify-content:center;font-weight:bold;'>
+                    ⚡ Execution
+                </div>
+                <div class='dm-box {mem_class}' style='flex:1;text-align:center;font-size:10px;padding:6px;border-radius:6px;min-height:45px;display:flex;align-items:center;justify-content:center;font-weight:bold;'>
+                    💾 Storage
+                </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown(f"<div style='background:{disk_color};text-align:center;margin-top:4px'>Disk</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='spark-disk-box {disk_class}' style='text-align:center;margin-top:4px;padding:2px;border-radius:4px;'>Disk</div>", unsafe_allow_html=True)
 
         # ✅ FIXED SOLUTIONS
         if state["debug"] == "Spill":
@@ -199,7 +207,13 @@ def render_executor(idx, state):
             st.markdown("⚙ AQE Skew Split")
             st.markdown("Solution: Enable AQE / Handle skewed keys")
 
-        st.markdown(f"⏱ {time}s | 🔀 {shuffle} | {'✔' if status=='Success' else '❌'}")
+        status_icon = "✔" if status == "Success" else "❌"
+        status_class = "text-success" if status == "Success" else "text-error"
+        st.markdown(f"""
+        <div style='font-size:12px;margin-top:4px;'>
+            ⏱ {time}s | 🔀 {shuffle} | <span class='{status_class}' style='font-weight:bold;'>{status_icon}</span>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ---------------- WORKERS ----------------

@@ -76,7 +76,7 @@ def render_subtitle(text):
 
 def render_box(text, color="#E8F4FD"):
     st.markdown(
-        f"<div style='padding:10px 12px;border-radius:0;background:{color};margin-bottom:8px'>{text}</div>",
+        f"<div class='dm-box' style='padding:10px 12px;border-radius:0;background:{color};margin-bottom:8px'>{text}</div>",
         unsafe_allow_html=True
     )
 
@@ -117,11 +117,10 @@ ARCHITECTURE_TONES = {
 def render_html_panel(body_html, padding=14):
     st.markdown(
         f"""
-        <div style="
+        <div class='dm-box' style="
             border:1px solid #d1d5db;
             border-radius:0;
             padding:{padding}px;
-            background:#ffffff;
             box-shadow:none;
             margin-bottom:16px;
         ">
@@ -2414,9 +2413,9 @@ def show_dimensional_modeling():
 
             m1,m2,m3 = st.columns(3)
 
-            m1.markdown("<div style='border:2px solid #4CAF50;padding:8px;text-align:center'><b>Additive</b><br>Can sum across all dims<br>Ex: sales</div>", unsafe_allow_html=True)
-            m2.markdown("<div style='border:2px solid #ff9800;padding:8px;text-align:center'><b>Semi</b><br>Limited aggregation<br>Ex: balance</div>", unsafe_allow_html=True)
-            m3.markdown("<div style='border:2px solid #f44336;padding:8px;text-align:center'><b>Non</b><br>No aggregation<br>Ex: ratio</div>", unsafe_allow_html=True)
+            m1.markdown("<div class='dm-box' style='border:2px solid #4CAF50;padding:8px;text-align:center'><b>Additive</b><br>Can sum across all dims<br>Ex: sales</div>", unsafe_allow_html=True)
+            m2.markdown("<div class='dm-box' style='border:2px solid #ff9800;padding:8px;text-align:center'><b>Semi</b><br>Limited aggregation<br>Ex: balance</div>", unsafe_allow_html=True)
+            m3.markdown("<div class='dm-box' style='border:2px solid #f44336;padding:8px;text-align:center'><b>Non</b><br>No aggregation<br>Ex: ratio</div>", unsafe_allow_html=True)
 
 
         render_ai_chat("dim_core","Ask about Core Concepts","Dimensional Modeling Core Concepts")
@@ -2436,7 +2435,7 @@ def show_dimensional_modeling():
             st.markdown("""
         <div style='text-align:center;font-size:12px'>
 
-        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>
+        <div class='dm-box' style='padding:6px;border:2px solid #4CAF50;display:inline-block'>
         Date_dim
         </div>
 
@@ -2444,19 +2443,19 @@ def show_dimensional_modeling():
 
         <div style='display:flex;justify-content:center;align-items:center;gap:6px'>
 
-        <div style='padding:6px;border:2px solid #4CAF50'>
+        <div class='dm-box' style='padding:6px;border:2px solid #4CAF50'>
         Customer_dim
         </div>
 
         <div>→</div>
 
-        <div style='padding:8px;border:2px solid #2196F3;background:#eef7ff'>
+        <div class='dm-box' style='padding:8px;border:2px solid #2196F3;'>
         <b>Sales_fact</b>
         </div>
 
         <div>←</div>
 
-        <div style='padding:6px;border:2px solid #4CAF50'>
+        <div class='dm-box' style='padding:6px;border:2px solid #4CAF50'>
         Product_dim
         </div>
 
@@ -2464,7 +2463,7 @@ def show_dimensional_modeling():
 
         <div>↑</div>
 
-        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>
+        <div class='dm-box' style='padding:6px;border:2px solid #4CAF50;display:inline-block'>
         Store_dim
         </div>
 
@@ -2479,31 +2478,31 @@ def show_dimensional_modeling():
             st.markdown("""
         <div style='text-align:center;font-size:12px'>
 
-        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Category</div>
+        <div class='dm-box' style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Category</div>
         <div>↓</div>
-        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Product</div>
+        <div class='dm-box' style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Product</div>
         <div>↓</div>
 
         <div style='display:flex;justify-content:center;align-items:center;gap:8px'>
 
-        <div style='padding:6px;border:2px solid #4CAF50'>Date</div>
+        <div class='dm-box' style='padding:6px;border:2px solid #4CAF50'>Date</div>
 
         <div>→</div>
 
-        <div style='padding:8px;border:2px solid #2196F3;background:#eef7ff'>
+        <div class='dm-box' style='padding:8px;border:2px solid #2196F3;'>
         <b>Sales_fact</b>
         </div>
 
         <div>←</div>
 
-        <div style='padding:6px;border:2px solid #4CAF50'>Store</div>
+        <div class='dm-box' style='padding:6px;border:2px solid #4CAF50'>Store</div>
 
         </div>
 
         <div>↑</div>
-        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Customer</div>
+        <div class='dm-box' style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Customer</div>
         <div>↑</div>
-        <div style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Region</div>
+        <div class='dm-box' style='padding:6px;border:2px solid #4CAF50;display:inline-block'>Region</div>
 
         </div>
         """, unsafe_allow_html=True)
@@ -2556,13 +2555,13 @@ def show_dimensional_modeling():
 
         box = "border:2px solid #4CAF50;padding:8px;font-size:12px;text-align:center"
 
-        cols[0].markdown(f"<div style='{box}'><b>Conformed</b><br>Shared across multiple fact tables ensuring consistent reporting</div>", unsafe_allow_html=True)
-        cols[1].markdown(f"<div style='{box}'><b>Role Playing</b><br>Same dimension reused for different roles like order_date, ship_date</div>", unsafe_allow_html=True)
-        cols[2].markdown(f"<div style='{box}'><b>Degenerate</b><br>Dimension key stored in fact table without separate dimension table</div>", unsafe_allow_html=True)
-        cols[3].markdown(f"<div style='{box}'><b>Junk</b><br>Combines multiple low-cardinality flags into a single dimension</div>", unsafe_allow_html=True)
-        cols[4].markdown(f"<div style='{box}'><b>Bridge</b><br>Handles many-to-many relationships between dimensions</div>", unsafe_allow_html=True)
-        cols[5].markdown(f"<div style='{box}'><b>Hierarchical</b><br>Represents parent-child relationships like country → state → city</div>", unsafe_allow_html=True)
-        cols[6].markdown(f"<div style='{box}'><b>Factless</b><br>Stores relationships/events without numeric measures</div>", unsafe_allow_html=True)
+        cols[0].markdown(f"<div class='dm-box' style='{box}'><b>Conformed</b><br>Shared across multiple fact tables ensuring consistent reporting</div>", unsafe_allow_html=True)
+        cols[1].markdown(f"<div class='dm-box' style='{box}'><b>Role Playing</b><br>Same dimension reused for different roles like order_date, ship_date</div>", unsafe_allow_html=True)
+        cols[2].markdown(f"<div class='dm-box' style='{box}'><b>Degenerate</b><br>Dimension key stored in fact table without separate dimension table</div>", unsafe_allow_html=True)
+        cols[3].markdown(f"<div class='dm-box' style='{box}'><b>Junk</b><br>Combines multiple low-cardinality flags into a single dimension</div>", unsafe_allow_html=True)
+        cols[4].markdown(f"<div class='dm-box' style='{box}'><b>Bridge</b><br>Handles many-to-many relationships between dimensions</div>", unsafe_allow_html=True)
+        cols[5].markdown(f"<div class='dm-box' style='{box}'><b>Hierarchical</b><br>Represents parent-child relationships like country → state → city</div>", unsafe_allow_html=True)
+        cols[6].markdown(f"<div class='dm-box' style='{box}'><b>Factless</b><br>Stores relationships/events without numeric measures</div>", unsafe_allow_html=True)
 
         # =====================================================
         # 🔥 SCD TYPE 2 (SIMULATOR + FIXED UI + IMPLEMENTATION)

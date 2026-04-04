@@ -507,37 +507,36 @@ with beam.Pipeline(options=options) as p:
 
 
 def build_stage_box(title, lines=None, active=False, emphasis="neutral", min_height=58):
-    border = "#cbd5e1"
-    background = "#ffffff"
-    color = "#0f172a"
+    class_name = "project-card"
+    border_width = "1px"
 
     if emphasis == "focus":
-        border = "#2563eb" if active else "#cbd5e1"
-        background = "#eff6ff" if active else "#ffffff"
+        if active:
+            class_name += " project-focus"
+            border_width = "2px"
     elif emphasis == "failure":
-        border = "#dc2626" if active else "#cbd5e1"
-        background = "#fef2f2" if active else "#ffffff"
+        if active:
+            class_name += " project-failure"
+            border_width = "2px"
 
-    border_width = "2px" if active else "1px"
-    shadow = "box-shadow:0 0 0 1px rgba(37,99,235,0.12);" if active and emphasis == "focus" else ""
     details = lines or []
     if isinstance(details, str):
         details = [details]
     body = "".join(
-        f"<div style='font-size:10px;line-height:1.2;margin-top:3px;color:#475569'>{line}</div>"
+        f"<div style='font-size:10px;line-height:1.2;margin-top:3px;opacity:0.8;'>{line}</div>"
         for line in details
     )
     return (
-        f"<div style='background:{background};border:{border_width} solid {border};border-radius:0;"
-        f"padding:8px;min-height:{min_height}px;text-align:center;{shadow}'>"
-        f"<div style='font-weight:700;font-size:12px;color:{color}'>{title}</div>{body}</div>"
+        f"<div class='{class_name}' style='border-width:{border_width};border-radius:0;"
+        f"padding:8px;min-height:{min_height}px;text-align:center;'>"
+        f"<div style='font-weight:700;font-size:12px;'>{title}</div>{body}</div>"
     )
 
 
 def render_panel(body_html):
     st.markdown(
         f"""
-        <div style="border:1px solid #dbe3ef;border-radius:0;padding:14px;background:white;margin-bottom:14px;">
+        <div class='project-card' style="padding:14px;margin-bottom:14px;">
             {body_html}
         </div>
         """,
@@ -556,7 +555,7 @@ def render_requirements(project):
     for idx, requirement in enumerate(project["requirements"]):
         with cols[idx % len(cols)]:
             st.markdown(
-                f"<div style='background:#ffffff;border:1px solid #cbd5e1;border-radius:0;padding:12px;min-height:108px;'>"
+                f"<div class='project-card' style='padding:12px;min-height:108px;'>"
                 f"<b>Requirement {idx + 1}</b><br><br>{requirement}</div>",
                 unsafe_allow_html=True,
             )
@@ -568,7 +567,7 @@ def render_storyline(project):
     for idx, line in enumerate(project["storyline"]):
         with cols[idx]:
             st.markdown(
-                f"<div style='background:#ffffff;border:1px solid #d1d5db;border-radius:0;padding:12px;min-height:138px;'>"
+                f"<div class='project-card' style='padding:12px;min-height:138px;'>"
                 f"<b>Column {idx + 1}</b><br><br>{line}</div>",
                 unsafe_allow_html=True,
             )
@@ -597,7 +596,7 @@ def render_sizing(project):
     for idx, item in enumerate(project["sizing"]):
         with cols[idx % 2]:
             st.markdown(
-                f"<div style='background:#ffffff;border:1px solid #cbd5e1;border-radius:0;padding:12px;min-height:128px;margin-bottom:12px;'>"
+                f"<div class='project-card' style='padding:12px;min-height:128px;margin-bottom:12px;'>"
                 f"<b>{item['title']}</b><br><br>{item['body']}</div>",
                 unsafe_allow_html=True,
             )

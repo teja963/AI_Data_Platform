@@ -1,5 +1,10 @@
 import streamlit as st
 import streamlit.components.v1 as components
+import matplotlib.pyplot as plt
+
+# Enforce non-interactive backend for reliable chart rendering
+import matplotlib
+matplotlib.use('Agg')
 
 st.set_page_config(layout="wide")
 
@@ -17,58 +22,66 @@ st.markdown(
     <style>
     [data-theme='dark'] .stApp { background-color: #0e1117; }
 
-    /* Force visibility for all div elements with inline backgrounds in dark mode */
-    [data-theme='dark'] [style*="background"], [data-theme='dark'] [style*="background-color"] {
-        background-color: #1e293b !important;
-        color: #f1f5f9 !important;
+    /* Theme-Aware Container Defaults (Light Mode) */
+    .genai-box, .roadmap-card, .dm-box, .project-card, .coding-io-box, .spark-disk-box {
+        background: #ffffff;
+        border: 1px solid #cbd5e1;
+        color: #0f172a;
+    }
+    .genai-box.active-blue { background: #eff6ff; border-color: #2563eb; border-width: 2px; }
+    .genai-box.active-green { background: #f0fdfa; border-color: #0f766e; border-width: 2px; }
+    .genai-box.active-amber { background: #fffbeb; border-color: #b45309; border-width: 2px; }
+    .project-card.project-focus { background: #eff6ff; border-color: #2563eb; }
+    .project-card.project-failure { background: #fef2f2; border-color: #dc2626; }
+    /* Spark Specific status styles */
+    .spark-mem-error { background: #fee2e2 !important; border-color: #f87171 !important; }
+    .spark-disk-spill { background: #dcfce7 !important; color: #166534 !important; border-color: #4ade80 !important; }
+    .spark-disk-error { background: #fee2e2 !important; color: #991b1b !important; border-color: #f87171 !important; }
+    .spark-chip-active { background: #2563eb; color: white !important; }
+    .spark-chip-idle { background: #e5e7eb; color: #0f172a !important; }
+    .text-success { color: #10b981 !important; }
+    .text-error { color: #ef4444 !important; }
+
+    /* Dark Mode FORCE Overrides */
+    [data-theme='dark'] .genai-box, 
+    [data-theme='dark'] .roadmap-card,
+    [data-theme='dark'] .dm-box,
+    [data-theme='dark'] .project-card,
+    [data-theme='dark'] .coding-io-box,
+    [data-theme='dark'] .spark-disk-box,
+    [data-theme='dark'] [style*="background"] {
+        background: #1e293b !important;
         border-color: #334155 !important;
-    }
-
-    /* Specifically target text inside those divs to be light */
-    [data-theme='dark'] [style*="background"] *, [data-theme='dark'] [style*="background-color"] * {
         color: #f1f5f9 !important;
     }
 
-    /* Target specific light hex codes used in modules for Datamodeling, Spark, and GenAI */
-    [data-theme='dark'] [style*="#E8F4FD" i], [data-theme='dark'] [style*="#e8f4fd" i],
-    [data-theme='dark'] [style*="#E9EEF4" i], [data-theme='dark'] [style*="#edf3ea" i],
-    [data-theme='dark'] [style*="#f8f1e6" i], [data-theme='dark'] [style*="#f3f4f6" i],
-    [data-theme='dark'] [style*="#f3eef6" i], [data-theme='dark'] [style*="#f8edee" i],
-    [data-theme='dark'] [style*="#ecf3f2" i], [data-theme='dark'] [style*="#eff6ff" i],
-    [data-theme='dark'] [style*="#f0fdfa" i], [data-theme='dark'] [style*="#fffbeb" i],
-    [data-theme='dark'] [style*="#fef3c7" i], [data-theme='dark'] [style*="#f1f5f9" i],
-    [data-theme='dark'] [style*="#dbeafe" i], [data-theme='dark'] [style*="#dcfce7" i],
-    [data-theme='dark'] [style*="#eef7ff" i], [data-theme='dark'] [style*="#e6f4ea" i],
-    [data-theme='dark'] [style*="#fff4e5" i], [data-theme='dark'] [style*="#fdecea" i],
-    [data-theme='dark'] [style*="#ffffff" i], [data-theme='dark'] [style*="#fff" i], 
-    [data-theme='dark'] [style*="background:white" i], [data-theme='dark'] [style*="background: white" i],
-    [data-theme='dark'] [style*="#fafafa" i], [data-theme='dark'] [style*="#f8fafc" i],
-    [data-theme='dark'] [style*="#F8FAFC" i], [data-theme='dark'] [style*="#e5e7eb" i],
-    [data-theme='dark'] [style*="#EEF2FF" i], [data-theme='dark'] [style*="#FDECEA" i],
-    [data-theme='dark'] [style*="#E6F4EA" i], [data-theme='dark'] [style*="#FFF4E5" i],
-    [data-theme='dark'] [style*="#fee2e2" i], [data-theme='dark'] [style*="#fecaca" i],
-    [data-theme='dark'] [style*="#bbf7d0" i], [data-theme='dark'] [style*="#fef3c7" i],
-    [data-theme='dark'] [style*="#E9EEF4" i], [data-theme='dark'] [style*="#EDF3EA" i],
-    [data-theme='dark'] [style*="#F8F1E6" i], [data-theme='dark'] [style*="#F3F4F6" i],
-    [data-theme='dark'] [style*="#F3EEF6" i], [data-theme='dark'] [style*="#F8EDEE" i],
-    [data-theme='dark'] [style*="#ECF3F2" i], [data-theme='dark'] [style*="#DCE5EF" i],
-    [data-theme='dark'] [style*="#DEEAD8" i], [data-theme='dark'] [style*="#F1E4CF" i],
-    [data-theme='dark'] [style*="#4CAF50" i], [data-theme='dark'] [style*="#2196F3" i], 
-    [data-theme='dark'] [style*="#FF9800" i], [data-theme='dark'] [style*="#9C27B0" i] {
-        background-color: #1e293b !important;
-        color: #f8fafc !important;
+    /* Ensure all text inside themed boxes turns light in dark mode */
+    [data-theme='dark'] .genai-box *, 
+    [data-theme='dark'] .roadmap-card *,
+    [data-theme='dark'] .dm-box *,
+    [data-theme='dark'] .project-card *,
+    [data-theme='dark'] .coding-io-box *,
+    [data-theme='dark'] [style*="background"] *,
+    [data-theme='dark'] [style*="color:#475569" i],
+    [data-theme='dark'] [style*="color:#0f172a" i] {
+        color: #f1f5f9 !important;
     }
 
-    [data-theme='dark'] [style*="#f8fafc" i],
-    [data-theme='dark'] [style*="#fafafa" i],
-    [data-theme='dark'] [style*="#e8f4fd" i],
-    [data-theme='dark'] [style*="#e6f4ea" i],
-    [data-theme='dark'] [style*="#fdecea" i], 
-    [data-theme='dark'] [style*="color:#0f172a" i], [data-theme='dark'] [style*="color:#475569" i],
-    [data-theme='dark'] [style*="#eef7ff" i] {
-        background: #0b1220 !important;
-        color: #e6eef8 !important;
-    }
+    /* Dark Mode Specific Active Borders */
+    [data-theme='dark'] .genai-box.active-blue { border-color: #3b82f6 !important; }
+    [data-theme='dark'] .genai-box.active-green { border-color: #10b981 !important; }
+    [data-theme='dark'] .genai-box.active-amber { border-color: #f59e0b !important; }
+    [data-theme='dark'] .project-card.project-focus { border-color: #3b82f6 !important; }
+    [data-theme='dark'] .project-card.project-failure { border-color: #ef4444 !important; }
+
+    /* Dark Mode specific status colors for Spark */
+    [data-theme='dark'] .spark-mem-error { background: #7f1d1d !important; color: #fecaca !important; border-color: #b91c1c !important; }
+    [data-theme='dark'] .spark-disk-spill { background: #064e3b !important; color: #bbf7d0 !important; border-color: #059669 !important; }
+    [data-theme='dark'] .spark-disk-error { background: #7f1d1d !important; color: #fecaca !important; border-color: #b91c1c !important; }
+    [data-theme='dark'] .spark-chip-active { background: #3b82f6; color: white !important; }
+    [data-theme='dark'] .spark-chip-idle { background: #334155; color: #cbd5e1 !important; }
+    [data-theme='dark'] .text-success { color: #34d399 !important; }
+    [data-theme='dark'] .text-error { color: #f87171 !important; }
 
     [data-theme='dark'] .stMarkdown, [data-theme='dark'] .stMarkdown p, 
     [data-theme='dark'] .stMarkdown span, [data-theme='dark'] .stMarkdown b,
@@ -92,12 +105,6 @@ st.markdown(
 
     [data-theme='dark'] header, [data-theme='dark'] [data-testid="stHeader"] {
         background-color: rgba(14, 17, 23, 0.8) !important;
-    }
-
-    /* Fix for project section client requirements */
-    [data-theme='dark'] [style*="min-height:108px"] {
-        background-color: #1e293b !important;
-        border: 1px solid #475569 !important;
     }
 
     /* Filter for Ace Editor to prevent light theme glare in dark mode */
@@ -330,11 +337,12 @@ if selected_module not in SECTION_ORDER:
     selected_module = DASHBOARD_SECTION_LABEL
 
 # ---------------- SIDEBAR ----------------
+st.sidebar.markdown("### Navigation")
 module = st.sidebar.selectbox(
     "Choose Section",
     SECTION_ORDER,
     index=SECTION_ORDER.index(selected_module),
-    label_visibility="collapsed",
+    label_visibility="visible",
 )
 
 # ✅ STEP 4: Sync BOTH (CRITICAL)
@@ -346,32 +354,7 @@ st.query_params["module"] = module
 # ---------------- ROUTING ----------------
 # =========================================================
 
-if module == CODING_SECTION_LABEL:
-    from modules.coding.ui import render_coding
-    render_coding()
-
-elif module == CONCEPTS_SECTION_LABEL:
-    from modules.concepts.ui import render_concepts
-    render_concepts()
-
-elif module == GENAI_SECTION_LABEL:
-    from modules.genai.ui import render_genai
-    render_genai()
-
-elif module == SPARK_SECTION_LABEL:
-    from modules.spark.ui import render_spark
-    render_spark()
-
-elif module == DATA_MODELING_SECTION_LABEL:
-    from modules.datamodeling.ui import render_datamodeling
-    render_datamodeling()
-
-elif module == PROJECTS_SECTION_LABEL:
-    from modules.projects.ui import render_projects
-    render_projects()
-
-elif module == DASHBOARD_SECTION_LABEL:
-    import matplotlib.pyplot as plt
+if module == DASHBOARD_SECTION_LABEL:
     from core.interview import load_interview_history
     from core.loader import load_questions
     from core.progress import load_progress
@@ -412,59 +395,51 @@ elif module == DASHBOARD_SECTION_LABEL:
                 textprops={"fontsize": 8},
             )
             ax.axis("equal")
+            st.pyplot(fig, clear_figure=True)
 
-            st.pyplot(fig)
-
-            st.markdown(
-                f"""
-                <div style="text-align:center;">
-                    <b>{solved} / {total}</b><br>
-                    <small>Solved</small>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-            st.markdown(
-                f"""
-                <div style="text-align:center;">
-                    <b>{solved} / {total}</b><br>
-                    <small>Solved</small>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
+            # Render Solved metric exactly once
+            st.markdown(f"<div style='text-align:center'><b>{solved} / {total}</b><br>Solved</div>", unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("Interview Simulator")
 
     history = load_interview_history()
-
     if not history:
         st.info("No interview runs yet.")
     else:
         latest_run = history[-1]
         best_run = max(history, key=lambda run: run.get("score_percent", 0))
-        average_score = round(
-            sum(run.get("score_percent", 0) for run in history) / len(history),
-            1,
-        )
+        average_score = round(sum(run.get("score_percent", 0) for run in history) / len(history), 1)
 
-        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-        metric_col1.metric("Runs", len(history))
-        metric_col2.metric("Latest Score", f"{latest_run['score_percent']}%")
-        metric_col3.metric("Best Score", f"{best_run['score_percent']}%")
-        metric_col4.metric("Average Score", f"{average_score}%")
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Runs", len(history))
+        m2.metric("Latest Score", f"{latest_run['score_percent']}%")
+        m3.metric("Best Score", f"{best_run['score_percent']}%")
+        m4.metric("Average Score", f"{average_score}%")
 
-        recent_runs = []
-        for run in reversed(history[-5:]):
-            recent_runs.append({
-                "finished_at": run["finished_at"],
-                "track": run["track"],
-                "score": f"{run['total_score']} / {run['max_score']}",
-                "accuracy": f"{run['correct_count']} / {run['total_questions']}",
-                "time_used": f"{run.get('elapsed_seconds', 0)}s",
-                "reason": run.get("finished_reason", "completed").replace("_", " ").title(),
-            })
-
+        recent_runs = [{"finished_at": r["finished_at"], "track": r["track"], "score": f"{r['total_score']}/{r['max_score']}", "accuracy": f"{r['correct_count']}/{r['total_questions']}", "time_used": f"{r.get('elapsed_seconds', 0)}s", "reason": r.get("finished_reason", "completed").replace("_", " ").title()} for r in reversed(history[-5:])]
         st.dataframe(recent_runs, use_container_width=True, hide_index=True)
+
+elif module == CODING_SECTION_LABEL:
+    from modules.coding.ui import render_coding
+    render_coding()
+
+elif module == CONCEPTS_SECTION_LABEL:
+    from modules.concepts.ui import render_concepts
+    render_concepts()
+
+elif module == GENAI_SECTION_LABEL:
+    from modules.genai.ui import render_genai
+    render_genai()
+
+elif module == SPARK_SECTION_LABEL:
+    from modules.spark.ui import render_spark
+    render_spark()
+
+elif module == DATA_MODELING_SECTION_LABEL:
+    from modules.datamodeling.ui import render_datamodeling
+    render_datamodeling()
+
+elif module == PROJECTS_SECTION_LABEL:
+    from modules.projects.ui import render_projects
+    render_projects()

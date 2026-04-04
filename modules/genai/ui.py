@@ -235,30 +235,21 @@ INTERVIEW_PLAYBOOK = [
 
 
 def build_box(title, lines=None, active=False, accent="blue", min_height=58):
-    border = "#cbd5e1"
-    background = "#ffffff"
-
-    if active and accent == "blue":
-        border = "#2563eb"
-        background = "#eff6ff"
-    elif active and accent == "green":
-        border = "#0f766e"
-        background = "#f0fdfa"
-    elif active and accent == "amber":
-        border = "#b45309"
-        background = "#fffbeb"
+    # Move from hardcoded hex values to CSS classes for consistent dark-mode support
+    class_name = "genai-box"
+    if active:
+        class_name += f" active-{accent}"
 
     details = lines or []
     if isinstance(details, str):
         details = [details]
     body = "".join(
-        f"<div style='font-size:10px;line-height:1.2;margin-top:3px;color:#475569'>{line}</div>"
+        f"<div style='font-size:10px;line-height:1.2;margin-top:3px;opacity:0.8;color:inherit;'>{line}</div>"
         for line in details
     )
     return (
-        f"<div style='background:{background};border:{'2px' if active else '1px'} solid {border};"
-        f"padding:8px;min-height:{min_height}px;text-align:center;'>"
-        f"<div style='font-size:12px;font-weight:700;color:#0f172a'>{title}</div>{body}</div>"
+        f"<div class='{class_name}' style='padding:8px;min-height:{min_height}px;text-align:center;'>"
+        f"<div style='font-size:12px;font-weight:700;color:inherit;'>{title}</div>{body}</div>"
     )
 
 
@@ -269,9 +260,9 @@ def render_stage_cards():
         with columns[idx]:
             st.markdown(
                 (
-                    "<div style='border:1px solid #cbd5e1;background:#ffffff;padding:12px;min-height:160px;'>"
-                    f"<div style='font-weight:700;margin-bottom:8px'>{stage['title']}</div>"
-                    f"<div style='font-size:13px;color:#475569'>{stage['subtitle']}</div>"
+                    "<div class='roadmap-card' style='padding:12px;min-height:160px;'>"
+                    f"<div style='font-weight:700;margin-bottom:8px;color:inherit;'>{stage['title']}</div>"
+                    f"<div style='font-size:13px;opacity:0.8;color:inherit;'>{stage['subtitle']}</div>"
                     "</div>"
                 ),
                 unsafe_allow_html=True,

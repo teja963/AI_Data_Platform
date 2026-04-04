@@ -88,8 +88,8 @@ def render_wrapped_value(value):
     rendered = pformat(preview_value(value), width=70, sort_dicts=False)
     st.markdown(
         (
-            "<div style='border:1px solid #dbe3ef;background:#ffffff;padding:10px;'>"
-            f"<pre style='white-space:pre-wrap;word-break:break-word;margin:0;font-size:12px;'>"
+            "<div class='coding-io-box' style='padding:10px;'>"
+            f"<pre style='white-space:pre-wrap;word-break:break-word;margin:0;font-size:12px;color:inherit;'>"
             f"{html.escape(rendered)}</pre></div>"
         ),
         unsafe_allow_html=True,
