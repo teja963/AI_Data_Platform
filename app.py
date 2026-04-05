@@ -133,12 +133,12 @@ st.markdown(
 )
 
 # If client has stored user in localStorage, ensure URL contains it so Streamlit can restore on reload
-st.html(
+components.html(
     """
     <script>
     (function(){
         try{
-            const ONE_HOUR = 60*60*1000;
+            const ONE_HOUR = 3600000;
             const params = new URLSearchParams(window.location.search);
             const stored = localStorage.getItem('ai_data_user');
             const ts = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
@@ -148,20 +148,18 @@ st.html(
             if (stored && ts && (now - ts > ONE_HOUR)) {
                 localStorage.removeItem('ai_data_user');
                 localStorage.removeItem('ai_data_user_ts');
-                sessionStorage.removeItem('ai_data_user_restored');
                 if (params.has('user')) {
                     params.delete('user');
-                    const newUrl = window.location.pathname + (params.toString() ? '?' + params.toString() : '');
-                    window.location.replace(newUrl);
+                    window.location.search = params.toString();
                     return;
                 }
             }
 
-            // If no user param but localStorage has a fresh user, restore once
-            if (!params.has('user') && stored && (!sessionStorage.getItem('ai_data_user_restored'))) {
-                sessionStorage.setItem('ai_data_user_restored','1');
+            // If no user param (or empty) but localStorage has a fresh user, restore
+            const urlUser = params.get('user');
+            if ((!urlUser || urlUser === "") && stored) {
                 params.set('user', stored);
-                window.location.replace(window.location.pathname + '?' + params.toString());
+                window.location.search = params.toString();
                 return;
             }
 
@@ -169,18 +167,16 @@ st.html(
             function touch(){ if(localStorage.getItem('ai_data_user')){ localStorage.setItem('ai_data_user_ts', Date.now().toString()); } }
             ['click','keydown','mousemove','touchstart'].forEach(evt=>window.addEventListener(evt, touch, {passive:true}));
 
-            // Periodic inactivity check (1 minute)
+            // Auto-logout on timeout check
             setInterval(function(){
                 const stored2 = localStorage.getItem('ai_data_user');
                 const ts2 = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
                 if(stored2 && ts2 && (Date.now() - ts2 > ONE_HOUR)){
                     localStorage.removeItem('ai_data_user');
                     localStorage.removeItem('ai_data_user_ts');
-                    sessionStorage.removeItem('ai_data_user_restored');
                     const p = new URLSearchParams(window.location.search);
-                    if(p.has('user')){ p.delete('user'); }
-                    const newUrl = window.location.pathname + (p.toString() ? '?' + p.toString() : '');
-                    window.location.replace(newUrl);
+                    p.delete('user');
+                    window.location.search = p.toString();
                 }
             }, 60*1000);
         }catch(e){console.warn(e)}
@@ -193,30 +189,15 @@ st.html(
 def _set_auth_url(username):
     """Helper to strictly set user in URL and reload if necessary."""
     st.query_params["user"] = username
-    # Extra JS insurance to ensure the URL bar reflects the change and localStorage is synced
-    st.html(f"""
-    <script>
-    try{{
-        localStorage.setItem('ai_data_user', '{username}');
-        localStorage.setItem('ai_data_user_ts', Date.now().toString());
-        const params = new URLSearchParams(window.location.search);
-        if(params.get('user') !== '{username}'){{
-            params.set('user', '{username}');
-            window.location.replace(window.location.pathname + '?' + params.toString());
-        }}
-    }}catch(e){{console.warn(e)}}
-    </script>
-    """)
 
 def _clear_auth_url():
     """Helper to strictly clear user from URL and localStorage."""
     st.query_params.pop("user", None)
-    st.html("""
+    components.html("""
     <script>
     try{
         localStorage.removeItem('ai_data_user');
         localStorage.removeItem('ai_data_user_ts');
-        sessionStorage.removeItem('ai_data_user_restored');
     }catch(e){console.warn(e)}
     </script>
     """, height=0)
@@ -245,13 +226,25 @@ if url_user and st.session_state["user"] is None:
         else:
             # Fallback: trust the query param if DB lookup is inconclusive
             st.session_state["user"] = url_user
+            st.session_state["role"] = "user"
     except Exception:
         # Ensure session doesn't break if DB is temporarily unreachable during refresh
         st.session_state["user"] = url_user
+        st.session_state["role"] = "user"
 
 # --- Sidebar logic (Moved up so it's defined even during login check)
 with st.sidebar:
     if st.session_state.get("user"):
+        # Sync to localStorage whenever page is rendered while logged in
+        components.html(f"""
+            <script>
+            try {{
+                localStorage.setItem('ai_data_user', '{st.session_state["user"]}');
+                localStorage.setItem('ai_data_user_ts', Date.now().toString());
+            }} catch(e) {{}}
+            </script>
+        """, height=0)
+
         st.write(f"Logged in as: **{st.session_state['user']}**")
         if st.button("Logout"):
             st.session_state["user"] = None
