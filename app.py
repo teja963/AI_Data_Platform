@@ -206,7 +206,7 @@ def _set_auth_url(username):
         }}
     }}catch(e){{console.warn(e)}}
     </script>
-    """, height=0)
+    """)
 
 def _clear_auth_url():
     """Helper to strictly clear user from URL and localStorage."""
