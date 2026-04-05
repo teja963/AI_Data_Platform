@@ -11,6 +11,7 @@ from core.constants import (
     DATA_MODELING_SECTION_LABEL,
     PROJECTS_SECTION_LABEL,
     ADMIN_SECTION_LABEL,
+    CODING_SECTION_LABEL,
     SECTION_ORDER,
 )
 
@@ -234,11 +235,11 @@ if url_user and not st.session_state.get("user"):
 # --- Authentication Flow (Strict Gating) ---
 if st.session_state.get("signup_mode"):
     st.title("Create New Account")
-    with st.form("signup_form"):
+    with st.form("signup_form_dedicated"):
         f_name = st.text_input("Full Name")
         u_name = st.text_input("Username").strip().lower()
         u_email = st.text_input("Email")
-        u_phone = st.text_input("Phone Number (10 digits)")
+        u_phone = st.text_input("Phone Number (10 digits for India +91)")
         u_pass = st.text_input("Password", type="password")
         
         if st.form_submit_button("Register"):
@@ -253,7 +254,7 @@ if st.session_state.get("signup_mode"):
             except Exception as e:
                 st.error(str(e))
     if st.button("Back to Login"):
-        st.session_state.pop("signup_mode")
+        st.session_state["signup_mode"] = False
         st.rerun()
     st.stop()
 
@@ -266,7 +267,7 @@ elif st.session_state.get("forgot_password"):
             st.session_state["reset_user"] = user_id
             st.success(f"OTP sent! (Dev hint: {otp})")
         else:
-            st.error("User not found.")
+            st.error("User not found or missing email/phone.")
     
     if st.session_state.get("reset_user"):
         with st.form("reset_form"):
@@ -315,13 +316,13 @@ elif st.session_state.get("pending_admin"):
 elif not st.session_state.get("user"):
     st.title("Welcome to AI Data Engineering")
     with st.form("auth_form", clear_on_submit=False):
-        st.subheader("Login")
+        st.subheader("Authentication")
         username = st.text_input("Username", key="auth_user").strip().lower()
         password = st.text_input("Password", type="password", key="auth_pass").strip()
         
         col1, col2 = st.columns(2)
         login_clicked = col1.form_submit_button("Login", use_container_width=True)
-        signup_clicked = col2.form_submit_button("Signup", use_container_width=True)
+        signup_clicked = col2.form_submit_button("Signup / Register", use_container_width=True)
     
     if st.button("Forgot Password?"):
         st.session_state["forgot_password"] = True
@@ -435,11 +436,9 @@ if st.session_state.get("user"):
     if "module" not in st.session_state:
         st.session_state["module"] = DASHBOARD_SECTION_LABEL
 
-    # ✅ STEP 2: If URL has module → override session
     if "module" in query_params:
         st.session_state["module"] = query_params["module"]
 
-    # ✅ STEP 3: Use session as final value
     selected_module = st.session_state["module"]
 
     legacy_module_map = {
@@ -447,7 +446,6 @@ if st.session_state.get("user"):
         "PySpark": SPARK_SECTION_LABEL,
         PYTHON_SECTION_LABEL: CODING_SECTION_LABEL,
     }
-
     selected_module = legacy_module_map.get(selected_module, selected_module)
 
     if query_params.get("module") == PYTHON_SECTION_LABEL and "coding_track" not in st.query_params:

@@ -22,12 +22,11 @@ def render_admin():
             if not users:
                 st.info("No users found.")
             else:
-                # Display users in a clean table-like structure
                 for u in users:
                     with st.container(border=True):
                         c1, c2, c3, c4 = st.columns([3, 2, 1, 1])
                         with c1:
-                            st.markdown(f"**{u.full_name}** (@{u.username})")
+                            st.markdown(f"**{u.full_name or 'N/A'}** (@{u.username})")
                             st.caption(f"📧 {u.email} | 📱 {u.phone_number}")
                             last_active = u.last_login.strftime("%Y-%m-%d %H:%M") if u.last_login else "Never"
                             st.markdown(f"🕒 Last Login: `{last_active}`")
@@ -42,8 +41,8 @@ def render_admin():
                                     session.commit()
                                     st.rerun()
                         with c4:
-                            if u.username != st.session_state["user"]: # Prevent self-deletion
-                                if st.button("Delete", key=f"del_{u.id}", type="secondary"):
+                            if u.username != st.session_state["user"]:
+                                if st.button("Delete", key=f"del_{u.id}"):
                                     session.delete(u)
                                     session.commit()
                                     st.rerun()
@@ -52,4 +51,4 @@ def render_admin():
 
     with tab2:
         st.subheader("System Statistics")
-        st.write("Placeholder for server monitoring and traffic logs.")
+        st.write("User activity and login logs are tracked in the database.")
