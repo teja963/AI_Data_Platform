@@ -1,0 +1,1 @@
+# Marks admin as a python package
