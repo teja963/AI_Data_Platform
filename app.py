@@ -255,7 +255,7 @@ if st.session_state.get("signup_mode"):
         st.session_state["signup_mode"] = False
         st.rerun()
     st.stop()
-
+# --- VERIFY MODE ---
 elif st.session_state.get("verify_mode"):
     st.title("Verify Your Account")
     with st.form("verification_form"):
@@ -266,12 +266,12 @@ elif st.session_state.get("verify_mode"):
                 st.success("Email verified! Your account is now pending admin approval.")
                 st.session_state.pop("verify_mode")
                 st.session_state.pop("signup_mode", None) # Clear signup mode if set
-                st.session_state.pop("verify_user")
+                st.session_state.pop("verify_user", None)
                 st.session_state.pop("signup_otp_sent", None) # Clear OTP sent state
                 st.rerun()
             else:
                 st.error("Invalid code.")
-    if st.button("Resend Code"):
+    if st.button("Resend Code", key="resend_code_verify"):
         # Need to fetch email from DB for resend
         session = SessionLocal()
         user_obj = session.query(User).filter_by(username=st.session_state["verify_user"]).first()
@@ -281,18 +281,14 @@ elif st.session_state.get("verify_mode"):
         else:
             st.error("Could not resend code. User or email not found.")
         session.close()
-    if st.button("Back to Login"):
+    if st.button("Back to Login", key="back_to_login_verify"):
         st.session_state.pop("verify_mode")
         st.session_state.pop("signup_mode", None)
         st.session_state.pop("verify_user")
         st.session_state.pop("signup_otp_sent", None)
-        st.toast("New code sent!")
-    if st.button("Back to Login"):
-        st.session_state["signup_mode"] = False
-        st.rerun()
     st.stop()
 
-elif st.session_state.get("forgot_password"):
+elif st.session_state.get("forgot_password"): # --- FORGOT PASSWORD MODE ---
     st.title("Reset Password")
     user_id = st.text_input("Enter Username or Email")
     if st.button("Send Reset OTP"):
@@ -317,12 +313,12 @@ elif st.session_state.get("forgot_password"):
                 except Exception as e:
                     st.error(str(e))
 
-    if st.button("Back"):
+    if st.button("Back", key="back_to_login_forgot_pass"):
         st.session_state.pop("forgot_password")
         st.rerun()
     st.stop()
 
-elif st.session_state.get("pending_admin"):
+elif st.session_state.get("pending_admin"): # --- ADMIN 2FA MODE ---
     st.title("Two-Factor Authentication")
     with st.form("otp_form"):
         st.info(f"Admin Verification for **{st.session_state['pending_admin']}**")
@@ -332,7 +328,7 @@ elif st.session_state.get("pending_admin"):
         if st.form_submit_button("Cancel"):
             st.session_state.pop("pending_admin")
             st.rerun()
-
+    
     if verify_clicked:
         if verify_otp(st.session_state["pending_admin"], otp_code):
             session = SessionLocal()
@@ -347,7 +343,7 @@ elif st.session_state.get("pending_admin"):
             st.error("Invalid Authenticator code.")
     st.stop()
 
-elif not st.session_state.get("user"):
+elif not st.session_state.get("user"): # --- LOGIN MODE ---
     st.title("Welcome to AI Data Engineering")
     with st.form("auth_form", clear_on_submit=False):
         st.subheader("Authentication")
@@ -356,7 +352,7 @@ elif not st.session_state.get("user"):
         
         col1, col2 = st.columns(2)
         login_clicked = col1.form_submit_button("Login", use_container_width=True)
-        signup_clicked = col2.form_submit_button("Signup / Register", use_container_width=True)
+        signup_clicked = col2.form_submit_button("Register New Account", use_container_width=True)
     
     if st.button("Forgot Password?"):
         st.session_state["forgot_password"] = True

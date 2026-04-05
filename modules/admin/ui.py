@@ -12,7 +12,7 @@ def render_admin():
 
     st.title("🛡️ Admin Dashboard")
     
-    tab1, tab2, tab3 = st.tabs(["User Management", "System Health", "SQL Console"])
+    tab1, tab2, tab3 = st.tabs(["👥 User Management", "📈 User Activity", "🔍 SQL Console"])
 
     with tab1:
         st.subheader("👥 Manage Users")
@@ -59,11 +59,11 @@ def render_admin():
             session.close()
 
     with tab2:
-        st.subheader("📈 User Activity")
+        st.subheader("📈 Recent User Logins")
         df_activity = pd.read_sql("SELECT username, last_login, created_at FROM users WHERE last_login IS NOT NULL", engine)
         if not df_activity.empty:
             st.write("Recent Active Users")
-            st.dataframe(df_activity.sort_values("last_login", ascending=False), use_container_width=True)
+            st.dataframe(df_activity.sort_values("last_login", ascending=False).reset_index(drop=True), use_container_width=True)
         else:
             st.info("No login activity recorded yet.")
 
