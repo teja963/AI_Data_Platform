@@ -23,6 +23,7 @@ st.set_page_config(layout="wide")
 # --- simple auth guard
 from core.auth import create_user, login_user, verify_otp
 from core.db import SessionLocal
+from core.models import User
 
 # --- persistent login using query params + session state
 if "user" not in st.session_state:
@@ -238,29 +239,6 @@ if url_user and st.session_state["user"] is None:
         st.session_state["user"] = url_user
         st.session_state["role"] = "user"
 
-# --- Sidebar logic (Moved up so it's defined even during login check)
-with st.sidebar:
-    if st.session_state.get("user"):
-        # Sync to localStorage whenever page is rendered while logged in
-        components.html(f"""
-            <script>
-            try {{
-                localStorage.setItem('ai_data_user', '{st.session_state["user"]}');
-                localStorage.setItem('ai_data_user_ts', Date.now().toString());
-            }} catch(e) {{}}
-            </script>
-        """, height=0)
-
-        st.write(f"Logged in as: **{st.session_state['user']}**")
-        if st.button("Logout"):
-            st.session_state["user"] = None
-            _clear_auth_url()
-            if hasattr(st, "rerun"):
-                st.rerun()
-            else:
-                st.experimental_rerun()
-
-
 # --- Login UI
 if not st.session_state.get("user") and not st.session_state.get("pending_admin"):
     st.title("Welcome to AI Data Engineering")
@@ -315,6 +293,30 @@ elif st.session_state.get("pending_admin"):
             st.error("Invalid Authenticator code.")
 
     st.stop()
+
+# --- Main App (Only reached if authenticated)
+# --- Sidebar logic
+with st.sidebar:
+    if st.session_state.get("user"):
+        # Sync to localStorage whenever page is rendered while logged in
+        components.html(f"""
+            <script>
+            try {{
+                localStorage.setItem('ai_data_user', '{st.session_state["user"]}');
+                localStorage.setItem('ai_data_user_ts', Date.now().toString());
+            }} catch(e) {{}}
+            </script>
+        """, height=0)
+
+        st.write(f"Logged in as: **{st.session_state['user']}**")
+        if st.button("Logout"):
+            st.session_state["user"] = None
+            st.session_state["role"] = "user"
+            _clear_auth_url()
+            if hasattr(st, "rerun"):
+                st.rerun()
+            else:
+                st.experimental_rerun()
 
 # ---------------- URL PARAM HANDLING ----------------
 query_params = st.query_params
