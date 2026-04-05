@@ -11,7 +11,6 @@ from core.constants import (
     DATA_MODELING_SECTION_LABEL,
     PROJECTS_SECTION_LABEL,
     ADMIN_SECTION_LABEL,
-    CODING_SECTION_LABEL,
     SECTION_ORDER,
 )
 
@@ -267,7 +266,7 @@ elif st.session_state.get("forgot_password"):
             st.session_state["reset_user"] = user_id
             st.success(f"OTP sent! (Dev hint: {otp})")
         else:
-            st.error("User not found or missing email/phone.")
+            st.error("User not found.")
     
     if st.session_state.get("reset_user"):
         with st.form("reset_form"):
@@ -436,9 +435,11 @@ if st.session_state.get("user"):
     if "module" not in st.session_state:
         st.session_state["module"] = DASHBOARD_SECTION_LABEL
 
+    # ✅ STEP 2: If URL has module → override session
     if "module" in query_params:
         st.session_state["module"] = query_params["module"]
 
+    # ✅ STEP 3: Use session as final value
     selected_module = st.session_state["module"]
 
     legacy_module_map = {
@@ -446,6 +447,7 @@ if st.session_state.get("user"):
         "PySpark": SPARK_SECTION_LABEL,
         PYTHON_SECTION_LABEL: CODING_SECTION_LABEL,
     }
+
     selected_module = legacy_module_map.get(selected_module, selected_module)
 
     if query_params.get("module") == PYTHON_SECTION_LABEL and "coding_track" not in st.query_params:

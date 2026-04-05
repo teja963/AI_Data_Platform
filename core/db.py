@@ -25,6 +25,8 @@ engine = create_engine(
     pool_pre_ping=True, 
     pool_recycle=300
 )
-SessionLocal = sessionmaker(bind=engine)
+# expire_on_commit=False prevents attributes from being wiped after a commit,
+# which helps avoid DetachedInstanceErrors when accessing data after session close.
+SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 Base = declarative_base()

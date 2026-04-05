@@ -130,7 +130,12 @@ def login_user(username, password):
         if bcrypt.checkpw(password.encode(), user.password.encode()):
             user.last_login = datetime.utcnow()
             session.commit()
-            return user
+            
+            # Return a simple session object to prevent DetachedInstanceError in app.py
+            return type('UserSession', (), {
+                'username': user.username,
+                'role': user.role
+            })()
 
         return None
     finally:
