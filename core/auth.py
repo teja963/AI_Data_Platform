@@ -1,6 +1,10 @@
 import bcrypt
 import pyotp
 import re
+import random
+import resend
+import streamlit as st
+from datetime import datetime
 from core.db import SessionLocal
 from core.models import User
 
@@ -60,6 +64,58 @@ def create_user(username, password, full_name=None, email=None, phone=None, role
     finally:
         session.close()
 
+def send_otp_email(recipient_email, otp_code):
+    """Sends the OTP via Resend API."""
+    api_key = st.secrets.get("RESEND_API_KEY")
+    if not api_key:
+        return False
+    
+    resend.api_key = api_key
+    try:
+        params = {
+            "from": "AI Platform <onboarding@resend.dev>",
+            "to": [recipient_email],
+            "subject": "Your Verification Code",
+            "html": f"<strong>Your code is: {otp_code}</strong>. It expires in 10 minutes."
+        }
+        resend.Emails.send(params)
+        return True
+    except Exception as e:
+        print(f"Resend Error: {e}")
+        return False
+
+def generate_and_store_otp(identifier):
+    """Generates a 6-digit OTP and stores it for the user (by username or email)."""
+    otp = f"{random.randint(100000, 999999)}"
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter((User.username == identifier) | (User.email == identifier)).first()
+        if user:
+            user.otp_code = otp
+            session.commit()
+            
+            # Attempt to send the real email
+            if user.email:
+                send_otp_email(user.email, otp)
+                
+            return otp  # Still returning for the UI hint during transition
+        return None
+    finally:
+        session.close()
+
+def update_password(identifier, new_password, otp_code):
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter((User.username == identifier) | (User.email == identifier)).first()
+        if not user or user.otp_code != otp_code:
+            raise ValueError("Invalid OTP or User not found.")
+        
+        user.password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
+        user.otp_code = None # Clear OTP after use
+        session.commit()
+    finally:
+        session.close()
+
 def login_user(username, password):
     session = SessionLocal()
     try:
@@ -72,6 +128,8 @@ def login_user(username, password):
             raise PermissionError("Your account is pending admin approval.")
 
         if bcrypt.checkpw(password.encode(), user.password.encode()):
+            user.last_login = datetime.utcnow()
+            session.commit()
             return user
 
         return None

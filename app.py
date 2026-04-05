@@ -231,7 +231,7 @@ if url_user and not st.session_state.get("user"):
 
 # --- Authentication Flow ---
 # If no user is logged in and no admin is pending 2FA, show the login form.
-if not st.session_state.get("user") and not st.session_state.get("pending_admin"):
+if not st.session_state.get("user") and not st.session_state.get("pending_admin") and not st.session_state.get("forgot_password"):
     st.title("Welcome to AI Data Engineering")
     with st.form("auth_form", clear_on_submit=False):
         st.subheader("Login")
@@ -241,6 +241,10 @@ if not st.session_state.get("user") and not st.session_state.get("pending_admin"
         col1, col2 = st.columns(2)
         login_clicked = col1.form_submit_button("Login", use_container_width=True)
         signup_clicked = col2.form_submit_button("Signup", use_container_width=True)
+    
+    if st.button("Forgot Password?", variant="ghost"):
+        st.session_state["forgot_password"] = True
+        st.rerun()
 
     if login_clicked and username and password:
         try:
@@ -260,17 +264,65 @@ if not st.session_state.get("user") and not st.session_state.get("pending_admin"
             st.warning(str(pe))
 
     if signup_clicked:
-        if not username or not password:
-            st.error("Username and password required for signup.")
-        else:
+        st.session_state["signup_mode"] = True
+        st.rerun()
+
+    st.stop()
+
+if st.session_state.get("signup_mode"):
+    st.title("Create New Account")
+    with st.form("signup_form"):
+        f_name = st.text_input("Full Name")
+        u_name = st.text_input("Username").strip().lower()
+        u_email = st.text_input("Email")
+        u_phone = st.text_input("Phone Number (10 digits)")
+        u_pass = st.text_input("Password", type="password")
+        
+        if st.form_submit_button("Register"):
             try:
-                # Creating user with username as default full name
-                create_user(username=username, password=password, full_name=username)
-                st.success("Account created! Please wait for admin approval.")
-            except ValueError as ve:
-                st.error(str(ve))
+                create_user(u_name, u_pass, f_name, u_email, u_phone)
+                # Simulate sending OTP
+                otp = generate_and_store_otp(u_name)
+                st.session_state["verify_user"] = u_name
+                st.info(f"Verification code sent to {u_email}/{u_phone}. (Dev hint: {otp})")
+                st.session_state.pop("signup_mode")
+                st.rerun()
             except Exception as e:
-                st.error("An error occurred during signup.")
+                st.error(str(e))
+    if st.button("Back to Login"):
+        st.session_state.pop("signup_mode")
+        st.rerun()
+    st.stop()
+
+if st.session_state.get("forgot_password"):
+    st.title("Reset Password")
+    user_id = st.text_input("Enter Username or Email")
+    if st.button("Send Reset OTP"):
+        otp = generate_and_store_otp(user_id)
+        if otp:
+            st.session_state["reset_user"] = user_id
+            st.success(f"OTP sent! (Dev hint: {otp})")
+        else:
+            st.error("User not found.")
+    
+    if st.session_state.get("reset_user"):
+        with st.form("reset_form"):
+            code = st.text_input("OTP Code")
+            new_p = st.text_input("New Password", type="password")
+            if st.form_submit_button("Update Password"):
+                try:
+                    update_password(st.session_state["reset_user"], new_p, code)
+                    st.success("Password updated! You can now login.")
+                    st.session_state.pop("forgot_password")
+                    st.session_state.pop("reset_user")
+                    st.rerun()
+                except Exception as e:
+                    st.error(str(e))
+
+    if st.button("Back"):
+        st.session_state.pop("forgot_password")
+        st.rerun()
+    st.stop()
 
     st.stop()
 
