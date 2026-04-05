@@ -231,44 +231,7 @@ if url_user and not st.session_state.get("user"):
 
 # --- Authentication Flow ---
 # If no user is logged in and no admin is pending 2FA, show the login form.
-if not st.session_state.get("user") and not st.session_state.get("pending_admin") and not st.session_state.get("forgot_password"):
-    st.title("Welcome to AI Data Engineering")
-    with st.form("auth_form", clear_on_submit=False):
-        st.subheader("Login")
-        username = st.text_input("Username", key="auth_user").strip().lower()
-        password = st.text_input("Password", type="password", key="auth_pass").strip()
-        
-        col1, col2 = st.columns(2)
-        login_clicked = col1.form_submit_button("Login", use_container_width=True)
-        signup_clicked = col2.form_submit_button("Signup", use_container_width=True)
-    
-    if st.button("Forgot Password?", variant="ghost"):
-        st.session_state["forgot_password"] = True
-        st.rerun()
-
-    if login_clicked and username and password:
-        try:
-            user = login_user(username, password)
-            if user:
-                if user.role == "admin":
-                    st.session_state["pending_admin"] = user.username
-                    st.rerun()
-                else:
-                    st.session_state["role"] = user.role
-                    st.session_state["user"] = user.username
-                    _set_auth_url(user.username)
-                    st.rerun()
-            else:
-                st.error("Invalid credentials")
-        except PermissionError as pe:
-            st.warning(str(pe))
-
-    if signup_clicked:
-        st.session_state["signup_mode"] = True
-        st.rerun()
-
-    st.stop()
-
+# --- Authentication Flow (Strict Gating) ---
 if st.session_state.get("signup_mode"):
     st.title("Create New Account")
     with st.form("signup_form"):
@@ -294,7 +257,7 @@ if st.session_state.get("signup_mode"):
         st.rerun()
     st.stop()
 
-if st.session_state.get("forgot_password"):
+elif st.session_state.get("forgot_password"):
     st.title("Reset Password")
     user_id = st.text_input("Enter Username or Email")
     if st.button("Send Reset OTP"):
@@ -324,10 +287,7 @@ if st.session_state.get("forgot_password"):
         st.rerun()
     st.stop()
 
-    st.stop()
-
-# If an admin user has successfully entered credentials and is pending 2FA, show the OTP form.
-if st.session_state.get("pending_admin"):
+elif st.session_state.get("pending_admin"):
     st.title("Two-Factor Authentication")
     with st.form("otp_form"):
         st.info(f"Admin Verification for **{st.session_state['pending_admin']}**")
@@ -350,8 +310,46 @@ if st.session_state.get("pending_admin"):
             st.rerun()
         else:
             st.error("Invalid Authenticator code.")
+    st.stop()
+
+elif not st.session_state.get("user"):
+    st.title("Welcome to AI Data Engineering")
+    with st.form("auth_form", clear_on_submit=False):
+        st.subheader("Login")
+        username = st.text_input("Username", key="auth_user").strip().lower()
+        password = st.text_input("Password", type="password", key="auth_pass").strip()
+        
+        col1, col2 = st.columns(2)
+        login_clicked = col1.form_submit_button("Login", use_container_width=True)
+        signup_clicked = col2.form_submit_button("Signup", use_container_width=True)
+    
+    if st.button("Forgot Password?"):
+        st.session_state["forgot_password"] = True
+        st.rerun()
+
+    if login_clicked:
+        try:
+            user = login_user(username, password)
+            if user:
+                if user.role == "admin":
+                    st.session_state["pending_admin"] = user.username
+                    st.rerun()
+                else:
+                    st.session_state["role"] = user.role
+                    st.session_state["user"] = user.username
+                    _set_auth_url(user.username)
+                    st.rerun()
+            else:
+                st.error("Invalid credentials")
+        except PermissionError as pe:
+            st.warning(str(pe))
+
+    if signup_clicked:
+        st.session_state["signup_mode"] = True
+        st.rerun()
 
     st.stop()
+
 
 def render_dashboard():
     from core.interview import load_interview_history
