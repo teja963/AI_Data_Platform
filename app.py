@@ -219,38 +219,33 @@ def _safe_query_param(name):
     # guard against empty string
     return v if v != "" else None
 
+# --- RESTORE SESSION FROM URL (Refresh Persistence) ---
+# Pick up the 'user' parameter set by the JavaScript restoration script
 url_user = _safe_query_param("user")
-if url_user and st.session_state["user"] is None:
+if url_user and not st.session_state.get("user"):
     try:
-        # validate user exists
         session = SessionLocal()
-        from core.models import User
+        # Verify the user actually exists in the DB before restoring
         u = session.query(User).filter_by(username=url_user).first()
-        session.close()
         if u:
             st.session_state["user"] = u.username
             st.session_state["role"] = u.role
-        else:
-            # Fallback: trust the query param if DB lookup is inconclusive
-            st.session_state["user"] = url_user
-            st.session_state["role"] = "user"
+        session.close()
     except Exception:
-        # Ensure session doesn't break if DB is temporarily unreachable during refresh
-        st.session_state["user"] = url_user
-        st.session_state["role"] = "user"
+        # DB connection might fail temporarily; don't set user if so
+        pass
+
 
 # --- Authentication Flow ---
 # If no user is logged in and no admin is pending 2FA, show the login form.
 if not st.session_state.get("user") and not st.session_state.get("pending_admin"):
     st.title("Welcome to AI Data Engineering")
     with st.form("auth_form", clear_on_submit=False):
-        st.subheader("Login or Signup")
-        username = st.text_input("Username", key="auth_user")
-        password = st.text_input("Password", type="password", key="auth_pass")
-        
-        # Signup is removed from the public UI (Option A: Admin adds users)
+        st.subheader("Login")
+        username = st.text_input("Username", key="auth_user").strip()
+        password = st.text_input("Password", type="password", key="auth_pass").strip()
         login_clicked = st.form_submit_button("Login", use_container_width=True)
-    
+
     if login_clicked and username and password:
         try:
             user = login_user(username, password)
@@ -259,8 +254,8 @@ if not st.session_state.get("user") and not st.session_state.get("pending_admin"
                     st.session_state["pending_admin"] = user.username
                     st.rerun()
                 else:
-                    st.session_state["user"] = user.username
                     st.session_state["role"] = user.role
+                    st.session_state["user"] = user.username
                     _set_auth_url(user.username)
                     st.rerun()
             else:
@@ -268,7 +263,7 @@ if not st.session_state.get("user") and not st.session_state.get("pending_admin"
         except PermissionError as pe:
             st.warning(str(pe))
 
-    st.stop() # CRITICAL: Stop execution if not authenticated
+    st.stop()
 
 # If an admin user has successfully entered credentials and is pending 2FA, show the OTP form.
 if st.session_state.get("pending_admin"):
@@ -297,11 +292,10 @@ if st.session_state.get("pending_admin"):
 
     st.stop()
 
+# --- Main Application Logic (Only reached if st.session_state["user"] is set) ---
 if st.session_state.get("user"):
     # --- Main App (Only reached if authenticated)
-    # --- Sidebar logic
     with st.sidebar:
-        # Sync to localStorage whenever page is rendered while logged in
         components.html(f"""
             <script>
             try {{
@@ -311,7 +305,7 @@ if st.session_state.get("user"):
             </script>
         """, height=0)
 
-        st.write(f"Logged in as: **{st.session_state['user']}**")
+        st.write(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
         if st.button("Logout"):
             st.session_state["user"] = None
             st.session_state["role"] = "user"
@@ -321,10 +315,6 @@ if st.session_state.get("user"):
             else:
                 st.experimental_rerun()
 
-    # ---------------- URL PARAM HANDLING ----------------
-    query_params = st.query_params
-
-    # ✅ STEP 1: Initialize session FIRST (source of truth)
     if "module" not in st.session_state:
         st.session_state["module"] = DASHBOARD_SECTION_LABEL
 
@@ -335,10 +325,8 @@ if st.session_state.get("user"):
     # ✅ STEP 3: Use session as final value
     selected_module = st.session_state["module"]
 
-    # ---------------- LEGACY MAP ----------------
     legacy_module_map = {
         "SQL": CODING_SECTION_LABEL,
-        "SQL + PySpark": CODING_SECTION_LABEL,
         "PySpark": SPARK_SECTION_LABEL,
         PYTHON_SECTION_LABEL: CODING_SECTION_LABEL,
     }
@@ -351,10 +339,7 @@ if st.session_state.get("user"):
     if selected_module not in SECTION_ORDER:
         selected_module = DASHBOARD_SECTION_LABEL
 
-    # ---------------- SIDEBAR ----------------
     st.sidebar.markdown("### Navigation")
-
-    # Filter sections based on role
     visible_sections = [s for s in SECTION_ORDER if s != ADMIN_SECTION_LABEL or st.session_state.get("role") == "admin"]
 
     module = st.sidebar.selectbox(
@@ -364,13 +349,9 @@ if st.session_state.get("user"):
         label_visibility="visible",
     )
 
-    # ✅ STEP 4: Sync BOTH (CRITICAL)
     st.session_state["module"] = module
     st.query_params["module"] = module
 
-    # =========================================================
-    # ---------------- ROUTING ----------------
-    # =========================================================
     def render_dashboard():
         from core.interview import load_interview_history
         from core.loader import load_questions
