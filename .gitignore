@@ -8,7 +8,7 @@ myenv/
 venv/
 .env/
 
-# 🔹 Streamlit secrets
+# 🔹 Streamlit secrets (CRITICAL: DO NOT COMMIT)
 .streamlit/secrets.toml
 
 # 🔹 Progress file (if you don't want to track user progress)
