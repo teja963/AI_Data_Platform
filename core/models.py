@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean
 from datetime import datetime
 from core.db import Base
 
@@ -7,6 +7,12 @@ class User(Base):
     id = Column(Integer, primary_key=True)
     username = Column(String, unique=True)
     password = Column(String)
+    full_name = Column(String)
+    email = Column(String, unique=True)
+    phone_number = Column(String)
+    role = Column(String, default="user") # 'admin' or 'user'
+    is_approved = Column(Boolean, default=False)
+    otp_secret = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 

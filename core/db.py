@@ -18,7 +18,13 @@ else:
     # Local development default
     DATABASE_URL = "postgresql://localhost/ai_data_engg"
 
-engine = create_engine(DATABASE_URL)
+# pool_pre_ping=True fixes the "SSL connection closed unexpectedly" error
+# pool_recycle ensures connections are refreshed before the server drops them
+engine = create_engine(
+    DATABASE_URL, 
+    pool_pre_ping=True, 
+    pool_recycle=300
+)
 SessionLocal = sessionmaker(bind=engine)
 
 Base = declarative_base()

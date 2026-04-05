@@ -1,6 +1,18 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import matplotlib.pyplot as plt
+from core.constants import (
+    DASHBOARD_SECTION_LABEL,
+    CONCEPTS_SECTION_LABEL,
+    GENAI_SECTION_LABEL,
+    CODING_SECTION_LABEL,
+    PYTHON_SECTION_LABEL,
+    SPARK_SECTION_LABEL,
+    DATA_MODELING_SECTION_LABEL,
+    PROJECTS_SECTION_LABEL,
+    ADMIN_SECTION_LABEL,
+    SECTION_ORDER,
+)
 
 # Enforce non-interactive backend for reliable chart rendering
 import matplotlib
@@ -9,12 +21,14 @@ matplotlib.use('Agg')
 st.set_page_config(layout="wide")
 
 # --- simple auth guard
-from core.auth import create_user, login_user
+from core.auth import create_user, login_user, verify_otp
 from core.db import SessionLocal
 
 # --- persistent login using query params + session state
 if "user" not in st.session_state:
     st.session_state["user"] = None
+if "role" not in st.session_state:
+    st.session_state["role"] = "user"
 
 # Comprehensive Dark-mode CSS to override inline styles across all modules
 st.markdown(
@@ -119,7 +133,7 @@ st.markdown(
 )
 
 # If client has stored user in localStorage, ensure URL contains it so Streamlit can restore on reload
-components.html(
+st.html(
     """
     <script>
     (function(){
@@ -180,7 +194,7 @@ def _set_auth_url(username):
     """Helper to strictly set user in URL and reload if necessary."""
     st.query_params["user"] = username
     # Extra JS insurance to ensure the URL bar reflects the change and localStorage is synced
-    components.html(f"""
+    st.html(f"""
     <script>
     try{{
         localStorage.setItem('ai_data_user', '{username}');
@@ -197,7 +211,7 @@ def _set_auth_url(username):
 def _clear_auth_url():
     """Helper to strictly clear user from URL and localStorage."""
     st.query_params.pop("user", None)
-    components.html("""
+    st.html("""
     <script>
     try{
         localStorage.removeItem('ai_data_user');
@@ -227,6 +241,7 @@ if url_user and st.session_state["user"] is None:
         session.close()
         if u:
             st.session_state["user"] = u.username
+            st.session_state["role"] = u.role
         else:
             # Fallback: trust the query param if DB lookup is inconclusive
             st.session_state["user"] = url_user
@@ -248,7 +263,7 @@ with st.sidebar:
 
 
 # --- Login UI
-if not st.session_state.get("user"):
+if not st.session_state.get("user") and not st.session_state.get("pending_admin"):
     st.title("Welcome to AI Data Engineering")
     
     with st.form("auth_form", clear_on_submit=False):
@@ -256,55 +271,51 @@ if not st.session_state.get("user"):
         username = st.text_input("Username", key="auth_user")
         password = st.text_input("Password", type="password", key="auth_pass")
         
-        col1, col2 = st.columns(2)
-        login_clicked = col1.form_submit_button("Login", use_container_width=True)
-        signup_clicked = col2.form_submit_button("Signup", use_container_width=True)
+        # Signup is removed from the public UI (Option A: Admin adds users)
+        login_clicked = st.form_submit_button("Login", use_container_width=True)
 
-    if login_clicked:
-        if not username.strip() or not password.strip():
-            st.error("Username and password cannot be empty.")
-        else:
+    if login_clicked and username and password:
+        try:
             user = login_user(username, password)
             if user:
-                st.session_state["user"] = user.username
-                _set_auth_url(user.username)
-                st.rerun()
+                if user.role == "admin":
+                    st.session_state["pending_admin"] = user.username
+                    st.rerun()
+                else:
+                    st.session_state["user"] = user.username
+                    st.session_state["role"] = user.role
+                    _set_auth_url(user.username)
+                    st.rerun()
             else:
                 st.error("Invalid credentials")
+        except PermissionError as pe:
+            st.warning(str(pe))
 
-    if signup_clicked:
-        if not username.strip() or not password.strip():
-            st.error("Username and password cannot be empty.")
+elif st.session_state.get("pending_admin"):
+    st.title("Two-Factor Authentication")
+    with st.form("otp_form"):
+        st.info(f"Admin Verification for **{st.session_state['pending_admin']}**")
+        otp_code = st.text_input("Enter 6-digit Authenticator Code", max_chars=6)
+        verify_clicked = st.form_submit_button("Verify & Login", use_container_width=True)
+        
+        if st.form_submit_button("Cancel"):
+            st.session_state.pop("pending_admin")
+            st.rerun()
+
+    if verify_clicked:
+        if verify_otp(st.session_state["pending_admin"], otp_code):
+            session = SessionLocal()
+            u = session.query(User).filter_by(username=st.session_state["pending_admin"]).first()
+            st.session_state["user"] = u.username
+            st.session_state["role"] = u.role
+            st.session_state.pop("pending_admin")
+            _set_auth_url(u.username)
+            session.close()
+            st.rerun()
         else:
-            try:
-                create_user(username, password)
-                st.success("User created successfully! You can now log in.")
-            except ValueError as ve:
-                st.error(str(ve))
-            except Exception:
-                st.error("An error occurred during signup. The username might already be taken.")
+            st.error("Invalid Authenticator code.")
 
     st.stop()
-
-# ---------------- SECTION LABELS ----------------
-DASHBOARD_SECTION_LABEL = "Dashboard"
-CONCEPTS_SECTION_LABEL = "Concepts"
-GENAI_SECTION_LABEL = "GenAI"
-CODING_SECTION_LABEL = "Coding"
-PYTHON_SECTION_LABEL = "Python"
-SPARK_SECTION_LABEL = "Spark"
-DATA_MODELING_SECTION_LABEL = "Data Modelling"
-PROJECTS_SECTION_LABEL = "Projects"
-
-SECTION_ORDER = [
-    DASHBOARD_SECTION_LABEL,
-    CONCEPTS_SECTION_LABEL,
-    GENAI_SECTION_LABEL,
-    CODING_SECTION_LABEL,
-    SPARK_SECTION_LABEL,
-    DATA_MODELING_SECTION_LABEL,
-    PROJECTS_SECTION_LABEL,
-]
 
 # ---------------- URL PARAM HANDLING ----------------
 query_params = st.query_params
@@ -338,10 +349,14 @@ if selected_module not in SECTION_ORDER:
 
 # ---------------- SIDEBAR ----------------
 st.sidebar.markdown("### Navigation")
+
+# Filter sections based on role
+visible_sections = [s for s in SECTION_ORDER if s != ADMIN_SECTION_LABEL or st.session_state.get("role") == "admin"]
+
 module = st.sidebar.selectbox(
     "Choose Section",
-    SECTION_ORDER,
-    index=SECTION_ORDER.index(selected_module),
+    visible_sections,
+    index=visible_sections.index(selected_module) if selected_module in visible_sections else 0,
     label_visibility="visible",
 )
 
@@ -349,26 +364,21 @@ module = st.sidebar.selectbox(
 st.session_state["module"] = module
 st.query_params["module"] = module
 
-
 # =========================================================
 # ---------------- ROUTING ----------------
 # =========================================================
-
-if module == DASHBOARD_SECTION_LABEL:
+def render_dashboard():
     from core.interview import load_interview_history
     from core.loader import load_questions
     from core.progress import load_progress
 
     st.title("📊 Dashboard")
-
     modules = [
         {"label": "SQL", "question_module": "sql", "progress_track": "sql"},
         {"label": "Spark", "question_module": "sql", "progress_track": "pyspark"},
         {"label": "Python", "question_module": "python", "progress_track": "python"},
     ]
-
     cols = st.columns(3)
-
     for i, module_config in enumerate(modules):
         with cols[i % 3]:
             try:
@@ -396,13 +406,10 @@ if module == DASHBOARD_SECTION_LABEL:
             )
             ax.axis("equal")
             st.pyplot(fig, clear_figure=True)
-
             # Render Solved metric exactly once
             st.markdown(f"<div style='text-align:center'><b>{solved} / {total}</b><br>Solved</div>", unsafe_allow_html=True)
-
     st.markdown("---")
     st.subheader("Interview Simulator")
-
     history = load_interview_history()
     if not history:
         st.info("No interview runs yet.")
@@ -410,36 +417,25 @@ if module == DASHBOARD_SECTION_LABEL:
         latest_run = history[-1]
         best_run = max(history, key=lambda run: run.get("score_percent", 0))
         average_score = round(sum(run.get("score_percent", 0) for run in history) / len(history), 1)
-
         m1, m2, m3, m4 = st.columns(4)
         m1.metric("Runs", len(history))
         m2.metric("Latest Score", f"{latest_run['score_percent']}%")
         m3.metric("Best Score", f"{best_run['score_percent']}%")
         m4.metric("Average Score", f"{average_score}%")
-
         recent_runs = [{"finished_at": r["finished_at"], "track": r["track"], "score": f"{r['total_score']}/{r['max_score']}", "accuracy": f"{r['correct_count']}/{r['total_questions']}", "time_used": f"{r.get('elapsed_seconds', 0)}s", "reason": r.get("finished_reason", "completed").replace("_", " ").title()} for r in reversed(history[-5:])]
         st.dataframe(recent_runs, use_container_width=True, hide_index=True)
 
-elif module == CODING_SECTION_LABEL:
-    from modules.coding.ui import render_coding
-    render_coding()
+# Map labels to rendering functions
+ROUTER = {
+    DASHBOARD_SECTION_LABEL: render_dashboard,
+    CODING_SECTION_LABEL: lambda: __import__("modules.coding.ui", fromlist=["render_coding"]).render_coding(),
+    CONCEPTS_SECTION_LABEL: lambda: __import__("modules.concepts.ui", fromlist=["render_concepts"]).render_concepts(),
+    GENAI_SECTION_LABEL: lambda: __import__("modules.genai.ui", fromlist=["render_genai"]).render_genai(),
+    SPARK_SECTION_LABEL: lambda: __import__("modules.spark.ui", fromlist=["render_spark"]).render_spark(),
+    DATA_MODELING_SECTION_LABEL: lambda: __import__("modules.datamodeling.ui", fromlist=["render_datamodeling"]).render_datamodeling(),
+    PROJECTS_SECTION_LABEL: lambda: __import__("modules.projects.ui", fromlist=["render_projects"]).render_projects(),
+    ADMIN_SECTION_LABEL: lambda: __import__("modules.admin.ui", fromlist=["render_admin"]).render_admin(),
+}
 
-elif module == CONCEPTS_SECTION_LABEL:
-    from modules.concepts.ui import render_concepts
-    render_concepts()
-
-elif module == GENAI_SECTION_LABEL:
-    from modules.genai.ui import render_genai
-    render_genai()
-
-elif module == SPARK_SECTION_LABEL:
-    from modules.spark.ui import render_spark
-    render_spark()
-
-elif module == DATA_MODELING_SECTION_LABEL:
-    from modules.datamodeling.ui import render_datamodeling
-    render_datamodeling()
-
-elif module == PROJECTS_SECTION_LABEL:
-    from modules.projects.ui import render_projects
-    render_projects()
+if module in ROUTER:
+    ROUTER[module]()

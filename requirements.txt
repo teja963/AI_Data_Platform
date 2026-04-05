@@ -6,4 +6,5 @@ sqlparse
 psycopg2-binary
 matplotlib
 bcrypt
+pyotp
 sqlalchemy

@@ -1,0 +1,30 @@
+"""
+Centralized constants for the AI Data Engineering Platform.
+"""
+
+DASHBOARD_SECTION_LABEL = "Dashboard"
+CONCEPTS_SECTION_LABEL = "Concepts"
+GENAI_SECTION_LABEL = "GenAI"
+CODING_SECTION_LABEL = "Coding"
+PYTHON_SECTION_LABEL = "Python"
+SPARK_SECTION_LABEL = "Spark"
+DATA_MODELING_SECTION_LABEL = "Data Modelling"
+PROJECTS_SECTION_LABEL = "Projects"
+ADMIN_SECTION_LABEL = "Admin"
+
+SECTION_ORDER = [
+    DASHBOARD_SECTION_LABEL,
+    CONCEPTS_SECTION_LABEL,
+    GENAI_SECTION_LABEL,
+    CODING_SECTION_LABEL,
+    SPARK_SECTION_LABEL,
+    DATA_MODELING_SECTION_LABEL,
+    PROJECTS_SECTION_LABEL,
+    ADMIN_SECTION_LABEL,
+]
+
+TRACK_KEYS = {
+    "sql": "sql",
+    "pyspark": "pyspark",
+    "python": "python"
+}

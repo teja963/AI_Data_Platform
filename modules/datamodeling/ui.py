@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from core.ai import ask_ai
+from core.components import render_ai_chat
 import random
 from datetime import datetime
 
