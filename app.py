@@ -25,7 +25,7 @@ query_params = st.query_params
 
 # --- simple auth guard
 from core.auth import create_user, login_user, verify_otp, generate_and_store_otp, update_password, verify_email_otp
-from core.db import SessionLocal
+from core.db import SessionLocal, engine
 from core.models import User
 
 # --- persistent login using query params + session state
@@ -244,9 +244,10 @@ if st.session_state.get("signup_mode"):
         if st.form_submit_button("Register"):
             try:
                 create_user(u_name, u_pass, f_name, u_email, u_phone)
-                generate_and_store_otp(u_name)
+                generate_and_store_otp(u_email) # Send OTP to email for verification
                 st.session_state["verify_user"] = u_name
                 st.session_state["verify_mode"] = True
+                st.session_state["signup_otp_sent"] = True # New state to track OTP sent
                 st.rerun()
             except Exception as e:
                 st.error(str(e))
@@ -256,21 +257,35 @@ if st.session_state.get("signup_mode"):
     st.stop()
 
 elif st.session_state.get("verify_mode"):
-    st.title("Verify Your Email")
+    st.title("Verify Your Account")
     with st.form("verification_form"):
-        st.info(f"A code was sent to the email provided for **{st.session_state['verify_user']}**")
+        st.info(f"A code was sent to the email associated with **{st.session_state['verify_user']}**")
         v_code = st.text_input("Enter 6-Digit Code")
         if st.form_submit_button("Verify Email"):
             if verify_email_otp(st.session_state["verify_user"], v_code):
                 st.success("Email verified! Your account is now pending admin approval.")
                 st.session_state.pop("verify_mode")
-                st.session_state.pop("signup_mode")
+                st.session_state.pop("signup_mode", None) # Clear signup mode if set
                 st.session_state.pop("verify_user")
+                st.session_state.pop("signup_otp_sent", None) # Clear OTP sent state
                 st.rerun()
             else:
                 st.error("Invalid code.")
     if st.button("Resend Code"):
-        generate_and_store_otp(st.session_state["verify_user"])
+        # Need to fetch email from DB for resend
+        session = SessionLocal()
+        user_obj = session.query(User).filter_by(username=st.session_state["verify_user"]).first()
+        if user_obj and user_obj.email:
+            generate_and_store_otp(user_obj.email)
+            st.toast("New code sent!")
+        else:
+            st.error("Could not resend code. User or email not found.")
+        session.close()
+    if st.button("Back to Login"):
+        st.session_state.pop("verify_mode")
+        st.session_state.pop("signup_mode", None)
+        st.session_state.pop("verify_user")
+        st.session_state.pop("signup_otp_sent", None)
         st.toast("New code sent!")
     if st.button("Back to Login"):
         st.session_state["signup_mode"] = False

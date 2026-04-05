@@ -31,9 +31,11 @@ def render_admin():
             else:
                 user_data = []
                 for u in users:
+                    # Ensure full_name is not None for display
+                    display_name = u.full_name if u.full_name else u.username
                     user_data.append({
                         "ID": u.id,
-                        "Name": u.full_name,
+                        "Name": display_name,
                         "Username": u.username,
                         "Email": u.email,
                         "Verified": "✅" if u.email_verified else "❌",
@@ -45,7 +47,7 @@ def render_admin():
 
                 st.divider()
                 st.markdown("### Pending Approvals")
-                pending = [u for u in users if not u.is_approved and u.email_verified]
+                pending = [u for u in users if not u.is_approved and u.email_verified] # Only show verified users for approval
                 for p_user in pending:
                     col1, col2 = st.columns([3, 1])
                     col1.write(f"Approve **{p_user.username}** ({p_user.email})?")
