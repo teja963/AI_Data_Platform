@@ -12,6 +12,7 @@ class User(Base):
     phone_number = Column(String)
     role = Column(String, default="user") # 'admin' or 'user'
     is_approved = Column(Boolean, default=False)
+    email_verified = Column(Boolean, default=False)
     otp_secret = Column(String, nullable=True)
     otp_code = Column(String, nullable=True) # For email/phone verification
     last_login = Column(DateTime, nullable=True)

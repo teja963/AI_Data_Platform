@@ -24,7 +24,7 @@ st.set_page_config(layout="wide")
 query_params = st.query_params
 
 # --- simple auth guard
-from core.auth import create_user, login_user, verify_otp
+from core.auth import create_user, login_user, verify_otp, generate_and_store_otp, update_password, verify_email_otp
 from core.db import SessionLocal
 from core.models import User
 
@@ -244,14 +244,34 @@ if st.session_state.get("signup_mode"):
         if st.form_submit_button("Register"):
             try:
                 create_user(u_name, u_pass, f_name, u_email, u_phone)
-                # Simulate sending OTP
-                otp = generate_and_store_otp(u_name)
+                generate_and_store_otp(u_name)
                 st.session_state["verify_user"] = u_name
-                st.info(f"Verification code sent to {u_email}/{u_phone}. (Dev hint: {otp})")
-                st.session_state.pop("signup_mode")
+                st.session_state["verify_mode"] = True
                 st.rerun()
             except Exception as e:
                 st.error(str(e))
+    if st.button("Back to Login"):
+        st.session_state["signup_mode"] = False
+        st.rerun()
+    st.stop()
+
+elif st.session_state.get("verify_mode"):
+    st.title("Verify Your Email")
+    with st.form("verification_form"):
+        st.info(f"A code was sent to the email provided for **{st.session_state['verify_user']}**")
+        v_code = st.text_input("Enter 6-Digit Code")
+        if st.form_submit_button("Verify Email"):
+            if verify_email_otp(st.session_state["verify_user"], v_code):
+                st.success("Email verified! Your account is now pending admin approval.")
+                st.session_state.pop("verify_mode")
+                st.session_state.pop("signup_mode")
+                st.session_state.pop("verify_user")
+                st.rerun()
+            else:
+                st.error("Invalid code.")
+    if st.button("Resend Code"):
+        generate_and_store_otp(st.session_state["verify_user"])
+        st.toast("New code sent!")
     if st.button("Back to Login"):
         st.session_state["signup_mode"] = False
         st.rerun()

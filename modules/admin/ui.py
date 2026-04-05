@@ -1,5 +1,6 @@
 import streamlit as st
-from core.db import SessionLocal
+import pandas as pd
+from core.db import SessionLocal, engine
 from core.models import User
 from core.auth import create_user
 import pyotp
@@ -11,44 +12,65 @@ def render_admin():
 
     st.title("🛡️ Admin Dashboard")
     
-    tab1, tab2 = st.tabs(["User Management", "System Health"])
+    tab1, tab2, tab3 = st.tabs(["User Management", "System Health", "SQL Console"])
 
     with tab1:
-        st.subheader("Manage Users")
+        st.subheader("👥 Manage Users")
+        search = st.text_input("Search by Username or Email", "").lower()
+        
         session = SessionLocal()
         try:
-            users = session.query(User).order_by(User.created_at.desc()).all()
+            query = session.query(User)
+            if search:
+                query = query.filter((User.username.ilike(f"%{search}%")) | (User.email.ilike(f"%{search}%")))
             
+            users = query.order_by(User.created_at.desc()).all()
+
             if not users:
                 st.info("No users found.")
             else:
+                user_data = []
                 for u in users:
-                    with st.container(border=True):
-                        c1, c2, c3, c4 = st.columns([3, 2, 1, 1])
-                        with c1:
-                            st.markdown(f"**{u.full_name or 'N/A'}** (@{u.username})")
-                            st.caption(f"📧 {u.email} | 📱 {u.phone_number}")
-                            last_active = u.last_login.strftime("%Y-%m-%d %H:%M") if u.last_login else "Never"
-                            st.markdown(f"🕒 Last Login: `{last_active}`")
-                        with c2:
-                            status = "✅ Approved" if u.is_approved else "⏳ Pending"
-                            st.markdown(f"Status: {status}")
-                            st.caption(f"Role: {u.role.upper()}")
-                        with c3:
-                            if not u.is_approved:
-                                if st.button("Approve", key=f"app_{u.id}"):
-                                    u.is_approved = True
-                                    session.commit()
-                                    st.rerun()
-                        with c4:
-                            if u.username != st.session_state["user"]:
-                                if st.button("Delete", key=f"del_{u.id}"):
-                                    session.delete(u)
-                                    session.commit()
-                                    st.rerun()
+                    user_data.append({
+                        "ID": u.id,
+                        "Name": u.full_name,
+                        "Username": u.username,
+                        "Email": u.email,
+                        "Verified": "✅" if u.email_verified else "❌",
+                        "Approved": "✅" if u.is_approved else "⏳",
+                        "Last Login": u.last_login.strftime("%Y-%m-%d %H:%M") if u.last_login else "Never"
+                    })
+                
+                st.dataframe(pd.DataFrame(user_data), use_container_width=True, hide_index=True)
+
+                st.divider()
+                st.markdown("### Pending Approvals")
+                pending = [u for u in users if not u.is_approved and u.email_verified]
+                for p_user in pending:
+                    col1, col2 = st.columns([3, 1])
+                    col1.write(f"Approve **{p_user.username}** ({p_user.email})?")
+                    if col2.button("Approve", key=f"app_{p_user.id}"):
+                        p_user.is_approved = True
+                        session.commit()
+                        st.rerun()
         finally:
             session.close()
 
     with tab2:
-        st.subheader("System Statistics")
-        st.write("User activity and login logs are tracked in the database.")
+        st.subheader("📈 User Activity")
+        df_activity = pd.read_sql("SELECT username, last_login, created_at FROM users WHERE last_login IS NOT NULL", engine)
+        if not df_activity.empty:
+            st.write("Recent Active Users")
+            st.dataframe(df_activity.sort_values("last_login", ascending=False), use_container_width=True)
+        else:
+            st.info("No login activity recorded yet.")
+
+    with tab3:
+        st.subheader("🔍 SQL Explorer")
+        query_input = st.text_area("Run read-only queries on users", "SELECT * FROM users LIMIT 10;")
+        if st.button("Execute Query"):
+            try:
+                df_res = pd.read_sql(query_input, engine)
+                st.dataframe(df_res, use_container_width=True)
+            except Exception as e:
+                st.error(f"SQL Error: {e}")

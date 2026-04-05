@@ -103,6 +103,19 @@ def generate_and_store_otp(identifier):
     finally:
         session.close()
 
+def verify_email_otp(identifier, code):
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter((User.username == identifier) | (User.email == identifier)).first()
+        if user and user.otp_code == code:
+            user.email_verified = True
+            user.otp_code = None
+            session.commit()
+            return True
+        return False
+    finally:
+        session.close()
+
 def update_password(identifier, new_password, otp_code):
     session = SessionLocal()
     try:
@@ -123,6 +136,9 @@ def login_user(username, password):
 
         if not user:
             return None
+
+        if not user.email_verified:
+            raise PermissionError("Please verify your email first.")
 
         if not user.is_approved and user.role != "admin":
             raise PermissionError("Your account is pending admin approval.")
