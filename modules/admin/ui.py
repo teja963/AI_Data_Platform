@@ -2,6 +2,7 @@ import streamlit as st
 from core.db import SessionLocal
 from core.models import User
 from core.auth import create_user
+import pyotp
 
 def render_admin():
     if st.session_state.get("role") != "admin":
@@ -63,13 +64,18 @@ def render_admin():
             
             if submit:
                 try:
+                    # Generate OTP secret if the new user is an admin
+                    generated_otp_secret = pyotp.random_base32() if new_role == "admin" else None
+                    
+                    # Create user via auth helper
                     create_user(
                         username=new_username,
                         password=new_password,
                         full_name=new_full_name,
                         email=new_email,
                         phone=new_phone,
-                        role=new_role
+                        role=new_role,
+                        otp_secret=generated_otp_secret
                     )
                     
                     # Auto-approve since admin created it
@@ -81,5 +87,11 @@ def render_admin():
                     session.close()
                     
                     st.success(f"User {new_username} created and approved successfully!")
+                    
+                    if new_role == "admin":
+                        st.warning("⚠️ **IMPORTANT**: Copy this Secret Key and give it to the user for their Authenticator app:")
+                        st.code(generated_otp_secret)
+                        st.caption("This key will not be shown again.")
+                        
                 except Exception as e:
                     st.error(f"Error: {str(e)}")

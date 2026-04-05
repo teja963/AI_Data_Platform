@@ -20,6 +20,9 @@ matplotlib.use('Agg')
 
 st.set_page_config(layout="wide")
 
+# --- Global Query Params Initialization ---
+query_params = st.query_params
+
 # --- simple auth guard
 from core.auth import create_user, login_user, verify_otp
 from core.db import SessionLocal
@@ -133,55 +136,47 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# If client has stored user in localStorage, ensure URL contains it so Streamlit can restore on reload
+# --- SESSION PERSISTENCE (Option 2: Stay logged in for 1 hour) ---
 components.html(
     """
     <script>
     (function(){
         try{
-            const ONE_HOUR = 3600000; // 1 hour in ms
+            const ONE_HOUR = 3600000; 
             const params = new URLSearchParams(window.location.search);
             const stored = localStorage.getItem('ai_data_user');
             const ts = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
             const now = Date.now();
 
-            // If the stored session is older than 1 hour, clear storage and remove user param
+            // Auto-logout if session expired
             if (stored && ts && (now - ts > ONE_HOUR)) {
                 localStorage.removeItem('ai_data_user');
                 localStorage.removeItem('ai_data_user_ts');
-                params.delete('user');
-                window.location.replace(window.location.pathname + '?' + params.toString());
+                if (params.has('user')) {
+                    params.delete('user');
+                    window.location.replace(window.location.pathname + '?' + params.toString());
+                }
                 return;
             }
 
-            // If no user param (or empty) but localStorage has a fresh user, restore
+            // Restore session if URL is empty but localStorage is fresh
             const urlUser = params.get('user');
             if ((!urlUser || urlUser === "") && stored) {
                 params.set('user', stored);
                 window.location.replace(window.location.pathname + '?' + params.toString());
-                return;
             }
 
-            // Keep timestamp refreshed on user activity
+            // Update activity timestamp
             function touch(){ if(localStorage.getItem('ai_data_user')){ localStorage.setItem('ai_data_user_ts', Date.now().toString()); } }
             ['click','keydown','mousemove','touchstart'].forEach(evt=>window.addEventListener(evt, touch, {passive:true}));
 
-            // Auto-logout monitor
-            setInterval(function(){
-                const stored2 = localStorage.getItem('ai_data_user');
-                const ts2 = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
-                if(stored2 && ts2 && (Date.now() - ts2 > ONE_HOUR)){
-                    localStorage.removeItem('ai_data_user');
-                    localStorage.removeItem('ai_data_user_ts');
-                    window.location.replace(window.location.pathname);
-                }
-            }, 60*1000);
         }catch(e){console.warn(e)}
     })();
     </script>
     """,
     height=0,
 )
+
 # If URL has ?user= set, try to restore session
 def _set_auth_url(username):
     """Helper to strictly set user in URL and reload if necessary."""
@@ -219,20 +214,18 @@ def _safe_query_param(name):
     # guard against empty string
     return v if v != "" else None
 
-# --- RESTORE SESSION FROM URL (Refresh Persistence) ---
-# Pick up the 'user' parameter set by the JavaScript restoration script
+# --- RESTORE SESSION FROM URL ---
 url_user = _safe_query_param("user")
 if url_user and not st.session_state.get("user"):
     try:
         session = SessionLocal()
-        # Verify the user actually exists in the DB before restoring
         u = session.query(User).filter_by(username=url_user).first()
         if u:
             st.session_state["user"] = u.username
             st.session_state["role"] = u.role
         session.close()
     except Exception:
-        # DB connection might fail temporarily; don't set user if so
+        # Silence DB errors during restoration to prevent login loops
         pass
 
 
@@ -242,9 +235,12 @@ if not st.session_state.get("user") and not st.session_state.get("pending_admin"
     st.title("Welcome to AI Data Engineering")
     with st.form("auth_form", clear_on_submit=False):
         st.subheader("Login")
-        username = st.text_input("Username", key="auth_user").strip()
+        username = st.text_input("Username", key="auth_user").strip().lower()
         password = st.text_input("Password", type="password", key="auth_pass").strip()
-        login_clicked = st.form_submit_button("Login", use_container_width=True)
+        
+        col1, col2 = st.columns(2)
+        login_clicked = col1.form_submit_button("Login", use_container_width=True)
+        signup_clicked = col2.form_submit_button("Signup", use_container_width=True)
 
     if login_clicked and username and password:
         try:
@@ -262,6 +258,19 @@ if not st.session_state.get("user") and not st.session_state.get("pending_admin"
                 st.error("Invalid credentials")
         except PermissionError as pe:
             st.warning(str(pe))
+
+    if signup_clicked:
+        if not username or not password:
+            st.error("Username and password required for signup.")
+        else:
+            try:
+                # Creating user with username as default full name
+                create_user(username=username, password=password, full_name=username)
+                st.success("Account created! Please wait for admin approval.")
+            except ValueError as ve:
+                st.error(str(ve))
+            except Exception as e:
+                st.error("An error occurred during signup.")
 
     st.stop()
 
@@ -291,6 +300,64 @@ if st.session_state.get("pending_admin"):
             st.error("Invalid Authenticator code.")
 
     st.stop()
+
+def render_dashboard():
+    from core.interview import load_interview_history
+    from core.loader import load_questions
+    from core.progress import load_progress
+
+    st.title("📊 Dashboard")
+    modules = [
+        {"label": "SQL", "question_module": "sql", "progress_track": "sql"},
+        {"label": "Spark", "question_module": "sql", "progress_track": "pyspark"},
+        {"label": "Python", "question_module": "python", "progress_track": "python"},
+    ]
+    cols = st.columns(3)
+    for i, module_config in enumerate(modules):
+        with cols[i % 3]:
+            try:
+                questions = load_questions(module_config["question_module"])
+            except Exception:
+                questions = []
+
+            total = len(questions)
+            solved_keys = load_progress(module_config["progress_track"])
+            solved = len([q for q in questions if q.get("progress_key") in solved_keys])
+            unsolved = total - solved
+
+            st.markdown(f"### 📘 {module_config['label'].upper()}")
+
+            if total == 0:
+                st.info("No questions yet")
+                continue
+
+            fig, ax = plt.subplots(figsize=(2.5, 2.5))
+            ax.pie(
+                [solved, unsolved],
+                labels=["✔", "✖"],
+                autopct="%1.0f%%",
+                textprops={"fontsize": 8},
+            )
+            ax.axis("equal")
+            st.pyplot(fig, clear_figure=True)
+            # Render Solved metric exactly once
+            st.markdown(f"<div style='text-align:center'><b>{solved} / {total}</b><br>Solved</div>", unsafe_allow_html=True)
+    st.markdown("---")
+    st.subheader("Interview Simulator")
+    history = load_interview_history()
+    if not history:
+        st.info("No interview runs yet.")
+    else:
+        latest_run = history[-1]
+        best_run = max(history, key=lambda run: run.get("score_percent", 0))
+        average_score = round(sum(run.get("score_percent", 0) for run in history) / len(history), 1)
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Runs", len(history))
+        m2.metric("Latest Score", f"{latest_run['score_percent']}%")
+        m3.metric("Best Score", f"{best_run['score_percent']}%")
+        m4.metric("Average Score", f"{average_score}%")
+        recent_runs = [{"finished_at": r["finished_at"], "track": r["track"], "score": f"{r['total_score']}/{r['max_score']}", "accuracy": f"{r['correct_count']}/{r['total_questions']}", "time_used": f"{r.get('elapsed_seconds', 0)}s", "reason": r.get("finished_reason", "completed").replace("_", " ").title()} for r in reversed(history[-5:])]
+        st.dataframe(recent_runs, use_container_width=True, hide_index=True)
 
 # --- Main Application Logic (Only reached if st.session_state["user"] is set) ---
 if st.session_state.get("user"):
@@ -351,64 +418,6 @@ if st.session_state.get("user"):
 
     st.session_state["module"] = module
     st.query_params["module"] = module
-
-    def render_dashboard():
-        from core.interview import load_interview_history
-        from core.loader import load_questions
-        from core.progress import load_progress
-
-        st.title("📊 Dashboard")
-        modules = [
-            {"label": "SQL", "question_module": "sql", "progress_track": "sql"},
-            {"label": "Spark", "question_module": "sql", "progress_track": "pyspark"},
-            {"label": "Python", "question_module": "python", "progress_track": "python"},
-        ]
-        cols = st.columns(3)
-        for i, module_config in enumerate(modules):
-            with cols[i % 3]:
-                try:
-                    questions = load_questions(module_config["question_module"])
-                except Exception:
-                    questions = []
-
-                total = len(questions)
-                solved_keys = load_progress(module_config["progress_track"])
-                solved = len([q for q in questions if q.get("progress_key") in solved_keys])
-                unsolved = total - solved
-
-                st.markdown(f"### 📘 {module_config['label'].upper()}")
-
-                if total == 0:
-                    st.info("No questions yet")
-                    continue
-
-                fig, ax = plt.subplots(figsize=(2.5, 2.5))
-                ax.pie(
-                    [solved, unsolved],
-                    labels=["✔", "✖"],
-                    autopct="%1.0f%%",
-                    textprops={"fontsize": 8},
-                )
-                ax.axis("equal")
-                st.pyplot(fig, clear_figure=True)
-                # Render Solved metric exactly once
-                st.markdown(f"<div style='text-align:center'><b>{solved} / {total}</b><br>Solved</div>", unsafe_allow_html=True)
-        st.markdown("---")
-        st.subheader("Interview Simulator")
-        history = load_interview_history()
-        if not history:
-            st.info("No interview runs yet.")
-        else:
-            latest_run = history[-1]
-            best_run = max(history, key=lambda run: run.get("score_percent", 0))
-            average_score = round(sum(run.get("score_percent", 0) for run in history) / len(history), 1)
-            m1, m2, m3, m4 = st.columns(4)
-            m1.metric("Runs", len(history))
-            m2.metric("Latest Score", f"{latest_run['score_percent']}%")
-            m3.metric("Best Score", f"{best_run['score_percent']}%")
-            m4.metric("Average Score", f"{average_score}%")
-            recent_runs = [{"finished_at": r["finished_at"], "track": r["track"], "score": f"{r['total_score']}/{r['max_score']}", "accuracy": f"{r['correct_count']}/{r['total_questions']}", "time_used": f"{r.get('elapsed_seconds', 0)}s", "reason": r.get("finished_reason", "completed").replace("_", " ").title()} for r in reversed(history[-5:])]
-            st.dataframe(recent_runs, use_container_width=True, hide_index=True)
 
     # Map labels to rendering functions
     ROUTER = {
