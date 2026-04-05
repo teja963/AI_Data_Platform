@@ -138,7 +138,7 @@ components.html(
     <script>
     (function(){
         try{
-            const ONE_HOUR = 3600000;
+            const ONE_HOUR = 3600000; // 1 hour in ms
             const params = new URLSearchParams(window.location.search);
             const stored = localStorage.getItem('ai_data_user');
             const ts = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
@@ -148,18 +148,16 @@ components.html(
             if (stored && ts && (now - ts > ONE_HOUR)) {
                 localStorage.removeItem('ai_data_user');
                 localStorage.removeItem('ai_data_user_ts');
-                if (params.has('user')) {
-                    params.delete('user');
-                    window.location.search = params.toString();
-                    return;
-                }
+                params.delete('user');
+                window.location.replace(window.location.pathname + '?' + params.toString());
+                return;
             }
 
             // If no user param (or empty) but localStorage has a fresh user, restore
             const urlUser = params.get('user');
             if ((!urlUser || urlUser === "") && stored) {
                 params.set('user', stored);
-                window.location.search = params.toString();
+                window.location.replace(window.location.pathname + '?' + params.toString());
                 return;
             }
 
@@ -167,16 +165,14 @@ components.html(
             function touch(){ if(localStorage.getItem('ai_data_user')){ localStorage.setItem('ai_data_user_ts', Date.now().toString()); } }
             ['click','keydown','mousemove','touchstart'].forEach(evt=>window.addEventListener(evt, touch, {passive:true}));
 
-            // Auto-logout on timeout check
+            // Auto-logout monitor
             setInterval(function(){
                 const stored2 = localStorage.getItem('ai_data_user');
                 const ts2 = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
                 if(stored2 && ts2 && (Date.now() - ts2 > ONE_HOUR)){
                     localStorage.removeItem('ai_data_user');
                     localStorage.removeItem('ai_data_user_ts');
-                    const p = new URLSearchParams(window.location.search);
-                    p.delete('user');
-                    window.location.search = p.toString();
+                    window.location.replace(window.location.pathname);
                 }
             }, 60*1000);
         }catch(e){console.warn(e)}
@@ -189,6 +185,16 @@ components.html(
 def _set_auth_url(username):
     """Helper to strictly set user in URL and reload if necessary."""
     st.query_params["user"] = username
+    # Immediate JS sync to localStorage so refresh works right after login
+    components.html(f"""
+    <script>
+    try{{
+        localStorage.setItem('ai_data_user', '{username}');
+        localStorage.setItem('ai_data_user_ts', Date.now().toString());
+    }}catch(e){{}}
+    </script>
+    """, height=0)
+
 
 def _clear_auth_url():
     """Helper to strictly clear user from URL and localStorage."""
