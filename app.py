@@ -239,10 +239,10 @@ if url_user and st.session_state["user"] is None:
         st.session_state["user"] = url_user
         st.session_state["role"] = "user"
 
-# --- Login UI
+# --- Authentication Flow ---
+# If no user is logged in and no admin is pending 2FA, show the login form.
 if not st.session_state.get("user") and not st.session_state.get("pending_admin"):
     st.title("Welcome to AI Data Engineering")
-    
     with st.form("auth_form", clear_on_submit=False):
         st.subheader("Login or Signup")
         username = st.text_input("Username", key="auth_user")
@@ -250,7 +250,7 @@ if not st.session_state.get("user") and not st.session_state.get("pending_admin"
         
         # Signup is removed from the public UI (Option A: Admin adds users)
         login_clicked = st.form_submit_button("Login", use_container_width=True)
-
+    
     if login_clicked and username and password:
         try:
             user = login_user(username, password)
@@ -268,7 +268,10 @@ if not st.session_state.get("user") and not st.session_state.get("pending_admin"
         except PermissionError as pe:
             st.warning(str(pe))
 
-elif st.session_state.get("pending_admin"):
+    st.stop() # CRITICAL: Stop execution if not authenticated
+
+# If an admin user has successfully entered credentials and is pending 2FA, show the OTP form.
+if st.session_state.get("pending_admin"):
     st.title("Two-Factor Authentication")
     with st.form("otp_form"):
         st.info(f"Admin Verification for **{st.session_state['pending_admin']}**")
@@ -294,10 +297,10 @@ elif st.session_state.get("pending_admin"):
 
     st.stop()
 
-# --- Main App (Only reached if authenticated)
-# --- Sidebar logic
-with st.sidebar:
-    if st.session_state.get("user"):
+if st.session_state.get("user"):
+    # --- Main App (Only reached if authenticated)
+    # --- Sidebar logic
+    with st.sidebar:
         # Sync to localStorage whenever page is rendered while logged in
         components.html(f"""
             <script>
@@ -318,125 +321,125 @@ with st.sidebar:
             else:
                 st.experimental_rerun()
 
-# ---------------- URL PARAM HANDLING ----------------
-query_params = st.query_params
+    # ---------------- URL PARAM HANDLING ----------------
+    query_params = st.query_params
 
-# ✅ STEP 1: Initialize session FIRST (source of truth)
-if "module" not in st.session_state:
-    st.session_state["module"] = DASHBOARD_SECTION_LABEL
+    # ✅ STEP 1: Initialize session FIRST (source of truth)
+    if "module" not in st.session_state:
+        st.session_state["module"] = DASHBOARD_SECTION_LABEL
 
-# ✅ STEP 2: If URL has module → override session
-if "module" in query_params:
-    st.session_state["module"] = query_params["module"]
+    # ✅ STEP 2: If URL has module → override session
+    if "module" in query_params:
+        st.session_state["module"] = query_params["module"]
 
-# ✅ STEP 3: Use session as final value
-selected_module = st.session_state["module"]
+    # ✅ STEP 3: Use session as final value
+    selected_module = st.session_state["module"]
 
-# ---------------- LEGACY MAP ----------------
-legacy_module_map = {
-    "SQL": CODING_SECTION_LABEL,
-    "SQL + PySpark": CODING_SECTION_LABEL,
-    "PySpark": SPARK_SECTION_LABEL,
-    PYTHON_SECTION_LABEL: CODING_SECTION_LABEL,
-}
+    # ---------------- LEGACY MAP ----------------
+    legacy_module_map = {
+        "SQL": CODING_SECTION_LABEL,
+        "SQL + PySpark": CODING_SECTION_LABEL,
+        "PySpark": SPARK_SECTION_LABEL,
+        PYTHON_SECTION_LABEL: CODING_SECTION_LABEL,
+    }
 
-selected_module = legacy_module_map.get(selected_module, selected_module)
+    selected_module = legacy_module_map.get(selected_module, selected_module)
 
-if query_params.get("module") == PYTHON_SECTION_LABEL and "coding_track" not in st.query_params:
-    st.query_params["coding_track"] = "Python"
+    if query_params.get("module") == PYTHON_SECTION_LABEL and "coding_track" not in st.query_params:
+        st.query_params["coding_track"] = "Python"
 
-if selected_module not in SECTION_ORDER:
-    selected_module = DASHBOARD_SECTION_LABEL
+    if selected_module not in SECTION_ORDER:
+        selected_module = DASHBOARD_SECTION_LABEL
 
-# ---------------- SIDEBAR ----------------
-st.sidebar.markdown("### Navigation")
+    # ---------------- SIDEBAR ----------------
+    st.sidebar.markdown("### Navigation")
 
-# Filter sections based on role
-visible_sections = [s for s in SECTION_ORDER if s != ADMIN_SECTION_LABEL or st.session_state.get("role") == "admin"]
+    # Filter sections based on role
+    visible_sections = [s for s in SECTION_ORDER if s != ADMIN_SECTION_LABEL or st.session_state.get("role") == "admin"]
 
-module = st.sidebar.selectbox(
-    "Choose Section",
-    visible_sections,
-    index=visible_sections.index(selected_module) if selected_module in visible_sections else 0,
-    label_visibility="visible",
-)
+    module = st.sidebar.selectbox(
+        "Choose Section",
+        visible_sections,
+        index=visible_sections.index(selected_module) if selected_module in visible_sections else 0,
+        label_visibility="visible",
+    )
 
-# ✅ STEP 4: Sync BOTH (CRITICAL)
-st.session_state["module"] = module
-st.query_params["module"] = module
+    # ✅ STEP 4: Sync BOTH (CRITICAL)
+    st.session_state["module"] = module
+    st.query_params["module"] = module
 
-# =========================================================
-# ---------------- ROUTING ----------------
-# =========================================================
-def render_dashboard():
-    from core.interview import load_interview_history
-    from core.loader import load_questions
-    from core.progress import load_progress
+    # =========================================================
+    # ---------------- ROUTING ----------------
+    # =========================================================
+    def render_dashboard():
+        from core.interview import load_interview_history
+        from core.loader import load_questions
+        from core.progress import load_progress
 
-    st.title("📊 Dashboard")
-    modules = [
-        {"label": "SQL", "question_module": "sql", "progress_track": "sql"},
-        {"label": "Spark", "question_module": "sql", "progress_track": "pyspark"},
-        {"label": "Python", "question_module": "python", "progress_track": "python"},
-    ]
-    cols = st.columns(3)
-    for i, module_config in enumerate(modules):
-        with cols[i % 3]:
-            try:
-                questions = load_questions(module_config["question_module"])
-            except Exception:
-                questions = []
+        st.title("📊 Dashboard")
+        modules = [
+            {"label": "SQL", "question_module": "sql", "progress_track": "sql"},
+            {"label": "Spark", "question_module": "sql", "progress_track": "pyspark"},
+            {"label": "Python", "question_module": "python", "progress_track": "python"},
+        ]
+        cols = st.columns(3)
+        for i, module_config in enumerate(modules):
+            with cols[i % 3]:
+                try:
+                    questions = load_questions(module_config["question_module"])
+                except Exception:
+                    questions = []
 
-            total = len(questions)
-            solved_keys = load_progress(module_config["progress_track"])
-            solved = len([q for q in questions if q.get("progress_key") in solved_keys])
-            unsolved = total - solved
+                total = len(questions)
+                solved_keys = load_progress(module_config["progress_track"])
+                solved = len([q for q in questions if q.get("progress_key") in solved_keys])
+                unsolved = total - solved
 
-            st.markdown(f"### 📘 {module_config['label'].upper()}")
+                st.markdown(f"### 📘 {module_config['label'].upper()}")
 
-            if total == 0:
-                st.info("No questions yet")
-                continue
+                if total == 0:
+                    st.info("No questions yet")
+                    continue
 
-            fig, ax = plt.subplots(figsize=(2.5, 2.5))
-            ax.pie(
-                [solved, unsolved],
-                labels=["✔", "✖"],
-                autopct="%1.0f%%",
-                textprops={"fontsize": 8},
-            )
-            ax.axis("equal")
-            st.pyplot(fig, clear_figure=True)
-            # Render Solved metric exactly once
-            st.markdown(f"<div style='text-align:center'><b>{solved} / {total}</b><br>Solved</div>", unsafe_allow_html=True)
-    st.markdown("---")
-    st.subheader("Interview Simulator")
-    history = load_interview_history()
-    if not history:
-        st.info("No interview runs yet.")
-    else:
-        latest_run = history[-1]
-        best_run = max(history, key=lambda run: run.get("score_percent", 0))
-        average_score = round(sum(run.get("score_percent", 0) for run in history) / len(history), 1)
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Runs", len(history))
-        m2.metric("Latest Score", f"{latest_run['score_percent']}%")
-        m3.metric("Best Score", f"{best_run['score_percent']}%")
-        m4.metric("Average Score", f"{average_score}%")
-        recent_runs = [{"finished_at": r["finished_at"], "track": r["track"], "score": f"{r['total_score']}/{r['max_score']}", "accuracy": f"{r['correct_count']}/{r['total_questions']}", "time_used": f"{r.get('elapsed_seconds', 0)}s", "reason": r.get("finished_reason", "completed").replace("_", " ").title()} for r in reversed(history[-5:])]
-        st.dataframe(recent_runs, use_container_width=True, hide_index=True)
+                fig, ax = plt.subplots(figsize=(2.5, 2.5))
+                ax.pie(
+                    [solved, unsolved],
+                    labels=["✔", "✖"],
+                    autopct="%1.0f%%",
+                    textprops={"fontsize": 8},
+                )
+                ax.axis("equal")
+                st.pyplot(fig, clear_figure=True)
+                # Render Solved metric exactly once
+                st.markdown(f"<div style='text-align:center'><b>{solved} / {total}</b><br>Solved</div>", unsafe_allow_html=True)
+        st.markdown("---")
+        st.subheader("Interview Simulator")
+        history = load_interview_history()
+        if not history:
+            st.info("No interview runs yet.")
+        else:
+            latest_run = history[-1]
+            best_run = max(history, key=lambda run: run.get("score_percent", 0))
+            average_score = round(sum(run.get("score_percent", 0) for run in history) / len(history), 1)
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Runs", len(history))
+            m2.metric("Latest Score", f"{latest_run['score_percent']}%")
+            m3.metric("Best Score", f"{best_run['score_percent']}%")
+            m4.metric("Average Score", f"{average_score}%")
+            recent_runs = [{"finished_at": r["finished_at"], "track": r["track"], "score": f"{r['total_score']}/{r['max_score']}", "accuracy": f"{r['correct_count']}/{r['total_questions']}", "time_used": f"{r.get('elapsed_seconds', 0)}s", "reason": r.get("finished_reason", "completed").replace("_", " ").title()} for r in reversed(history[-5:])]
+            st.dataframe(recent_runs, use_container_width=True, hide_index=True)
 
-# Map labels to rendering functions
-ROUTER = {
-    DASHBOARD_SECTION_LABEL: render_dashboard,
-    CODING_SECTION_LABEL: lambda: __import__("modules.coding.ui", fromlist=["render_coding"]).render_coding(),
-    CONCEPTS_SECTION_LABEL: lambda: __import__("modules.concepts.ui", fromlist=["render_concepts"]).render_concepts(),
-    GENAI_SECTION_LABEL: lambda: __import__("modules.genai.ui", fromlist=["render_genai"]).render_genai(),
-    SPARK_SECTION_LABEL: lambda: __import__("modules.spark.ui", fromlist=["render_spark"]).render_spark(),
-    DATA_MODELING_SECTION_LABEL: lambda: __import__("modules.datamodeling.ui", fromlist=["render_datamodeling"]).render_datamodeling(),
-    PROJECTS_SECTION_LABEL: lambda: __import__("modules.projects.ui", fromlist=["render_projects"]).render_projects(),
-    ADMIN_SECTION_LABEL: lambda: __import__("modules.admin.ui", fromlist=["render_admin"]).render_admin(),
-}
+    # Map labels to rendering functions
+    ROUTER = {
+        DASHBOARD_SECTION_LABEL: render_dashboard,
+        CODING_SECTION_LABEL: lambda: __import__("modules.coding.ui", fromlist=["render_coding"]).render_coding(),
+        CONCEPTS_SECTION_LABEL: lambda: __import__("modules.concepts.ui", fromlist=["render_concepts"]).render_concepts(),
+        GENAI_SECTION_LABEL: lambda: __import__("modules.genai.ui", fromlist=["render_genai"]).render_genai(),
+        SPARK_SECTION_LABEL: lambda: __import__("modules.spark.ui", fromlist=["render_spark"]).render_spark(),
+        DATA_MODELING_SECTION_LABEL: lambda: __import__("modules.datamodeling.ui", fromlist=["render_datamodeling"]).render_datamodeling(),
+        PROJECTS_SECTION_LABEL: lambda: __import__("modules.projects.ui", fromlist=["render_projects"]).render_projects(),
+        ADMIN_SECTION_LABEL: lambda: __import__("modules.admin.ui", fromlist=["render_admin"]).render_admin(),
+    }
 
-if module in ROUTER:
-    ROUTER[module]()
+    if module in ROUTER:
+        ROUTER[module]()
