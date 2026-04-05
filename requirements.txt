@@ -4,3 +4,6 @@ pandas
 pyspark
 sqlparse
 psycopg2-binary
+matplotlib
+bcrypt
+sqlalchemy
