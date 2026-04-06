@@ -73,6 +73,13 @@ def render_admin():
         if st.button("Execute Query"):
             try:
                 df_res = pd.read_sql(query_input, engine)
+                
+                # Mask sensitive columns for privacy
+                sensitive_cols = ['password', 'otp_secret', 'otp_code']
+                for col in sensitive_cols:
+                    if col in df_res.columns:
+                        df_res[col] = "********"
+                
                 st.dataframe(df_res, use_container_width=True)
             except Exception as e:
                 st.error(f"SQL Error: {e}")
