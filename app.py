@@ -24,7 +24,7 @@ st.set_page_config(layout="wide")
 query_params = st.query_params
 
 # --- simple auth guard
-from core.auth import create_user, login_user, verify_otp, generate_and_store_otp, update_password, verify_email_otp
+from core.auth import create_user, login_user, verify_otp, generate_and_store_otp, update_password, verify_email_otp, validate_email, validate_phone
 from core.db import SessionLocal
 from core.models import User
 
@@ -261,14 +261,29 @@ if st.session_state.get("signup_mode"):
 
     elif st.session_state["signup_step"] == "otp":
         with st.form("otp_verify_form"):
-            st.info(f"Verifying {st.session_state['temp_email']}")
+            st.info(f"Verifying {st.session_state['temp_reg_data']['email']}")
             v_code = st.text_input("Enter 6-Digit Code")
             if st.form_submit_button("Verify Email"):
-                # For pre-registration, we check the code manually if generate_and_store_otp 
-                # was handled differently, but here we assume it was stored or we use a session-check
-                if verify_email_otp(st.session_state["temp_email"], v_code):
-                    st.session_state["signup_step"] = "details"
-                    st.rerun()
+                if v_code == st.session_state.get("signup_otp"):
+                    try:
+                        data = st.session_state["temp_reg_data"]
+                        create_user(
+                            username=data["username"], password=data["password"],
+                            full_name=data["full_name"], email=data["email"], phone=data["phone"]
+                        )
+                        # Mark verified in DB immediately after creation
+                        session = SessionLocal()
+                        u = session.query(User).filter_by(username=data["username"]).first()
+                        if u: u.email_verified = True
+                        session.commit()
+                        session.close()
+                        
+                        st.success("Account created! Log in once admin approves you.")
+                        st.session_state["signup_mode"] = False
+                        st.session_state.pop("signup_step")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
                 else:
                     st.error("Invalid OTP code.")
 

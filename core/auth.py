@@ -87,19 +87,18 @@ def send_otp_email(recipient_email, otp_code):
 def generate_and_store_otp(identifier):
     """Generates a 6-digit OTP and stores it for the user (by username or email)."""
     otp = f"{random.randint(100000, 999999)}"
+    
+    # If it's an email address, send the actual mail immediately
+    if validate_email(identifier):
+        send_otp_email(identifier, otp)
+
     session = SessionLocal()
     try:
         user = session.query(User).filter((User.username == identifier) | (User.email == identifier)).first()
         if user:
             user.otp_code = otp
             session.commit()
-            
-            # Attempt to send the real email
-            if user.email:
-                send_otp_email(user.email, otp)
-                
-            return otp  # Still returning for the UI hint during transition
-        return None
+        return otp
     finally:
         session.close()
 
