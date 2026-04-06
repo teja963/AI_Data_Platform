@@ -78,7 +78,7 @@ def send_otp_email(recipient_email, otp_code):
             "subject": "Your Verification Code",
             "html": f"<strong>Your code is: {otp_code}</strong>. It expires in 10 minutes."
         }
-        resend.Emails.send(params)
+        resend.emails.send(params)
         return True
     except Exception as e:
         print(f"Resend Error: {e}")
@@ -137,7 +137,8 @@ def login_user(username, password):
         if not user:
             return None
 
-        if not user.email_verified:
+        # Admins bypass the email verification check for direct login
+        if not user.email_verified and user.role != "admin":
             raise PermissionError("Please verify your email first.")
 
         if not user.is_approved and user.role != "admin":
