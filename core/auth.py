@@ -6,6 +6,7 @@ import streamlit as st
 from datetime import datetime, timedelta
 from core.db import SessionLocal
 from core.models import User
+import pyotp
 
 # ---------------- VALIDATION ----------------
 def validate_email(email):
@@ -174,6 +175,21 @@ def login_user(username, password):
             })()
 
         return None
+
+    finally:
+        session.close()
+
+# ---------------- OTP VERIFY ----------------
+def verify_otp(username, code):
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter_by(username=username).first()
+
+        if not user or not user.otp_secret:
+            return False
+
+        totp = pyotp.TOTP(user.otp_secret)
+        return totp.verify(code)
 
     finally:
         session.close()
