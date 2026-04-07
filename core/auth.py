@@ -27,7 +27,7 @@ def can_send_otp():
 
 
 # ---------------- CREATE USER ----------------
-def create_user(username, password, full_name, email, phone, role="user"):
+def create_user(username, password, full_name, email, phone, role="user", otp_secret=None):
     session = SessionLocal()
     try:
         if len(username) < 3:
@@ -51,7 +51,8 @@ def create_user(username, password, full_name, email, phone, role="user"):
             phone_number=phone,
             role=role,
             is_approved=False,
-            email_verified=False
+            email_verified=True if role == "admin" else False,
+            otp_secret=otp_secret   # ✅ FIX
         )
 
         session.add(user)
