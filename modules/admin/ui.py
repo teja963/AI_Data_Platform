@@ -74,12 +74,11 @@ def render_admin():
             try:
                 df_res = pd.read_sql(query_input, engine)
                 
-                # Mask sensitive columns for privacy
-                sensitive_cols = ['password', 'otp_secret', 'otp_code']
-                for col in sensitive_cols:
+                # Mask sensitive columns
+                for col in ['password', 'otp_secret', 'otp_code']:
                     if col in df_res.columns:
                         df_res[col] = "********"
-                
+
                 st.dataframe(df_res, use_container_width=True)
             except Exception as e:
                 st.error(f"SQL Error: {e}")
