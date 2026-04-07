@@ -1,6 +1,21 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import matplotlib.pyplot as plt
+
+# -------- SESSION INIT (MANDATORY) --------
+if "user" not in st.session_state:
+    st.session_state["user"] = None
+
+if "role" not in st.session_state:
+    st.session_state["role"] = "user"
+
+if "signup_mode" not in st.session_state:
+    st.session_state["signup_mode"] = False
+
+if "pending_admin" not in st.session_state:
+    st.session_state["pending_admin"] = None
+
+
 from core.constants import (
     DASHBOARD_SECTION_LABEL,
     CONCEPTS_SECTION_LABEL,
@@ -240,7 +255,7 @@ if url_user and not st.session_state.get("user"):
 
 
 # --- Authentication Flow ---
-# ---------------- NATIVE PREMIUM SIGNUP ----------------
+# ----------1. SIGNUP ----------------
 if st.session_state.get("signup_mode"):
 
     st.title("🚀 Create Account")
@@ -347,6 +362,52 @@ if st.session_state.get("signup_mode"):
     # Exit option
     if st.button("❌ Cancel Signup"):
         st.session_state.clear()
+        st.rerun()
+
+    st.stop()
+
+# ---------------- LOGIN FLOW ----------------
+elif not st.session_state.get("user") and not st.session_state.get("pending_admin"):
+
+    st.title("Welcome to AI Data Engineering")
+
+    with st.form("auth_form", clear_on_submit=False):
+        st.subheader("Login")
+
+        username = st.text_input("Username", key="auth_user").strip()
+        password = st.text_input("Password", type="password", key="auth_pass").strip()
+
+        col1, col2 = st.columns(2)
+        login_clicked = col1.form_submit_button("Login", use_container_width=True)
+        signup_clicked = col2.form_submit_button("Signup", use_container_width=True)
+
+    if st.button("Forgot Password?"):
+        st.session_state["forgot_password"] = True
+        st.session_state["fp_step"] = 1
+        st.rerun()
+
+    if login_clicked and username and password:
+        try:
+            user = login_user(username, password)
+
+            if user:
+                if user.role == "admin":
+                    st.session_state["pending_admin"] = user.username
+                    st.rerun()
+                else:
+                    st.session_state["role"] = user.role
+                    st.session_state["user"] = user.username
+                    _set_auth_url(user.username)
+                    st.rerun()
+            else:
+                st.error("Invalid credentials")
+
+        except PermissionError as pe:
+            st.warning(str(pe))
+
+    if signup_clicked:
+        st.session_state["signup_mode"] = True
+        st.session_state["step"] = 1   # 🔥 IMPORTANT
         st.rerun()
 
     st.stop()
