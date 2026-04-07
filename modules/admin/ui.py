@@ -22,7 +22,10 @@ def render_admin():
         try:
             query = session.query(User)
             if search:
-                query = query.filter((User.username.ilike(f"%{search}%")) | (User.email.ilike(f"%{search}%")))
+                query = query.filter(
+                    (User.username.ilike(f"%{search}%")) | 
+                    (User.email.ilike(f"%{search}%"))
+                )
             
             users = query.order_by(User.created_at.desc()).all()
 
@@ -31,7 +34,6 @@ def render_admin():
             else:
                 user_data = []
                 for u in users:
-                    # Ensure full_name is not None for display
                     display_name = u.full_name if u.full_name else u.username
                     user_data.append({
                         "ID": u.id,
@@ -46,24 +48,59 @@ def render_admin():
                 st.dataframe(pd.DataFrame(user_data), use_container_width=True, hide_index=True)
 
                 st.divider()
-                st.markdown("### Pending Approvals")
-                pending = [u for u in users if not u.is_approved and u.email_verified] # Only show verified users for approval
-                for p_user in pending:
-                    col1, col2 = st.columns([3, 1])
-                    col1.write(f"Approve **{p_user.username}** ({p_user.email})?")
-                    if col2.button("Approve", key=f"app_{p_user.id}"):
-                        p_user.is_approved = True
-                        session.commit()
-                        st.rerun()
+
+                # ✅ NEW: Summary
+                st.markdown("### 📊 User Status Summary")
+                total_users = len(users)
+                pending_count = len([u for u in users if not u.is_approved])
+                approved_count = len([u for u in users if u.is_approved])
+
+                st.write(f"Total: {total_users} | Pending: {pending_count} | Approved: {approved_count}")
+
+                st.divider()
+                st.markdown("### 🔔 Pending Approvals")
+
+                # ✅ FIX: Removed email_verified condition
+                pending = [u for u in users if not u.is_approved]
+
+                if not pending:
+                    st.success("No pending users for approval.")
+                else:
+                    for p_user in pending:
+                        col1, col2, col3 = st.columns([3, 1, 1])
+
+                        status = "✅ Verified" if p_user.email_verified else "❌ Not Verified"
+                        col1.write(f"**{p_user.username}** ({p_user.email}) - {status}")
+
+                        # ✅ Approve
+                        if col2.button("Approve", key=f"approve_{p_user.id}"):
+                            p_user.is_approved = True
+                            session.commit()
+                            st.success(f"{p_user.username} approved")
+                            st.rerun()
+
+                        # ✅ Reject
+                        if col3.button("Reject", key=f"reject_{p_user.id}"):
+                            session.delete(p_user)
+                            session.commit()
+                            st.warning(f"{p_user.username} rejected & removed")
+                            st.rerun()
+
         finally:
             session.close()
 
     with tab2:
         st.subheader("📈 Recent User Logins")
-        df_activity = pd.read_sql("SELECT username, last_login, created_at FROM users WHERE last_login IS NOT NULL", engine)
+        df_activity = pd.read_sql(
+            "SELECT username, last_login, created_at FROM users WHERE last_login IS NOT NULL", 
+            engine
+        )
         if not df_activity.empty:
             st.write("Recent Active Users")
-            st.dataframe(df_activity.sort_values("last_login", ascending=False).reset_index(drop=True), use_container_width=True)
+            st.dataframe(
+                df_activity.sort_values("last_login", ascending=False).reset_index(drop=True),
+                use_container_width=True
+            )
         else:
             st.info("No login activity recorded yet.")
 
