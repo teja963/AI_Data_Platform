@@ -240,118 +240,113 @@ if url_user and not st.session_state.get("user"):
 
 
 # --- Authentication Flow ---
-# ---------------- SIGNUP ----------------
+# ---------------- NATIVE PREMIUM SIGNUP ----------------
 if st.session_state.get("signup_mode"):
 
     st.title("🚀 Create Account")
+
     step = st.session_state.get("step", 1)
 
-    # STEP 1
+    # ---- Progress Indicator ----
+    progress = (step - 1) / 2
+    st.progress(progress)
+
+    st.caption(f"Step {step} of 3")
+
+    st.divider()
+
+    # ---------------- STEP 1 ----------------
     if step == 1:
-        email = st.text_input("Enter Email")
+        st.subheader("📧 Verify Email")
 
-        if st.button("Send OTP"):
-            if validate_email(email):
-                generate_and_store_otp(email)
-                st.session_state["email"] = email
-                st.session_state["step"] = 2
-                st.success("OTP sent")
+        email = st.text_input("Email Address")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("Send OTP", use_container_width=True):
+                if validate_email(email):
+                    generate_and_store_otp(email)
+                    st.session_state["email"] = email
+                    st.session_state["step"] = 2
+                    st.success("OTP sent to your email")
+                    st.rerun()
+                else:
+                    st.error("Invalid email")
+
+        with col2:
+            if st.button("⬅ Back", use_container_width=True):
+                st.session_state["signup_mode"] = False
                 st.rerun()
-            else:
-                st.error("Invalid email")
 
-    # STEP 2
+    # ---------------- STEP 2 ----------------
     elif step == 2:
+        st.subheader("🔐 Enter OTP")
+
         otp = st.text_input("Enter OTP")
 
-        if st.button("Verify OTP"):
-            if verify_email_otp(st.session_state["email"], otp):
-                st.session_state["step"] = 3
-                st.success("Email verified")
-                st.rerun()
-            else:
-                st.error("Invalid or expired OTP")
+        col1, col2 = st.columns(2)
 
-    # STEP 3
+        with col1:
+            if st.button("Verify OTP", use_container_width=True):
+                if verify_email_otp(st.session_state["email"], otp):
+                    st.session_state["step"] = 3
+                    st.success("Email verified")
+                    st.rerun()
+                else:
+                    st.error("Invalid or expired OTP")
+
+        with col2:
+            if st.button("⬅ Back", use_container_width=True):
+                st.session_state["step"] = 1
+                st.rerun()
+
+        st.info("Didn't receive OTP?")
+        if st.button("🔄 Resend OTP"):
+            generate_and_store_otp(st.session_state["email"])
+            st.success("OTP resent")
+
+    # ---------------- STEP 3 ----------------
     elif step == 3:
+        st.subheader("👤 Account Details")
+
         name = st.text_input("Full Name")
         username = st.text_input("Username")
         phone = st.text_input("Phone")
         password = st.text_input("Password", type="password")
 
-        if st.button("Create Account"):
-            try:
-                create_user(username, password, name, st.session_state["email"], phone)
-                st.success("Account created. Wait for admin approval.")
-                st.session_state.clear()
+        col1, col2 = st.columns(2)
+
+        with col1:
+            if st.button("Create Account", use_container_width=True):
+                if not all([name, username, password]):
+                    st.warning("Please fill all required fields")
+                else:
+                    try:
+                        create_user(
+                            username,
+                            password,
+                            name,
+                            st.session_state["email"],
+                            phone
+                        )
+                        st.success("Account created 🎉")
+                        st.info("Waiting for admin approval")
+                        st.session_state.clear()
+                        st.rerun()
+                    except Exception as e:
+                        st.error(str(e))
+
+        with col2:
+            if st.button("⬅ Back", use_container_width=True):
+                st.session_state["step"] = 2
                 st.rerun()
-            except Exception as e:
-                st.error(str(e))
 
-    st.stop()
+    st.divider()
 
-
-# ---------------- LOGIN + FORGOT ----------------
-elif not st.session_state.get("user"):
-
-    if st.session_state.get("forgot_password"):
-
-        st.title("Reset Password")
-        step = st.session_state.get("fp_step", 1)
-
-        if step == 1:
-            email = st.text_input("Enter email")
-
-            if st.button("Send OTP"):
-                generate_and_store_otp(email)
-                st.session_state["fp_email"] = email
-                st.session_state["fp_step"] = 2
-                st.success("OTP sent")
-
-        elif step == 2:
-            otp = st.text_input("Enter OTP")
-            new_pass = st.text_input("New Password", type="password")
-
-            if st.button("Reset Password"):
-                try:
-                    update_password(st.session_state["fp_email"], new_pass, otp)
-                    st.success("Password updated")
-                    st.session_state.clear()
-                    st.rerun()
-                except Exception as e:
-                    st.error(str(e))
-
-        if st.button("Back"):
-            st.session_state["forgot_password"] = False
-            st.rerun()
-
-        st.stop()
-
-    # LOGIN UI
-    st.title("Login")
-
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-
-    if st.button("Login"):
-        try:
-            user = login_user(username, password)
-            if user:
-                st.session_state["user"] = user.username
-                st.session_state["role"] = user.role
-                st.rerun()
-            else:
-                st.error("Invalid credentials")
-        except PermissionError as e:
-            st.warning(str(e))
-
-    if st.button("Signup"):
-        st.session_state["signup_mode"] = True
-        st.rerun()
-
-    if st.button("Forgot Password?"):
-        st.session_state["forgot_password"] = True
-        st.session_state["fp_step"] = 1
+    # Exit option
+    if st.button("❌ Cancel Signup"):
+        st.session_state.clear()
         st.rerun()
 
     st.stop()
