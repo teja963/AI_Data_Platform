@@ -15,9 +15,9 @@ class User(Base):
     email_verified = Column(Boolean, default=False)
     otp_secret = Column(String, nullable=True)
     otp_code = Column(String, nullable=True) # For email/phone verification
+    otp_expiry = Column(DateTime, nullable=True)
     last_login = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-
 
 class Question(Base):
     __tablename__ = "questions"

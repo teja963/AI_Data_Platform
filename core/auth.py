@@ -3,6 +3,7 @@ import re
 import random
 import resend
 import streamlit as st
+import time
 from datetime import datetime, timedelta
 from core.db import SessionLocal
 from core.models import User
@@ -14,6 +15,16 @@ def validate_email(email):
 
 def validate_phone(phone):
     return bool(re.match(r"^(?:\+91)?[0-9]{10}$", phone))
+
+
+# ---------------- RATE LIMIT ----------------
+def can_send_otp():
+    last = st.session_state.get("last_otp_time", 0)
+    if time.time() - last < 30:
+        return False
+    st.session_state["last_otp_time"] = time.time()
+    return True
+
 
 # ---------------- CREATE USER ----------------
 def create_user(username, password, full_name, email, phone, role="user"):
@@ -56,25 +67,25 @@ def send_otp_email(email, otp):
 
     try:
         response = resend.Emails.send({
-            "from": "onboarding@resend.dev",
+            "from": "Panasa Edu <no-reply@panasaedu.in>",  # ✅ your domain
             "to": [email],
             "subject": "Your OTP Code",
-            "html": f"<h1>{otp}</h1>"
+            "html": f"<h2>Your OTP is:</h2><h1>{otp}</h1><p>Valid for 10 minutes.</p>"
         })
-
-        st.success("OTP sent successfully ✅")
-        st.write("DEBUG RESPONSE:", response)
 
         return True
 
     except Exception as e:
-        st.error(f"EMAIL ERROR: {e}")
-        print("ERROR:", e)
+        st.error(f"Email error: {e}")
         return False
 
 
 # ---------------- OTP GENERATE ----------------
 def generate_and_store_otp(email):
+    if not can_send_otp():
+        st.warning("Please wait 30 seconds before requesting another OTP")
+        return None
+
     session = SessionLocal()
     try:
         otp = str(random.randint(100000, 999999))
@@ -85,12 +96,11 @@ def generate_and_store_otp(email):
         if user:
             user.otp_code = otp
             user.otp_expiry = expiry
+            session.commit()
         else:
-            # temp storage for signup
             st.session_state["temp_otp"] = otp
             st.session_state["temp_otp_expiry"] = expiry
 
-        session.commit()
         send_otp_email(email, otp)
         return otp
 
@@ -104,17 +114,18 @@ def verify_email_otp(email, code):
     try:
         user = session.query(User).filter(User.email == email).first()
 
-        # existing user
+        # EXISTING USER
         if user and user.otp_code == code:
-            if user.otp_expiry and user.otp_expiry < datetime.utcnow():
+            if hasattr(user, "otp_expiry") and user.otp_expiry and user.otp_expiry < datetime.utcnow():
                 return False
 
             user.email_verified = True
             user.otp_code = None
+            user.otp_expiry = None
             session.commit()
             return True
 
-        # new user (signup)
+        # NEW USER (SIGNUP FLOW)
         if code == st.session_state.get("temp_otp"):
             expiry = st.session_state.get("temp_otp_expiry")
             if expiry and expiry < datetime.utcnow():
@@ -139,11 +150,12 @@ def update_password(email, new_password, otp):
         if user.otp_code != otp:
             raise ValueError("Invalid OTP")
 
-        if user.otp_expiry < datetime.utcnow():
+        if hasattr(user, "otp_expiry") and user.otp_expiry and user.otp_expiry < datetime.utcnow():
             raise ValueError("OTP expired")
 
         user.password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
         user.otp_code = None
+        user.otp_expiry = None
         session.commit()
 
     finally:
@@ -159,7 +171,7 @@ def login_user(username, password):
         if not user:
             return None
 
-        if not user.email_verified:
+        if not user.email_verified and user.role != "admin":
             raise PermissionError("Verify your email first.")
 
         if not user.is_approved and user.role != "admin":
@@ -179,7 +191,8 @@ def login_user(username, password):
     finally:
         session.close()
 
-# ---------------- OTP VERIFY ----------------
+
+# ---------------- TOTP VERIFY ----------------
 def verify_otp(username, code):
     session = SessionLocal()
     try:
