@@ -56,7 +56,7 @@ def send_otp_email(email, otp):
 
     try:
         response = resend.Emails.send({
-            "from": "Panasa Edu <no-reply@panasaedu.in>",
+            "from": "onboarding@resend.dev",
             "to": [email],
             "subject": "Your OTP Code",
             "html": f"<h1>{otp}</h1>"
