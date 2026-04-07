@@ -52,24 +52,31 @@ def create_user(username, password, full_name, email, phone, role="user"):
 
 # ---------------- EMAIL SEND ----------------
 def send_otp_email(email, otp):
-    resend.api_key = st.secrets["RESEND_API_KEY"]
+    st.write("STEP 1: Function called")
+
+    api_key = st.secrets.get("RESEND_API_KEY")
+    st.write("STEP 2: API KEY:", api_key)
+
+    resend.api_key = api_key
 
     try:
-        resend.emails.send({
-            "from": "Panasa Edu <no-reply@panasaedu.in>",
+        st.write("STEP 3: Sending request...")
+
+        response = resend.emails.send({
+            "from": "onboarding@resend.dev",  # 🔥 temporary
             "to": [email],
-            "subject": "Your OTP Code",
-            "html": f"""
-            <div style="font-family:Arial">
-                <h2>Your Verification Code</h2>
-                <h1>{otp}</h1>
-                <p>This code expires in 10 minutes.</p>
-            </div>
-            """
+            "subject": "OTP Test",
+            "html": f"<h1>{otp}</h1>"
         })
+
+        st.write("STEP 4: RESPONSE:", response)
+        print("RESPONSE:", response)
+
         return True
+
     except Exception as e:
-        print("Email error:", e)
+        st.error(f"STEP ERROR: {e}")
+        print("ERROR:", e)
         return False
 
 
