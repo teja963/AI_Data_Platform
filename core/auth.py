@@ -1,133 +1,155 @@
 import bcrypt
-import pyotp
 import re
 import random
 import resend
 import streamlit as st
-from datetime import datetime
+from datetime import datetime, timedelta
 from core.db import SessionLocal
 from core.models import User
 
+# ---------------- VALIDATION ----------------
 def validate_email(email):
     return bool(re.match(r"[^@]+@[^@]+\.[^@]+", email))
 
 def validate_phone(phone):
-    # Validates exactly 10 digits or +91 followed by 10 digits
     return bool(re.match(r"^(?:\+91)?[0-9]{10}$", phone))
 
-def create_user(username, password, full_name=None, email=None, phone=None, role="user", otp_secret=None):
+# ---------------- CREATE USER ----------------
+def create_user(username, password, full_name, email, phone, role="user"):
     session = SessionLocal()
     try:
-        # 1. Basic field validation
-        if not username or len(username.strip()) < 3:
+        if len(username) < 3:
             raise ValueError("Username must be at least 3 characters.")
-        if not password or len(password.strip()) < 6:
+        if len(password) < 6:
             raise ValueError("Password must be at least 6 characters.")
-        if not full_name or len(full_name.strip()) < 2:
-            raise ValueError("Full Name is required.")
-            
-        # 2. Credential format validation
-        if email and not validate_email(email):
-            raise ValueError("Invalid email format (e.g., name@domain.com).")
-        if phone and not validate_phone(phone):
-            raise ValueError("Invalid phone format. Enter 10 digits or start with +91.")
 
-        # Default to India country code (+91) if only 10 digits provided
-        if phone and len(phone) == 10:
-            phone = "+91" + phone
+        if session.query(User).filter_by(username=username).first():
+            raise ValueError("Username already exists")
 
-        # 3. Duplicate checks
-        # Prevent duplicates before they hit the DB constraint
-        existing = session.query(User).filter_by(username=username).first()
-        if existing:
-            raise ValueError("Username already exists. Please choose another one.")
-        
-        if email:
-            existing_email = session.query(User).filter(User.email.ilike(email)).first()
-            if existing_email:
-                raise ValueError("Email already registered.")
+        if session.query(User).filter(User.email.ilike(email)).first():
+            raise ValueError("Email already registered")
 
         hashed = bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
-        # is_approved is False by default for new users (Admin must approve)
+
         user = User(
-            username=username, 
-            password=hashed, 
-            otp_secret=otp_secret,
-            full_name=full_name, 
+            username=username,
+            password=hashed,
+            full_name=full_name,
             email=email,
-            phone_number=phone, 
-            role=role, 
-            is_approved=False
+            phone_number=phone,
+            role=role,
+            is_approved=False,
+            email_verified=False
         )
+
         session.add(user)
         session.commit()
+
     finally:
         session.close()
 
-def send_otp_email(recipient_email, otp_code):
-    """Sends the OTP via Resend API."""
-    api_key = st.secrets.get("RESEND_API_KEY")
-    if not api_key:
-        return False
-    
-    resend.api_key = api_key
+
+# ---------------- EMAIL SEND ----------------
+def send_otp_email(email, otp):
+    resend.api_key = st.secrets["RESEND_API_KEY"]
+
     try:
-        params = {
-            "from": "AI Platform <onboarding@resend.dev>",
-            "to": [recipient_email],
-            "subject": "Your Verification Code",
-            "html": f"<strong>Your code is: {otp_code}</strong>. It expires in 10 minutes."
-        }
-        resend.emails.send(params)
+        resend.emails.send({
+            "from": "Panasa Edu <no-reply@panasaedu.in>",
+            "to": [email],
+            "subject": "Your OTP Code",
+            "html": f"""
+            <div style="font-family:Arial">
+                <h2>Your Verification Code</h2>
+                <h1>{otp}</h1>
+                <p>This code expires in 10 minutes.</p>
+            </div>
+            """
+        })
         return True
     except Exception as e:
-        print(f"Resend Error: {e}")
+        print("Email error:", e)
         return False
 
-def generate_and_store_otp(identifier):
-    """Generates a 6-digit OTP and stores it for the user (by username or email)."""
-    otp = f"{random.randint(100000, 999999)}"
-    
-    # If it's an email address, send the actual mail immediately
-    if validate_email(identifier):
-        send_otp_email(identifier, otp)
 
+# ---------------- OTP GENERATE ----------------
+def generate_and_store_otp(email):
     session = SessionLocal()
     try:
-        user = session.query(User).filter((User.username == identifier) | (User.email == identifier)).first()
+        otp = str(random.randint(100000, 999999))
+        expiry = datetime.utcnow() + timedelta(minutes=10)
+
+        user = session.query(User).filter(User.email == email).first()
+
         if user:
             user.otp_code = otp
-            session.commit()
+            user.otp_expiry = expiry
+        else:
+            # temp storage for signup
+            st.session_state["temp_otp"] = otp
+            st.session_state["temp_otp_expiry"] = expiry
+
+        session.commit()
+        send_otp_email(email, otp)
         return otp
+
     finally:
         session.close()
 
-def verify_email_otp(identifier, code):
+
+# ---------------- OTP VERIFY ----------------
+def verify_email_otp(email, code):
     session = SessionLocal()
     try:
-        user = session.query(User).filter((User.username == identifier) | (User.email == identifier)).first()
+        user = session.query(User).filter(User.email == email).first()
+
+        # existing user
         if user and user.otp_code == code:
+            if user.otp_expiry and user.otp_expiry < datetime.utcnow():
+                return False
+
             user.email_verified = True
             user.otp_code = None
             session.commit()
             return True
+
+        # new user (signup)
+        if code == st.session_state.get("temp_otp"):
+            expiry = st.session_state.get("temp_otp_expiry")
+            if expiry and expiry < datetime.utcnow():
+                return False
+            return True
+
         return False
+
     finally:
         session.close()
 
-def update_password(identifier, new_password, otp_code):
+
+# ---------------- PASSWORD RESET ----------------
+def update_password(email, new_password, otp):
     session = SessionLocal()
     try:
-        user = session.query(User).filter((User.username == identifier) | (User.email == identifier)).first()
-        if not user or user.otp_code != otp_code:
-            raise ValueError("Invalid OTP or User not found.")
-        
+        user = session.query(User).filter(User.email == email).first()
+
+        if not user:
+            raise ValueError("User not found")
+
+        if user.otp_code != otp:
+            raise ValueError("Invalid OTP")
+
+        if user.otp_expiry < datetime.utcnow():
+            raise ValueError("OTP expired")
+
         user.password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
-        user.otp_code = None # Clear OTP after use
+        user.otp_code = None
         session.commit()
+
     finally:
         session.close()
 
+
+# ---------------- LOGIN ----------------
 def login_user(username, password):
     session = SessionLocal()
     try:
@@ -136,34 +158,22 @@ def login_user(username, password):
         if not user:
             return None
 
-        # Admins bypass the email verification check for direct login
-        if not user.email_verified and user.role != "admin":
-            raise PermissionError("Please verify your email first.")
+        if not user.email_verified:
+            raise PermissionError("Verify your email first.")
 
         if not user.is_approved and user.role != "admin":
-            raise PermissionError("Your account is pending admin approval.")
+            raise PermissionError("Pending admin approval.")
 
         if bcrypt.checkpw(password.encode(), user.password.encode()):
             user.last_login = datetime.utcnow()
             session.commit()
-            
-            # Return a simple session object to prevent DetachedInstanceError in app.py
-            return type('UserSession', (), {
-                'username': user.username,
-                'role': user.role
+
+            return type("UserSession", (), {
+                "username": user.username,
+                "role": user.role
             })()
 
         return None
-    finally:
-        session.close()
 
-def verify_otp(username, code):
-    session = SessionLocal()
-    try:
-        user = session.query(User).filter_by(username=username).first()
-        if not user or not user.otp_secret:
-            return False
-        totp = pyotp.TOTP(user.otp_secret)
-        return totp.verify(code)
     finally:
         session.close()

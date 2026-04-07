@@ -240,127 +240,118 @@ if url_user and not st.session_state.get("user"):
 
 
 # --- Authentication Flow ---
-# 1. Signup Flow (Verify-then-Register)
+# ---------------- SIGNUP ----------------
 if st.session_state.get("signup_mode"):
-    st.title("User Registration")
-    if "signup_step" not in st.session_state:
-        st.session_state["signup_step"] = 1
 
-    if st.session_state["signup_step"] == 1:
-        with st.form("signup_email_step"):
-            email = st.text_input("Enter your Email Address").strip().lower()
-            if st.form_submit_button("Send Verification Code"):
-                if validate_email(email):
-                    session = SessionLocal()
-                    exists = session.query(User).filter(User.email.ilike(email)).first()
-                    session.close()
-                    if exists:
-                        st.error("This email is already registered.")
-                    else:
-                        otp = generate_and_store_otp(email)
-                        st.session_state["temp_email"] = email
-                        st.session_state["signup_otp"] = otp
-                        st.session_state["signup_step"] = 2
-                        st.rerun()
-                else:
-                    st.error("Please enter a valid email address.")
+    st.title("🚀 Create Account")
+    step = st.session_state.get("step", 1)
 
-    elif st.session_state["signup_step"] == 2:
-        with st.form("signup_otp_step"):
-            st.info(f"Verifying: **{st.session_state.get('temp_email')}**")
-            v_code = st.text_input("Enter the 6-digit code sent to your email")
-            if st.form_submit_button("Verify OTP"):
-                if v_code == st.session_state.get("signup_otp"):
-                    st.session_state["signup_step"] = 3
-                    st.rerun()
-                else:
-                    st.error("Invalid or expired code.")
+    # STEP 1
+    if step == 1:
+        email = st.text_input("Enter Email")
 
-    # --- STEP 3 (FINAL REGISTRATION STEP) ---
-    elif st.session_state["signup_step"] == 3:
-        st.success(f"Email Verified: **{st.session_state.get('temp_email')}** ✅")
+        if st.button("Send OTP"):
+            if validate_email(email):
+                generate_and_store_otp(email)
+                st.session_state["email"] = email
+                st.session_state["step"] = 2
+                st.success("OTP sent")
+                st.rerun()
+            else:
+                st.error("Invalid email")
 
-        # ✅ Safety check (NEW)
-        if not st.session_state.get("signup_otp"):
-            st.error("Verification session expired. Please restart signup.")
-            st.stop()
+    # STEP 2
+    elif step == 2:
+        otp = st.text_input("Enter OTP")
 
-        with st.form("signup_details_step"):
-            f_name = st.text_input("Full Name")
-            u_name = st.text_input("Username (min 3 chars)").strip().lower()
-            u_phone = st.text_input("Phone Number (10 digits)")
-            u_pass = st.text_input("Set Password", type="password")
-            
-            if st.form_submit_button("Complete Registration"):
+        if st.button("Verify OTP"):
+            if verify_email_otp(st.session_state["email"], otp):
+                st.session_state["step"] = 3
+                st.success("Email verified")
+                st.rerun()
+            else:
+                st.error("Invalid or expired OTP")
+
+    # STEP 3
+    elif step == 3:
+        name = st.text_input("Full Name")
+        username = st.text_input("Username")
+        phone = st.text_input("Phone")
+        password = st.text_input("Password", type="password")
+
+        if st.button("Create Account"):
+            try:
+                create_user(username, password, name, st.session_state["email"], phone)
+                st.success("Account created. Wait for admin approval.")
+                st.session_state.clear()
+                st.rerun()
+            except Exception as e:
+                st.error(str(e))
+
+    st.stop()
+
+
+# ---------------- LOGIN + FORGOT ----------------
+elif not st.session_state.get("user"):
+
+    if st.session_state.get("forgot_password"):
+
+        st.title("Reset Password")
+        step = st.session_state.get("fp_step", 1)
+
+        if step == 1:
+            email = st.text_input("Enter email")
+
+            if st.button("Send OTP"):
+                generate_and_store_otp(email)
+                st.session_state["fp_email"] = email
+                st.session_state["fp_step"] = 2
+                st.success("OTP sent")
+
+        elif step == 2:
+            otp = st.text_input("Enter OTP")
+            new_pass = st.text_input("New Password", type="password")
+
+            if st.button("Reset Password"):
                 try:
-                    create_user(
-                        u_name, 
-                        u_pass, 
-                        f_name, 
-                        st.session_state["temp_email"], 
-                        u_phone
-                    )
-
-                    # ✅ Mark email verified in DB
-                    session = SessionLocal()
-                    u = session.query(User).filter_by(username=u_name).first()
-                    if u:
-                        u.email_verified = True
-                    session.commit()
-                    session.close()
-
-                    # ✅ Improved UX
-                    st.success("Account created successfully!")
-                    st.warning("Your account is under admin review. You cannot login until approved.")
-
-                    st.session_state["signup_mode"] = False
-                    st.session_state.pop("signup_step", None)
-
+                    update_password(st.session_state["fp_email"], new_pass, otp)
+                    st.success("Password updated")
+                    st.session_state.clear()
                     st.rerun()
-
                 except Exception as e:
                     st.error(str(e))
 
-    if st.button("Back to Login", key="signup_back"):
-        st.session_state["signup_mode"] = False
-        st.session_state.pop("signup_step", None)
-        st.rerun()
-    st.stop()
+        if st.button("Back"):
+            st.session_state["forgot_password"] = False
+            st.rerun()
 
-# 2. Login Flow
-elif not st.session_state.get("user") and not st.session_state.get("pending_admin"):
-    st.title("Welcome to AI Data Engineering")
-    with st.form("auth_form", clear_on_submit=False):
-        st.subheader("Login")
-        username = st.text_input("Username", key="auth_user").strip()
-        password = st.text_input("Password", type="password", key="auth_pass").strip()
-        col1, col2 = st.columns(2)
-        login_clicked = col1.form_submit_button("Login", use_container_width=True)
-        signup_clicked = col2.form_submit_button("Signup", use_container_width=True)
+        st.stop()
 
-    if st.button("Forgot Password?"):
-        st.session_state["forgot_password"] = True
-        st.rerun()
+    # LOGIN UI
+    st.title("Login")
 
-    if login_clicked and username and password:
+    username = st.text_input("Username")
+    password = st.text_input("Password", type="password")
+
+    if st.button("Login"):
         try:
             user = login_user(username, password)
             if user:
-                if user.role == "admin":
-                    st.session_state["pending_admin"] = user.username
-                    st.rerun()
-                else:
-                    st.session_state["role"] = user.role
-                    st.session_state["user"] = user.username
-                    _set_auth_url(user.username)
-                    st.rerun()
+                st.session_state["user"] = user.username
+                st.session_state["role"] = user.role
+                st.rerun()
             else:
                 st.error("Invalid credentials")
-        except PermissionError as pe:
-            st.warning(str(pe))
+        except PermissionError as e:
+            st.warning(str(e))
 
-    if signup_clicked:
+    if st.button("Signup"):
         st.session_state["signup_mode"] = True
+        st.rerun()
+
+    if st.button("Forgot Password?"):
+        st.session_state["forgot_password"] = True
+        st.session_state["fp_step"] = 1
         st.rerun()
 
     st.stop()
