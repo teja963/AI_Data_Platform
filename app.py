@@ -20,12 +20,9 @@ matplotlib.use('Agg')
 
 st.set_page_config(layout="wide")
 
-# --- Global Query Params Initialization ---
-query_params = st.query_params
-
 # --- simple auth guard
-from core.auth import create_user, login_user, verify_otp, generate_and_store_otp, update_password, verify_email_otp
-from core.db import SessionLocal, engine
+from core.auth import create_user, login_user, verify_otp, generate_and_store_otp, update_password, verify_email_otp, validate_email
+from core.db import SessionLocal
 from core.models import User
 
 # --- persistent login using query params + session state
@@ -136,47 +133,55 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# --- SESSION PERSISTENCE (Option 2: Stay logged in for 1 hour) ---
+# If client has stored user in localStorage, ensure URL contains it so Streamlit can restore on reload
 components.html(
     """
     <script>
     (function(){
         try{
-            const ONE_HOUR = 3600000; 
+            const ONE_HOUR = 3600000; // 1 hour in ms
             const params = new URLSearchParams(window.location.search);
             const stored = localStorage.getItem('ai_data_user');
             const ts = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
             const now = Date.now();
 
-            // Auto-logout if session expired
+            // If the stored session is older than 1 hour, clear storage and remove user param
             if (stored && ts && (now - ts > ONE_HOUR)) {
                 localStorage.removeItem('ai_data_user');
                 localStorage.removeItem('ai_data_user_ts');
-                if (params.has('user')) {
-                    params.delete('user');
-                    window.location.replace(window.location.pathname + '?' + params.toString());
-                }
+                params.delete('user');
+                window.location.replace(window.location.pathname + '?' + params.toString());
                 return;
             }
 
-            // Restore session if URL is empty but localStorage is fresh
+            // If no user param (or empty) but localStorage has a fresh user, restore
             const urlUser = params.get('user');
             if ((!urlUser || urlUser === "") && stored) {
                 params.set('user', stored);
                 window.location.replace(window.location.pathname + '?' + params.toString());
+                return;
             }
 
-            // Update activity timestamp
+            // Keep timestamp refreshed on user activity
             function touch(){ if(localStorage.getItem('ai_data_user')){ localStorage.setItem('ai_data_user_ts', Date.now().toString()); } }
             ['click','keydown','mousemove','touchstart'].forEach(evt=>window.addEventListener(evt, touch, {passive:true}));
 
+            // Auto-logout monitor
+            setInterval(function(){
+                const stored2 = localStorage.getItem('ai_data_user');
+                const ts2 = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
+                if(stored2 && ts2 && (Date.now() - ts2 > ONE_HOUR)){
+                    localStorage.removeItem('ai_data_user');
+                    localStorage.removeItem('ai_data_user_ts');
+                    window.location.replace(window.location.pathname);
+                }
+            }, 60*1000);
         }catch(e){console.warn(e)}
     })();
     </script>
     """,
     height=0,
 )
-
 # If URL has ?user= set, try to restore session
 def _set_auth_url(username):
     """Helper to strictly set user in URL and reload if necessary."""
@@ -214,163 +219,54 @@ def _safe_query_param(name):
     # guard against empty string
     return v if v != "" else None
 
-# --- RESTORE SESSION FROM URL ---
+# --- RESTORE SESSION FROM URL (Refresh Persistence) ---
+# Pick up the 'user' parameter set by the JavaScript restoration script
 url_user = _safe_query_param("user")
 if url_user and not st.session_state.get("user"):
     try:
         session = SessionLocal()
+        # Verify the user actually exists in the DB before restoring
         u = session.query(User).filter_by(username=url_user).first()
         if u:
             st.session_state["user"] = u.username
             st.session_state["role"] = u.role
         session.close()
     except Exception:
-        # Silence DB errors during restoration to prevent login loops
+        # DB connection might fail temporarily; don't set user if so
         pass
 
 
 # --- Authentication Flow ---
 # If no user is logged in and no admin is pending 2FA, show the login form.
-# --- Authentication Flow (Strict Gating) ---
-if st.session_state.get("signup_mode"):
-    st.title("User Registration")
-    
-    if "signup_step" not in st.session_state:
-        st.session_state["signup_step"] = "email"
+if not st.session_state.get("user") and not st.session_state.get("pending_admin"):
+    st.title("Welcome to AI Data Engineering")
+    with st.form("auth_form", clear_on_submit=False):
+        st.subheader("Login")
+        username = st.text_input("Username", key="auth_user").strip()
+        password = st.text_input("Password", type="password", key="auth_pass").strip()
+        login_clicked = st.form_submit_button("Login", use_container_width=True)
 
-    if st.session_state["signup_step"] == "email":
-        with st.form("signup_email_step"):
-            u_email = st.text_input("Enter Email for Verification").strip().lower()
-            if st.form_submit_button("Send Verification Code"):
-                if validate_email(u_email):
-                    # Check if email is already taken before sending OTP
-                    session = SessionLocal()
-                    exists = session.query(User).filter(User.email.ilike(u_email)).first()
-                    session.close()
-                    if exists:
-                        st.error("This email is already registered. Please Login.")
-                    else:
-                        otp = generate_and_store_otp(u_email)
-                        st.session_state["signup_otp"] = otp
-                        st.session_state["temp_email"] = u_email
-                        st.session_state["signup_step"] = "otp"
-                        st.rerun()
-                else:
-                    st.error("Invalid email address.")
-
-    elif st.session_state["signup_step"] == "otp":
-        with st.form("signup_otp_step"):
-            st.write(f"Verifying: **{st.session_state['temp_email']}**")
-            v_code = st.text_input("Enter 6-digit code", help=f"Check your email (Hint: {st.session_state.get('signup_otp')})")
-            if st.form_submit_button("Verify Email"):
-                if v_code == st.session_state.get("signup_otp"):
-                    st.session_state["signup_step"] = "details"
+    if login_clicked and username and password:
+        try:
+            user = login_user(username, password)
+            if user:
+                if user.role == "admin":
+                    st.session_state["pending_admin"] = user.username
                     st.rerun()
                 else:
-                    st.error("Invalid verification code.")
-
-    elif st.session_state["signup_step"] == "details":
-        st.success(f"Email Verified: **{st.session_state['temp_email']}** ✅")
-        with st.form("signup_details_step"):
-            f_name = st.text_input("Full Name")
-            u_name = st.text_input("Username").strip().lower()
-            u_phone = st.text_input("Phone Number (10 digits for India +91)")
-            u_pass = st.text_input("Set Password", type="password")
-            
-            if st.form_submit_button("Complete Registration"):
-                try:
-                    create_user(
-                        username=u_name, password=u_pass, 
-                        full_name=f_name, email=st.session_state["temp_email"], 
-                        phone=u_phone
-                    )
-                    # Manually mark as verified since they passed the OTP step
-                    session = SessionLocal()
-                    u = session.query(User).filter_by(username=u_name).first()
-                    if u: u.email_verified = True
-                    session.commit()
-                    session.close()
-                    
-                    st.success("Account created! Please wait for Admin approval.")
-                    st.session_state["signup_mode"] = False
-                    st.session_state.pop("signup_step")
+                    st.session_state["role"] = user.role
+                    st.session_state["user"] = user.username
+                    _set_auth_url(user.username)
                     st.rerun()
-                except Exception as e:
-                    st.error(str(e))
-
-    if st.button("Back to Login"):
-        st.session_state["signup_mode"] = False
-        st.session_state.pop("signup_step", None)
-        st.rerun()
-    st.stop()
-
-elif st.session_state.get("verify_mode"):
-    st.title("Verify Your Account")
-    with st.form("verification_form"):
-        st.info(f"A code was sent to the email associated with **{st.session_state['verify_user']}**")
-        v_code = st.text_input("Enter 6-Digit Code")
-        if st.form_submit_button("Verify Email"):
-            if verify_email_otp(st.session_state["verify_user"], v_code):
-                st.success("Email verified! Your account is now pending admin approval.")
-                st.session_state.pop("verify_mode")
-                st.session_state.pop("signup_mode", None) # Clear signup mode if set
-                st.session_state.pop("verify_user")
-                st.session_state.pop("signup_otp_sent", None) # Clear OTP sent state
-                st.rerun()
             else:
-                st.error("Invalid code.")
-    if st.button("Resend Code"):
-        # Need to fetch email from DB for resend
-        session = SessionLocal()
-        user_obj = session.query(User).filter_by(username=st.session_state["verify_user"]).first()
-        if user_obj and user_obj.email:
-            generate_and_store_otp(user_obj.email)
-            st.toast("New code sent!")
-        else:
-            st.error("Could not resend code. User or email not found.")
-        session.close()
-    if st.button("Back to Login"):
-        st.session_state.pop("verify_mode")
-        st.session_state.pop("signup_mode", None)
-        st.session_state.pop("verify_user")
-        st.session_state.pop("signup_otp_sent", None)
-        st.toast("New code sent!")
-    if st.button("Back to Login"):
-        st.session_state["signup_mode"] = False
-        st.rerun()
+                st.error("Invalid credentials")
+        except PermissionError as pe:
+            st.warning(str(pe))
+
     st.stop()
 
-elif st.session_state.get("forgot_password"):
-    st.title("Reset Password")
-    user_id = st.text_input("Enter Username or Email")
-    if st.button("Send Reset OTP"):
-        otp = generate_and_store_otp(user_id)
-        if otp:
-            st.session_state["reset_user"] = user_id
-            st.success(f"OTP sent! (Dev hint: {otp})")
-        else:
-            st.error("User not found.")
-    
-    if st.session_state.get("reset_user"):
-        with st.form("reset_form"):
-            code = st.text_input("OTP Code")
-            new_p = st.text_input("New Password", type="password")
-            if st.form_submit_button("Update Password"):
-                try:
-                    update_password(st.session_state["reset_user"], new_p, code)
-                    st.success("Password updated! You can now login.")
-                    st.session_state.pop("forgot_password")
-                    st.session_state.pop("reset_user")
-                    st.rerun()
-                except Exception as e:
-                    st.error(str(e))
-
-    if st.button("Back"):
-        st.session_state.pop("forgot_password")
-        st.rerun()
-    st.stop()
-
-elif st.session_state.get("pending_admin"):
+# If an admin user has successfully entered credentials and is pending 2FA, show the OTP form.
+if st.session_state.get("pending_admin"):
     st.title("Two-Factor Authentication")
     with st.form("otp_form"):
         st.info(f"Admin Verification for **{st.session_state['pending_admin']}**")
@@ -393,104 +289,8 @@ elif st.session_state.get("pending_admin"):
             st.rerun()
         else:
             st.error("Invalid Authenticator code.")
-    st.stop()
-
-elif not st.session_state.get("user"):
-    st.title("Welcome to AI Data Engineering")
-    with st.form("auth_form", clear_on_submit=False):
-        st.subheader("Authentication")
-        username = st.text_input("Username", key="auth_user").strip().lower()
-        password = st.text_input("Password", type="password", key="auth_pass").strip()
-        
-        col1, col2 = st.columns(2)
-        login_clicked = col1.form_submit_button("Login", use_container_width=True)
-        signup_clicked = col2.form_submit_button("Signup / Register", use_container_width=True)
-    
-    if st.button("Forgot Password?"):
-        st.session_state["forgot_password"] = True
-        st.rerun()
-
-    if login_clicked:
-        try:
-            user = login_user(username, password)
-            if user:
-                if user.role == "admin":
-                    st.session_state["pending_admin"] = user.username
-                    st.rerun()
-                else:
-                    st.session_state["role"] = user.role
-                    st.session_state["user"] = user.username
-                    _set_auth_url(user.username)
-                    st.rerun()
-            else:
-                st.error("Invalid credentials")
-        except PermissionError as pe:
-            st.warning(str(pe))
-
-    if signup_clicked:
-        st.session_state["signup_mode"] = True
-        st.rerun()
 
     st.stop()
-
-
-def render_dashboard():
-    from core.interview import load_interview_history
-    from core.loader import load_questions
-    from core.progress import load_progress
-
-    st.title("📊 Dashboard")
-    modules = [
-        {"label": "SQL", "question_module": "sql", "progress_track": "sql"},
-        {"label": "Spark", "question_module": "sql", "progress_track": "pyspark"},
-        {"label": "Python", "question_module": "python", "progress_track": "python"},
-    ]
-    cols = st.columns(3)
-    for i, module_config in enumerate(modules):
-        with cols[i % 3]:
-            try:
-                questions = load_questions(module_config["question_module"])
-            except Exception:
-                questions = []
-
-            total = len(questions)
-            solved_keys = load_progress(module_config["progress_track"])
-            solved = len([q for q in questions if q.get("progress_key") in solved_keys])
-            unsolved = total - solved
-
-            st.markdown(f"### 📘 {module_config['label'].upper()}")
-
-            if total == 0:
-                st.info("No questions yet")
-                continue
-
-            fig, ax = plt.subplots(figsize=(2.5, 2.5))
-            ax.pie(
-                [solved, unsolved],
-                labels=["✔", "✖"],
-                autopct="%1.0f%%",
-                textprops={"fontsize": 8},
-            )
-            ax.axis("equal")
-            st.pyplot(fig, clear_figure=True)
-            # Render Solved metric exactly once
-            st.markdown(f"<div style='text-align:center'><b>{solved} / {total}</b><br>Solved</div>", unsafe_allow_html=True)
-    st.markdown("---")
-    st.subheader("Interview Simulator")
-    history = load_interview_history()
-    if not history:
-        st.info("No interview runs yet.")
-    else:
-        latest_run = history[-1]
-        best_run = max(history, key=lambda run: run.get("score_percent", 0))
-        average_score = round(sum(run.get("score_percent", 0) for run in history) / len(history), 1)
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Runs", len(history))
-        m2.metric("Latest Score", f"{latest_run['score_percent']}%")
-        m3.metric("Best Score", f"{best_run['score_percent']}%")
-        m4.metric("Average Score", f"{average_score}%")
-        recent_runs = [{"finished_at": r["finished_at"], "track": r["track"], "score": f"{r['total_score']}/{r['max_score']}", "accuracy": f"{r['correct_count']}/{r['total_questions']}", "time_used": f"{r.get('elapsed_seconds', 0)}s", "reason": r.get("finished_reason", "completed").replace("_", " ").title()} for r in reversed(history[-5:])]
-        st.dataframe(recent_runs, use_container_width=True, hide_index=True)
 
 # --- Main Application Logic (Only reached if st.session_state["user"] is set) ---
 if st.session_state.get("user"):
@@ -551,6 +351,64 @@ if st.session_state.get("user"):
 
     st.session_state["module"] = module
     st.query_params["module"] = module
+
+    def render_dashboard():
+        from core.interview import load_interview_history
+        from core.loader import load_questions
+        from core.progress import load_progress
+
+        st.title("📊 Dashboard")
+        modules = [
+            {"label": "SQL", "question_module": "sql", "progress_track": "sql"},
+            {"label": "Spark", "question_module": "sql", "progress_track": "pyspark"},
+            {"label": "Python", "question_module": "python", "progress_track": "python"},
+        ]
+        cols = st.columns(3)
+        for i, module_config in enumerate(modules):
+            with cols[i % 3]:
+                try:
+                    questions = load_questions(module_config["question_module"])
+                except Exception:
+                    questions = []
+
+                total = len(questions)
+                solved_keys = load_progress(module_config["progress_track"])
+                solved = len([q for q in questions if q.get("progress_key") in solved_keys])
+                unsolved = total - solved
+
+                st.markdown(f"### 📘 {module_config['label'].upper()}")
+
+                if total == 0:
+                    st.info("No questions yet")
+                    continue
+
+                fig, ax = plt.subplots(figsize=(2.5, 2.5))
+                ax.pie(
+                    [solved, unsolved],
+                    labels=["✔", "✖"],
+                    autopct="%1.0f%%",
+                    textprops={"fontsize": 8},
+                )
+                ax.axis("equal")
+                st.pyplot(fig, clear_figure=True)
+                # Render Solved metric exactly once
+                st.markdown(f"<div style='text-align:center'><b>{solved} / {total}</b><br>Solved</div>", unsafe_allow_html=True)
+        st.markdown("---")
+        st.subheader("Interview Simulator")
+        history = load_interview_history()
+        if not history:
+            st.info("No interview runs yet.")
+        else:
+            latest_run = history[-1]
+            best_run = max(history, key=lambda run: run.get("score_percent", 0))
+            average_score = round(sum(run.get("score_percent", 0) for run in history) / len(history), 1)
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Runs", len(history))
+            m2.metric("Latest Score", f"{latest_run['score_percent']}%")
+            m3.metric("Best Score", f"{best_run['score_percent']}%")
+            m4.metric("Average Score", f"{average_score}%")
+            recent_runs = [{"finished_at": r["finished_at"], "track": r["track"], "score": f"{r['total_score']}/{r['max_score']}", "accuracy": f"{r['correct_count']}/{r['total_questions']}", "time_used": f"{r.get('elapsed_seconds', 0)}s", "reason": r.get("finished_reason", "completed").replace("_", " ").title()} for r in reversed(history[-5:])]
+            st.dataframe(recent_runs, use_container_width=True, hide_index=True)
 
     # Map labels to rendering functions
     ROUTER = {
