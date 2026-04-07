@@ -51,8 +51,8 @@ def create_user(username, password, full_name, email, phone, role="user", otp_se
             phone_number=phone,
             role=role,
             is_approved=False,
-            email_verified=True if role == "admin" else False,
-            otp_secret=otp_secret   # ✅ FIX
+            email_verified=True if role == "admin" else True,  # ✅ FIX
+            otp_secret=otp_secret
         )
 
         session.add(user)
@@ -67,15 +67,13 @@ def send_otp_email(email, otp):
     resend.api_key = st.secrets["RESEND_API_KEY"]
 
     try:
-        response = resend.Emails.send({
-            "from": "Panasa Edu <no-reply@panasaedu.in>",  # ✅ your domain
+        resend.Emails.send({
+            "from": "Panasa Edu <no-reply@panasaedu.in>",
             "to": [email],
             "subject": "Your OTP Code",
-            "html": f"<h2>Your OTP is:</h2><h1>{otp}</h1><p>Valid for 10 minutes.</p>"
+            "html": f"<h2>Your OTP is:</h2><h1>{otp}</h1>"
         })
-
         return True
-
     except Exception as e:
         st.error(f"Email error: {e}")
         return False
@@ -84,7 +82,7 @@ def send_otp_email(email, otp):
 # ---------------- OTP GENERATE ----------------
 def generate_and_store_otp(email):
     if not can_send_otp():
-        st.warning("Please wait 30 seconds before requesting another OTP")
+        st.warning("Wait 30 seconds before requesting OTP")
         return None
 
     session = SessionLocal()
@@ -92,15 +90,9 @@ def generate_and_store_otp(email):
         otp = str(random.randint(100000, 999999))
         expiry = datetime.utcnow() + timedelta(minutes=10)
 
-        user = session.query(User).filter(User.email == email).first()
-
-        if user:
-            user.otp_code = otp
-            user.otp_expiry = expiry
-            session.commit()
-        else:
-            st.session_state["temp_otp"] = otp
-            st.session_state["temp_otp_expiry"] = expiry
+        st.session_state["temp_otp"] = otp
+        st.session_state["temp_otp_expiry"] = expiry
+        st.session_state["email_verified"] = False
 
         send_otp_email(email, otp)
         return otp
@@ -111,32 +103,17 @@ def generate_and_store_otp(email):
 
 # ---------------- OTP VERIFY ----------------
 def verify_email_otp(email, code):
-    session = SessionLocal()
-    try:
-        user = session.query(User).filter(User.email == email).first()
+    otp = st.session_state.get("temp_otp")
+    expiry = st.session_state.get("temp_otp_expiry")
 
-        # EXISTING USER
-        if user and user.otp_code == code:
-            if hasattr(user, "otp_expiry") and user.otp_expiry and user.otp_expiry < datetime.utcnow():
-                return False
+    if otp == code:
+        if expiry and expiry < datetime.utcnow():
+            return False
 
-            user.email_verified = True
-            user.otp_code = None
-            user.otp_expiry = None
-            session.commit()
-            return True
+        st.session_state["email_verified"] = True
+        return True
 
-        # NEW USER (SIGNUP FLOW)
-        if code == st.session_state.get("temp_otp"):
-            expiry = st.session_state.get("temp_otp_expiry")
-            if expiry and expiry < datetime.utcnow():
-                return False
-            return True
-
-        return False
-
-    finally:
-        session.close()
+    return False
 
 
 # ---------------- PASSWORD RESET ----------------
@@ -151,12 +128,8 @@ def update_password(email, new_password, otp):
         if user.otp_code != otp:
             raise ValueError("Invalid OTP")
 
-        if hasattr(user, "otp_expiry") and user.otp_expiry and user.otp_expiry < datetime.utcnow():
-            raise ValueError("OTP expired")
-
         user.password = bcrypt.hashpw(new_password.encode(), bcrypt.gensalt()).decode()
         user.otp_code = None
-        user.otp_expiry = None
         session.commit()
 
     finally:
@@ -193,7 +166,7 @@ def login_user(username, password):
         session.close()
 
 
-# ---------------- TOTP VERIFY ----------------
+# ---------------- TOTP ----------------
 def verify_otp(username, code):
     session = SessionLocal()
     try:
@@ -202,8 +175,7 @@ def verify_otp(username, code):
         if not user or not user.otp_secret:
             return False
 
-        totp = pyotp.TOTP(user.otp_secret)
-        return totp.verify(code)
+        return pyotp.TOTP(user.otp_secret).verify(code)
 
     finally:
         session.close()

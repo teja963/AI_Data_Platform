@@ -333,7 +333,7 @@ if st.session_state.get("signup_mode"):
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button("Create Account", use_container_width=True):
+            if col1.button("Create Account", use_container_width=True):
                 if not all([name, username, password]):
                     st.warning("Please fill all required fields")
                 else:
@@ -345,10 +345,12 @@ if st.session_state.get("signup_mode"):
                             st.session_state["email"],
                             phone
                         )
-                        st.success("Account created 🎉")
-                        st.info("Waiting for admin approval")
-                        st.session_state.clear()
+
+                        # ✅ FIX: show success + hold screen
+                        st.session_state["signup_success"] = True
+                        st.session_state["signup_mode"] = False
                         st.rerun()
+
                     except Exception as e:
                         st.error(str(e))
 
@@ -369,6 +371,11 @@ if st.session_state.get("signup_mode"):
 # ---------------- LOGIN FLOW ----------------
 elif not st.session_state.get("user") and not st.session_state.get("pending_admin"):
 
+    if st.session_state.get("signup_success"):
+        st.success("✅ Account created successfully!")
+        st.info("⏳ Wait for admin approval before login.")
+        del st.session_state["signup_success"]
+        
     st.title("Welcome to AI Data Engineering")
 
     with st.form("auth_form", clear_on_submit=False):
