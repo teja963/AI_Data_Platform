@@ -1,6 +1,8 @@
 import json
 import os
 
+import streamlit as st
+
 
 def _format_category_name(category_name):
     return category_name.replace("_", " ").replace("-", " ").title()
@@ -28,35 +30,40 @@ def _load_question_file(file_path, module, category=None):
     return question
 
 
+@st.cache_data(ttl=600, show_spinner=False)
 def load_questions(module):
-    # Prefer DB-stored questions if present (fast path), otherwise fall back to JSON files
-    try:
-        from core.db import SessionLocal
-        from core.models import Question
+    # Prefer DB-stored SQL/PySpark questions if present, otherwise fall back to local data.
+    # Python evaluator questions stay local because tests may contain pandas/numpy objects.
+    session = None
+    if module != "python":
+        try:
+            from core.db import SessionLocal
+            from core.models import Question
 
-        session = SessionLocal()
-        db_rows = session.query(Question).filter_by(module=module).all()
-        if db_rows:
-            questions = []
-            for r in db_rows:
-                try:
-                    payload = json.loads(getattr(r, "payload", "{}"))
-                except Exception:
-                    payload = {}
+            session = SessionLocal()
+            db_rows = session.query(Question).filter_by(module=module).all()
+            if db_rows:
+                questions = []
+                for r in db_rows:
+                    try:
+                        payload = json.loads(getattr(r, "payload", "{}"))
+                    except Exception:
+                        payload = {}
 
-                # ensure compatibility with existing UI keys
-                payload["category"] = payload.get("category", getattr(r, "category", "Others"))
-                payload["difficulty"] = payload.get("difficulty", getattr(r, "difficulty", "Medium"))
-                payload["id"] = payload.get("id", getattr(r, "id", None))
-                payload["progress_key"] = build_question_key(module, payload)
-                questions.append(payload)
+                    # ensure compatibility with existing UI keys
+                    payload["category"] = payload.get("category", getattr(r, "category", "Others"))
+                    payload["difficulty"] = payload.get("difficulty", getattr(r, "difficulty", "Medium"))
+                    payload["id"] = payload.get("id", getattr(r, "id", None))
+                    payload["progress_key"] = build_question_key(module, payload)
+                    questions.append(payload)
 
-            session.close()
-            return questions
-        session.close()
-    except Exception:
-        # DB not available or error — fall back to filesystem loader
-        pass
+                return questions
+        except Exception:
+            # DB not available or error — fall back to filesystem loader
+            pass
+        finally:
+            if session is not None:
+                session.close()
 
     nested_path = os.path.join("data", module)
     legacy_path = os.path.join("data", f"{module}_questions")

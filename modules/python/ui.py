@@ -692,6 +692,7 @@ def render_active_interview():
                             "score": score,
                         }
                         st.session_state[INTERVIEW_STATE_KEY] = interview_state
+                        mark_question_solved(question_key)
                         st.success(f"Correct. You earned {score} points on this question.")
                         st.rerun()
 

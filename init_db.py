@@ -1,7 +1,7 @@
 from core.db import engine
 from core.models import Base
+from core.progress import _ensure_progress_schema
 
-# Drop tables first to ensure schema is synced with new columns (full_name, email, etc.)
-Base.metadata.drop_all(bind=engine)
 Base.metadata.create_all(bind=engine)
-print("✅ Tables recreated with new schema")
+_ensure_progress_schema()
+print("✅ Tables created or updated without deleting existing data")

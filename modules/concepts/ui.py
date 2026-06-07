@@ -991,22 +991,191 @@ normalized = (vector - vector.mean()) / vector.std()""",
 ]
 
 
-def render_reference_section(section, language):
+SYNTAX_EXPLANATIONS = {
+    "sql": {
+        "SELECT": "Chooses the columns or expressions that will appear in the final result.",
+        "FROM": "Chooses the source table or derived result set where rows come from.",
+        "WHERE": "Filters individual rows before grouping or aggregation happens.",
+        "GROUP BY": "Collects rows into groups so aggregate functions can summarize each group.",
+        "HAVING": "Filters grouped results after aggregate values have been calculated.",
+        "ORDER BY": "Sorts the final result into a predictable order.",
+        "LIMIT": "Returns only the requested number of rows after sorting/filtering.",
+        "JOIN": "Combines rows from two tables when the ON condition matches.",
+        "LEFT JOIN": "Keeps every row from the left table and fills missing right-side matches with NULL.",
+        "CASE": "Creates branch logic inside a query, similar to if/elif/else.",
+        "WITH": "Names a temporary query block so the main query is easier to read.",
+        "OVER": "Runs a window calculation while keeping the original row detail.",
+        "PARTITION BY": "Splits window calculations into independent groups.",
+        "ROWS BETWEEN": "Defines the row range used by cumulative or rolling window calculations.",
+        "CAST": "Converts a value from one data type to another before comparison or formatting.",
+        "UNION": "Stacks compatible result sets and removes duplicates.",
+        "MERGE": "Applies insert/update logic into a target table from a source table.",
+        "EXPLAIN": "Shows how the database plans to execute the query.",
+    },
+    "pyspark": {
+        "SparkSession": "The application entry point used to read data, create DataFrames, and submit jobs.",
+        "spark.read": "Builds a lazy DataFrame reader for files, tables, or streams.",
+        "select": "Chooses columns or expressions for the next DataFrame.",
+        "filter": "Keeps rows that match a boolean Spark Column expression.",
+        "withColumn": "Adds or replaces one column using a Spark expression.",
+        "groupBy": "Defines grouped records before aggregation.",
+        "agg": "Calculates grouped summaries such as sum, avg, or count.",
+        "join": "Combines two DataFrames using a join condition and join type.",
+        "when": "Creates conditional column logic inside the Spark execution plan.",
+        "Window": "Defines partition, order, and frame rules for row-wise analytics.",
+        "explode": "Turns array/map elements into additional rows.",
+        "write": "Persists a DataFrame to files or tables.",
+        "cache": "Keeps a reused DataFrame in memory after an action materializes it.",
+        "repartition": "Reshuffles data into a new number of partitions.",
+        "explain": "Prints the logical and physical execution plan.",
+    },
+    "python": {
+        "def": "Defines a reusable function boundary with named inputs.",
+        "return": "Sends the final value back to the caller.",
+        "if": "Runs code only when a condition is true.",
+        "for": "Iterates through each item in a sequence or iterable.",
+        "while": "Repeats while a condition remains true.",
+        "list": "Stores ordered mutable values.",
+        "tuple": "Stores ordered fixed-shape values.",
+        "set": "Stores unique values and gives fast membership checks.",
+        "dict": "Stores key-value pairs for lookup, grouping, and counting.",
+        "append": "Adds one item to the end of a list.",
+        "get": "Reads from a dictionary with a fallback when the key is missing.",
+        "split": "Breaks text into tokens.",
+        "join": "Combines strings with a separator.",
+        "with open": "Opens a file and closes it automatically after the block.",
+        "json.load": "Parses JSON from a file object.",
+        "requests": "Calls HTTP APIs from Python code.",
+        "groupby": "Groups tabular rows in pandas before aggregation.",
+        "sorted": "Returns a new ordered list without changing the original iterable.",
+    },
+}
+
+
+def _syntax_lines(syntax):
+    return [line.strip() for line in syntax.splitlines() if line.strip()]
+
+
+def _explain_syntax_line(line, language):
+    explanations = SYNTAX_EXPLANATIONS[language]
+    upper_line = line.upper()
+
+    for keyword, explanation in explanations.items():
+        if keyword.upper() in upper_line or keyword in line:
+            return explanation
+
+    if language == "sql":
+        return "This line supplies a table, expression, condition, alias, or boundary used by the query block."
+    if language == "pyspark":
+        return "This line adds another lazy DataFrame transformation to the Spark execution plan."
+    return "This line defines data, control flow, a function call, or a transformation step in the Python program."
+
+
+def _visual_example(section, language):
+    title = section["title"].lower()
+    keywords = section.get("keywords", "").lower()
+
+    if language == "sql":
+        before = "Raw table rows: many records, possible duplicates, NULLs, multiple users/orders/events."
+        if "join" in title:
+            action = "Match rows from the left table to rows from the right table using the ON key."
+            after = "One combined result where columns from both tables appear in each matched row."
+        elif "aggregation" in title or "metrics" in title:
+            action = "Group rows by the selected grain, then calculate COUNT/SUM/AVG style measures."
+            after = "One summary row per group, such as one row per customer, date, or category."
+        elif "window" in title or "ranking" in title:
+            action = "Sort rows inside each partition and calculate a value beside every original row."
+            after = "The same row detail plus analytics columns like rank, previous value, or running total."
+        elif "conditional" in title or "null" in title:
+            action = "Evaluate each row against ordered rules and replace missing values where needed."
+            after = "Cleaner columns with labels, default values, or safe calculations."
+        elif "subqueries" in title:
+            action = "Build an intermediate result first, then query from it or test whether related rows exist."
+            after = "A main result that is easier to reason about because the complex step has a name."
+        else:
+            action = "Apply query clauses in logical order: source, filter, group, project, sort, limit."
+            after = "A focused result set containing only the rows and columns needed for the answer."
+    elif language == "pyspark":
+        before = "Distributed DataFrame: rows are split across partitions and transformations are still lazy."
+        if "join" in title:
+            action = "Spark plans how to match keys across partitions, using broadcast or shuffle depending on data size."
+            after = "A new DataFrame plan with columns from both inputs; execution happens only after an action."
+        elif "window" in title:
+            action = "Partition and order rows, then calculate row-wise analytics within each partition."
+            after = "Original rows remain, with added columns such as rn, lag, lead, or running totals."
+        elif "write" in title:
+            action = "Materialize the DataFrame into files, tables, or a streaming sink with mode and partition rules."
+            after = "Persisted output plus metadata/checkpoints if streaming is used."
+        elif "partition" in title or "execution" in title:
+            action = "Trigger an action, inspect the plan, or change how rows are distributed across executors."
+            after = "A physical job with tasks, shuffles, cached data, or fewer/more partitions."
+        else:
+            action = "Chain lazy transformations that describe the result without immediately computing it."
+            after = "A new DataFrame object representing the next logical plan step."
+    else:
+        before = "Input values: lists, records, strings, files, API responses, or tabular rows."
+        if any(word in title for word in ["list", "tuple", "set", "dictionary"]):
+            action = "Choose the data structure based on update needs, uniqueness, order, and lookup speed."
+            after = "Data is shaped into a structure that makes the next operation simple and efficient."
+        elif "file" in title or "json" in title or "csv" in title:
+            action = "Open the file, parse the external format, transform records, then write or return structured data."
+            after = "Python dictionaries/lists/DataFrames that the rest of the program can process safely."
+        elif "api" in title or "requests" in keywords:
+            action = "Send a request with timeouts, validate the status, parse JSON, and retry only safe operations."
+            after = "A checked response payload or a surfaced error instead of a silent failure."
+        elif "pandas" in title:
+            action = "Use vectorized DataFrame operations to clean, group, merge, and summarize tabular data."
+            after = "A transformed table without slow row-by-row Python loops."
+        else:
+            action = "Parse inputs, apply control flow or helper functions, and return one clear output."
+            after = "A deterministic result that can be tested with examples and edge cases."
+
+    return before, action, after
+
+
+def render_deep_explanation(section, language):
+    before, action, after = _visual_example(section, language)
+
+    st.markdown("**Syntax anatomy**")
+    for line in _syntax_lines(section["syntax"])[:12]:
+        st.markdown(f"- `{line}`: {_explain_syntax_line(line, language)}")
+
+    if len(_syntax_lines(section["syntax"])) > 12:
+        st.caption("Long syntax blocks are summarized to the first key lines; the full reusable template is shown below.")
+
+    st.markdown("**Before -> Action -> After visualization**")
+    before_col, action_col, after_col = st.columns(3)
+    before_col.info(f"Before\n\n{before}")
+    action_col.warning(f"What the syntax does\n\n{action}")
+    after_col.success(f"After\n\n{after}")
+
+    with st.expander("How to read this concept during practice"):
+        st.markdown(
+            f"- Start by identifying the input grain: one row, one group, one partition, one file, or one function call.\n"
+            f"- Read the syntax from top to bottom and name what each step changes.\n"
+            f"- Compare the before and after state; if the shape changed, explain whether rows, columns, partitions, or values changed.\n"
+            f"- Use the tip below as the interview shortcut for choosing this concept quickly."
+        )
+
+
+def render_reference_section(section, code_language, concept_language):
     with st.container(border=True):
         st.markdown(f"### {section['title']}")
         st.markdown(f"**What it refers to**: {section['concept']}")
         st.markdown(f"**Key syntax / keywords**: `{section['keywords']}`")
+        render_deep_explanation(section, concept_language)
         if section.get("operations"):
             st.markdown("**Common operations index**")
             for operation_name, operation_summary in section["operations"]:
                 st.markdown(f"- `{operation_name}`: {operation_summary}")
-        st.code(section["syntax"], language=language, wrap_lines=True)
+        st.code(section["syntax"], language=code_language, wrap_lines=True)
         st.markdown(f"**How to think about it**: {section['tip']}")
 
 
-def render_reference_tab(title, caption, sections, language, key_prefix):
+def render_reference_tab(title, caption, sections, code_language, key_prefix, concept_language=None):
     st.subheader(title)
     st.caption(caption)
+    concept_language = concept_language or code_language
 
     view_mode = st.radio(
         "Study mode",
@@ -1024,11 +1193,11 @@ def render_reference_tab(title, caption, sections, language, key_prefix):
             key=f"{key_prefix}_selected_title",
         )
         selected_section = next(section for section in sections if section["title"] == selected_title)
-        render_reference_section(selected_section, language)
+        render_reference_section(selected_section, code_language, concept_language)
     else:
         st.caption("Showing all concepts in a full-width reading view.")
         for section in sections:
-            render_reference_section(section, language)
+            render_reference_section(section, code_language, concept_language)
 
 
 def render_concepts():
@@ -1053,7 +1222,7 @@ def render_concepts():
             title="SQL Reference",
             caption="Generic SQL syntax patterns and key terms. These are reusable templates, not dataset-specific code.",
             sections=SQL_CONCEPT_SECTIONS,
-            language="sql",
+            code_language="sql",
             key_prefix="sql_reference",
         )
 
@@ -1062,8 +1231,9 @@ def render_concepts():
             title="PySpark Reference",
             caption="Independent PySpark concepts with reusable DataFrame syntax, from session entry points to nested data and execution behavior.",
             sections=PYSPARK_CONCEPT_SECTIONS,
-            language="python",
+            code_language="python",
             key_prefix="pyspark_reference",
+            concept_language="pyspark",
         )
 
     with python_tab:
@@ -1071,6 +1241,6 @@ def render_concepts():
             title="Python Reference",
             caption="Interview-ready Python syntax covering core coding, data structures, files, APIs, pandas, and data-engineering utility patterns.",
             sections=PYTHON_CONCEPT_SECTIONS,
-            language="python",
+            code_language="python",
             key_prefix="python_reference",
         )

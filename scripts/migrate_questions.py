@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import argparse
 
 # ensure project root on path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -93,4 +94,11 @@ def migrate(drop_and_recreate=False):
 
 
 if __name__ == '__main__':
-    migrate(drop_and_recreate=True)
+    parser = argparse.ArgumentParser(description="Load local question data into PostgreSQL.")
+    parser.add_argument(
+        "--drop-and-recreate",
+        action="store_true",
+        help="Dangerous: drop all tables before loading questions.",
+    )
+    args = parser.parse_args()
+    migrate(drop_and_recreate=args.drop_and_recreate)

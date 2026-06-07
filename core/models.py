@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean, UniqueConstraint
 from datetime import datetime
 from core.db import Base
 
@@ -34,11 +34,18 @@ class Question(Base):
 
 class Progress(Base):
     __tablename__ = "progress"
+    __table_args__ = (
+        UniqueConstraint("user_id", "track", "question_key", name="uq_progress_user_track_question"),
+    )
+
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id"))
-    question_id = Column(Integer)
+    question_id = Column(Integer, nullable=True)
+    track = Column(String, default="sql")
+    question_key = Column(String)
     status = Column(String)  # solved / unsolved
     attempts = Column(Integer, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class InterviewRun(Base):

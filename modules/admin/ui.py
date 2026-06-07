@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from core.db import SessionLocal, engine
 from core.models import User
+from core.progress import _ensure_progress_schema
 
 def render_admin():
     if st.session_state.get("role") != "admin":
@@ -10,9 +11,10 @@ def render_admin():
 
     st.title("🛡️ Admin Dashboard")
 
-    tab1, tab2, tab3 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "👥 User Management",
         "📈 User Activity",
+        "📚 Progress",
         "🔍 SQL Console"
     ])
 
@@ -159,9 +161,38 @@ def render_admin():
             st.dataframe(df_activity.reset_index(drop=True), use_container_width=True)
 
     # =========================
-    # 🔍 SQL CONSOLE
+    # 📚 PROGRESS
     # =========================
     with tab3:
+        st.subheader("📚 User Question Progress")
+        try:
+            _ensure_progress_schema()
+            df_progress = pd.read_sql(
+                """
+                SELECT
+                    u.username,
+                    p.track,
+                    COUNT(*) AS solved_questions,
+                    MAX(p.updated_at) AS last_progress_at
+                FROM progress p
+                JOIN users u ON u.id = p.user_id
+                WHERE p.status = 'solved'
+                GROUP BY u.username, p.track
+                ORDER BY u.username, p.track
+                """,
+                engine,
+            )
+            if df_progress.empty:
+                st.info("No solved progress has been saved yet.")
+            else:
+                st.dataframe(df_progress, use_container_width=True, hide_index=True)
+        except Exception as e:
+            st.error(f"Progress summary unavailable: {e}")
+
+    # =========================
+    # 🔍 SQL CONSOLE
+    # =========================
+    with tab4:
         st.subheader("🔍 SQL Explorer")
 
         query_input = st.text_area(

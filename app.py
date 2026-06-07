@@ -1,6 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import matplotlib.pyplot as plt
+import json
 
 # -------- SESSION INIT (MANDATORY) --------
 if "user" not in st.session_state:
@@ -157,18 +158,19 @@ components.html(
     <script>
     (function(){
         try{
-            const ONE_HOUR = 3600000; // 1 hour in ms
+            const SESSION_TTL = 12 * 3600000; // 12 hours in ms
             const params = new URLSearchParams(window.location.search);
             const stored = localStorage.getItem('ai_data_user');
             const ts = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
             const now = Date.now();
 
-            // If the stored session is older than 1 hour, clear storage and remove user param
-            if (stored && ts && (now - ts > ONE_HOUR)) {
+            // If the stored session is expired, clear storage and remove user param
+            if (stored && ts && (now - ts > SESSION_TTL)) {
                 localStorage.removeItem('ai_data_user');
                 localStorage.removeItem('ai_data_user_ts');
                 params.delete('user');
-                window.location.replace(window.location.pathname + '?' + params.toString());
+                const query = params.toString();
+                window.location.replace(window.location.pathname + (query ? '?' + query : ''));
                 return;
             }
 
@@ -188,7 +190,7 @@ components.html(
             setInterval(function(){
                 const stored2 = localStorage.getItem('ai_data_user');
                 const ts2 = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
-                if(stored2 && ts2 && (Date.now() - ts2 > ONE_HOUR)){
+                if(stored2 && ts2 && (Date.now() - ts2 > SESSION_TTL)){
                     localStorage.removeItem('ai_data_user');
                     localStorage.removeItem('ai_data_user_ts');
                     window.location.replace(window.location.pathname);
@@ -204,11 +206,12 @@ components.html(
 def _set_auth_url(username):
     """Helper to strictly set user in URL and reload if necessary."""
     st.query_params["user"] = username
+    encoded_username = json.dumps(username)
     # Immediate JS sync to localStorage so refresh works right after login
     components.html(f"""
     <script>
     try{{
-        localStorage.setItem('ai_data_user', '{username}');
+        localStorage.setItem('ai_data_user', {encoded_username});
         localStorage.setItem('ai_data_user_ts', Date.now().toString());
     }}catch(e){{}}
     </script>
@@ -235,7 +238,11 @@ def _safe_query_param(name):
     if isinstance(v, list):
         return v[0] if v else None
     # guard against empty string
-    return v if v != "" else None
+    if v == "":
+        return None
+    if name == "user" and "," in str(v):
+        return str(v).split(",")[-1].strip()
+    return v
 
 # --- RESTORE SESSION FROM URL (Refresh Persistence) ---
 # Pick up the 'user' parameter set by the JavaScript restoration script
@@ -450,10 +457,11 @@ if st.session_state.get("pending_admin"):
 if st.session_state.get("user"):
     # --- Main App (Only reached if authenticated)
     with st.sidebar:
+        encoded_session_user = json.dumps(st.session_state["user"])
         components.html(f"""
             <script>
             try {{
-                localStorage.setItem('ai_data_user', '{st.session_state["user"]}');
+                localStorage.setItem('ai_data_user', {encoded_session_user});
                 localStorage.setItem('ai_data_user_ts', Date.now().toString());
             }} catch(e) {{}}
             </script>
