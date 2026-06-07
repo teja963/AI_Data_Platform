@@ -1071,91 +1071,610 @@ def _explain_syntax_line(line, language):
     return "This line defines data, control flow, a function call, or a transformation step in the Python program."
 
 
-def _visual_example(section, language):
-    title = section["title"].lower()
-    keywords = section.get("keywords", "").lower()
+def _table(rows):
+    return rows
 
-    if language == "sql":
-        before = "Raw table rows: many records, possible duplicates, NULLs, multiple users/orders/events."
-        if "join" in title:
-            action = "Match rows from the left table to rows from the right table using the ON key."
-            after = "One combined result where columns from both tables appear in each matched row."
-        elif "aggregation" in title or "metrics" in title:
-            action = "Group rows by the selected grain, then calculate COUNT/SUM/AVG style measures."
-            after = "One summary row per group, such as one row per customer, date, or category."
-        elif "window" in title or "ranking" in title:
-            action = "Sort rows inside each partition and calculate a value beside every original row."
-            after = "The same row detail plus analytics columns like rank, previous value, or running total."
-        elif "conditional" in title or "null" in title:
-            action = "Evaluate each row against ordered rules and replace missing values where needed."
-            after = "Cleaner columns with labels, default values, or safe calculations."
-        elif "subqueries" in title:
-            action = "Build an intermediate result first, then query from it or test whether related rows exist."
-            after = "A main result that is easier to reason about because the complex step has a name."
-        else:
-            action = "Apply query clauses in logical order: source, filter, group, project, sort, limit."
-            after = "A focused result set containing only the rows and columns needed for the answer."
-    elif language == "pyspark":
-        before = "Distributed DataFrame: rows are split across partitions and transformations are still lazy."
-        if "join" in title:
-            action = "Spark plans how to match keys across partitions, using broadcast or shuffle depending on data size."
-            after = "A new DataFrame plan with columns from both inputs; execution happens only after an action."
-        elif "window" in title:
-            action = "Partition and order rows, then calculate row-wise analytics within each partition."
-            after = "Original rows remain, with added columns such as rn, lag, lead, or running totals."
-        elif "write" in title:
-            action = "Materialize the DataFrame into files, tables, or a streaming sink with mode and partition rules."
-            after = "Persisted output plus metadata/checkpoints if streaming is used."
-        elif "partition" in title or "execution" in title:
-            action = "Trigger an action, inspect the plan, or change how rows are distributed across executors."
-            after = "A physical job with tasks, shuffles, cached data, or fewer/more partitions."
-        else:
-            action = "Chain lazy transformations that describe the result without immediately computing it."
-            after = "A new DataFrame object representing the next logical plan step."
+
+def _sql_example(section):
+    title = section["title"]
+    examples = {
+        "Core Query Skeleton": {
+            "inputs": {
+                "orders before query": _table([
+                    {"order_id": 1, "customer": "Asha", "region": "South", "amount": 120, "status": "paid"},
+                    {"order_id": 2, "customer": "Asha", "region": "South", "amount": 80, "status": "cancelled"},
+                    {"order_id": 3, "customer": "Ben", "region": "West", "amount": 240, "status": "paid"},
+                    {"order_id": 4, "customer": "Cara", "region": "South", "amount": 200, "status": "paid"},
+                ])
+            },
+            "code": """SELECT region, SUM(amount) AS paid_amount
+FROM orders
+WHERE status = 'paid'
+GROUP BY region
+HAVING SUM(amount) >= 200
+ORDER BY paid_amount DESC
+LIMIT 2;""",
+            "output": _table([
+                {"region": "South", "paid_amount": 320},
+                {"region": "West", "paid_amount": 240},
+            ]),
+            "change": "Rows are filtered first, then grouped by region, then only groups with total >= 200 remain.",
+        },
+        "Join Syntax": {
+            "inputs": {
+                "orders": _table([
+                    {"order_id": 1, "customer_id": 10, "amount": 120},
+                    {"order_id": 2, "customer_id": 20, "amount": 80},
+                    {"order_id": 3, "customer_id": 99, "amount": 50},
+                ]),
+                "customers": _table([
+                    {"customer_id": 10, "customer_name": "Asha"},
+                    {"customer_id": 20, "customer_name": "Ben"},
+                ]),
+            },
+            "code": """SELECT o.order_id, c.customer_name, o.amount
+FROM orders AS o
+LEFT JOIN customers AS c
+  ON o.customer_id = c.customer_id;""",
+            "output": _table([
+                {"order_id": 1, "customer_name": "Asha", "amount": 120},
+                {"order_id": 2, "customer_name": "Ben", "amount": 80},
+                {"order_id": 3, "customer_name": None, "amount": 50},
+            ]),
+            "change": "The customer name is attached when keys match. The unmatched order stays because LEFT JOIN preserves left-side rows.",
+        },
+        "Aggregation And HAVING": {
+            "inputs": {
+                "sales before aggregation": _table([
+                    {"region": "South", "amount": 120},
+                    {"region": "South", "amount": 80},
+                    {"region": "West", "amount": 240},
+                    {"region": "East", "amount": 40},
+                ])
+            },
+            "code": """SELECT region, COUNT(*) AS orders, SUM(amount) AS revenue
+FROM sales
+GROUP BY region
+HAVING SUM(amount) >= 100;""",
+            "output": _table([
+                {"region": "South", "orders": 2, "revenue": 200},
+                {"region": "West", "orders": 1, "revenue": 240},
+            ]),
+            "change": "Many order rows collapse into one row per region. HAVING removes the East group after totals are calculated.",
+        },
+        "Conditional Logic And NULL Handling": {
+            "inputs": {
+                "payments before CASE/COALESCE": _table([
+                    {"payment_id": 1, "amount": 120, "coupon": None},
+                    {"payment_id": 2, "amount": 40, "coupon": "NEW10"},
+                    {"payment_id": 3, "amount": 0, "coupon": None},
+                ])
+            },
+            "code": """SELECT
+    payment_id,
+    COALESCE(coupon, 'NO_COUPON') AS coupon_label,
+    CASE
+        WHEN amount >= 100 THEN 'high'
+        WHEN amount > 0 THEN 'normal'
+        ELSE 'free'
+    END AS amount_bucket
+FROM payments;""",
+            "output": _table([
+                {"payment_id": 1, "coupon_label": "NO_COUPON", "amount_bucket": "high"},
+                {"payment_id": 2, "coupon_label": "NEW10", "amount_bucket": "normal"},
+                {"payment_id": 3, "coupon_label": "NO_COUPON", "amount_bucket": "free"},
+            ]),
+            "change": "NULL coupon values become readable labels, and every amount is converted into a business category.",
+        },
+        "Subqueries, CTEs, EXISTS": {
+            "inputs": {
+                "orders": _table([
+                    {"order_id": 1, "customer_id": 10, "amount": 120},
+                    {"order_id": 2, "customer_id": 10, "amount": 80},
+                    {"order_id": 3, "customer_id": 20, "amount": 40},
+                ])
+            },
+            "code": """WITH customer_totals AS (
+    SELECT customer_id, SUM(amount) AS total_amount
+    FROM orders
+    GROUP BY customer_id
+)
+SELECT customer_id, total_amount
+FROM customer_totals
+WHERE total_amount >= 150;""",
+            "output": _table([
+                {"customer_id": 10, "total_amount": 200},
+            ]),
+            "change": "The CTE creates an intermediate customer-level table, then the outer query filters that simpler result.",
+        },
+        "Window Functions": {
+            "inputs": {
+                "orders before window": _table([
+                    {"customer": "Asha", "order_date": "2024-01-01", "amount": 120},
+                    {"customer": "Asha", "order_date": "2024-01-03", "amount": 80},
+                    {"customer": "Ben", "order_date": "2024-01-02", "amount": 240},
+                    {"customer": "Ben", "order_date": "2024-01-05", "amount": 60},
+                ])
+            },
+            "code": """SELECT
+    customer,
+    order_date,
+    amount,
+    SUM(amount) OVER (
+        PARTITION BY customer
+        ORDER BY order_date
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS running_amount
+FROM orders;""",
+            "output": _table([
+                {"customer": "Asha", "order_date": "2024-01-01", "amount": 120, "running_amount": 120},
+                {"customer": "Asha", "order_date": "2024-01-03", "amount": 80, "running_amount": 200},
+                {"customer": "Ben", "order_date": "2024-01-02", "amount": 240, "running_amount": 240},
+                {"customer": "Ben", "order_date": "2024-01-05", "amount": 60, "running_amount": 300},
+            ]),
+            "change": "No rows are collapsed. A running total is added within each customer partition.",
+        },
+        "String, Date, And Type Conversion": {
+            "inputs": {
+                "raw_events": _table([
+                    {"event_id": 1, "raw_name": "  ASHA ", "event_ts": "2024-01-15 10:30:00"},
+                    {"event_id": 2, "raw_name": " ben", "event_ts": "2024-02-02 09:00:00"},
+                ])
+            },
+            "code": """SELECT
+    event_id,
+    LOWER(TRIM(raw_name)) AS clean_name,
+    DATE_FORMAT(CAST(event_ts AS DATETIME), '%Y-%m') AS event_month
+FROM raw_events;""",
+            "output": _table([
+                {"event_id": 1, "clean_name": "asha", "event_month": "2024-01"},
+                {"event_id": 2, "clean_name": "ben", "event_month": "2024-02"},
+            ]),
+            "change": "Messy strings are normalized and timestamp text is converted into a month-level value.",
+        },
+        "Set Operations And Deduplication": {
+            "inputs": {
+                "web_users": _table([{"user_id": 1}, {"user_id": 2}, {"user_id": 2}]),
+                "app_users": _table([{"user_id": 2}, {"user_id": 3}]),
+            },
+            "code": """SELECT user_id FROM web_users
+UNION
+SELECT user_id FROM app_users;""",
+            "output": _table([
+                {"user_id": 1},
+                {"user_id": 2},
+                {"user_id": 3},
+            ]),
+            "change": "UNION stacks both inputs and removes duplicate user_id values.",
+        },
+        "Ranking, Top-N, Pagination": {
+            "inputs": {
+                "sales": _table([
+                    {"region": "South", "rep": "Asha", "revenue": 300},
+                    {"region": "South", "rep": "Ben", "revenue": 250},
+                    {"region": "West", "rep": "Cara", "revenue": 500},
+                    {"region": "West", "rep": "Dev", "revenue": 200},
+                ])
+            },
+            "code": """SELECT region, rep, revenue
+FROM (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY region
+               ORDER BY revenue DESC
+           ) AS rn
+    FROM sales
+) ranked
+WHERE rn = 1;""",
+            "output": _table([
+                {"region": "South", "rep": "Asha", "revenue": 300},
+                {"region": "West", "rep": "Cara", "revenue": 500},
+            ]),
+            "change": "Rows are ranked inside each region, then only the top row from each region is kept.",
+        },
+        "Recursive CTEs, Pivot, Rollup, JSON": {
+            "inputs": {
+                "monthly_sales": _table([
+                    {"region": "South", "month": "Jan", "amount": 100},
+                    {"region": "South", "month": "Feb", "amount": 150},
+                    {"region": "West", "month": "Jan", "amount": 200},
+                ])
+            },
+            "code": """SELECT
+    region,
+    SUM(CASE WHEN month = 'Jan' THEN amount ELSE 0 END) AS jan_amount,
+    SUM(CASE WHEN month = 'Feb' THEN amount ELSE 0 END) AS feb_amount
+FROM monthly_sales
+GROUP BY region;""",
+            "output": _table([
+                {"region": "South", "jan_amount": 100, "feb_amount": 150},
+                {"region": "West", "jan_amount": 200, "feb_amount": 0},
+            ]),
+            "change": "Rows for months are rotated into separate month columns using conditional aggregation.",
+        },
+        "Data Engineering Patterns": {
+            "inputs": {
+                "target_customer_dim": _table([
+                    {"customer_id": 10, "name": "Asha", "city": "Chennai", "current_flag": 1},
+                    {"customer_id": 20, "name": "Ben", "city": "Pune", "current_flag": 1},
+                ]),
+                "source_updates": _table([
+                    {"customer_id": 10, "name": "Asha", "city": "Bengaluru"},
+                    {"customer_id": 30, "name": "Cara", "city": "Mumbai"},
+                ]),
+            },
+            "code": """MERGE INTO target_customer_dim AS t
+USING source_updates AS s
+  ON t.customer_id = s.customer_id
+WHEN MATCHED THEN
+  UPDATE SET city = s.city
+WHEN NOT MATCHED THEN
+  INSERT (customer_id, name, city, current_flag)
+  VALUES (s.customer_id, s.name, s.city, 1);""",
+            "output": _table([
+                {"customer_id": 10, "name": "Asha", "city": "Bengaluru", "current_flag": 1},
+                {"customer_id": 20, "name": "Ben", "city": "Pune", "current_flag": 1},
+                {"customer_id": 30, "name": "Cara", "city": "Mumbai", "current_flag": 1},
+            ]),
+            "change": "Existing business keys are updated and new business keys are inserted in one idempotent write pattern.",
+        },
+        "Analytics Metrics And Product Patterns": {
+            "inputs": {
+                "events": _table([
+                    {"user_id": 1, "event": "signup", "event_date": "2024-01-01"},
+                    {"user_id": 1, "event": "purchase", "event_date": "2024-01-03"},
+                    {"user_id": 2, "event": "signup", "event_date": "2024-01-01"},
+                    {"user_id": 3, "event": "purchase", "event_date": "2024-01-03"},
+                ])
+            },
+            "code": """SELECT
+    COUNT(DISTINCT CASE WHEN event = 'signup' THEN user_id END) AS signups,
+    COUNT(DISTINCT CASE WHEN event = 'purchase' THEN user_id END) AS purchasers
+FROM events;""",
+            "output": _table([
+                {"signups": 2, "purchasers": 2},
+            ]),
+            "change": "Conditional DISTINCT counts turn raw event rows into product metrics.",
+        },
+        "Plan, Debug, And Sanity Checks": {
+            "inputs": {
+                "orders": _table([
+                    {"order_id": 1, "customer_id": 10, "amount": 120},
+                    {"order_id": 2, "customer_id": 10, "amount": 80},
+                    {"order_id": 2, "customer_id": 10, "amount": 80},
+                ])
+            },
+            "code": """SELECT
+    COUNT(*) AS row_count,
+    COUNT(DISTINCT order_id) AS distinct_orders,
+    COUNT(*) - COUNT(DISTINCT order_id) AS duplicate_rows
+FROM orders;""",
+            "output": _table([
+                {"row_count": 3, "distinct_orders": 2, "duplicate_rows": 1},
+            ]),
+            "change": "A sanity query exposes duplicate grain before trusting downstream joins or aggregations.",
+        },
+    }
+    return examples.get(title, examples["Core Query Skeleton"])
+
+
+def _python_example(section):
+    title = section["title"]
+    examples = {
+        "Core Script Skeleton And Input Handling": {
+            "inputs": {"stdin / function input": _table([{"raw": "10 20 30", "meaning": "three numbers as text"}])},
+            "code": """def solve(values):
+    return sum(values)
+
+raw = "10 20 30"
+values = list(map(int, raw.split()))
+answer = solve(values)""",
+            "output": _table([{"values": "[10, 20, 30]", "answer": 60}]),
+            "change": "Raw text is split, converted into integers, passed into a function, and returned as one result.",
+        },
+        "Lists, Tuples, Sets, And Dictionaries": {
+            "inputs": {"events": _table([{"events": "['click', 'view', 'click']", "user_pair": "('u1', 120)"}])},
+            "code": """events = ['click', 'view', 'click']
+unique_events = set(events)
+counts = {}
+for event in events:
+    counts[event] = counts.get(event, 0) + 1""",
+            "output": _table([{"unique_events": "{'click', 'view'}", "counts": "{'click': 2, 'view': 1}"}]),
+            "change": "A list keeps order, a set removes duplicates, and a dict stores counts by key.",
+        },
+        "List Operations And Mutability": {
+            "inputs": {"nums before": _table([{"nums": "[10, 20, 30]"}])},
+            "code": """nums = [10, 20, 30]
+nums.append(40)
+removed = nums.pop(1)
+evens = [x for x in nums if x % 2 == 0]""",
+            "output": _table([{"nums_after": "[10, 30, 40]", "removed": 20, "evens": "[10, 30, 40]"}]),
+            "change": "append and pop mutate the original list; the comprehension creates a new filtered list.",
+        },
+        "Tuple Operations And Immutability": {
+            "inputs": {"records": _table([{"record": "('us', 'prod', 120)"}])},
+            "code": """record = ('us', 'prod', 120)
+region, env, amount = record
+lookup_key = (region, env)
+metrics = {lookup_key: amount}""",
+            "output": _table([{"region": "us", "env": "prod", "metrics": "{('us', 'prod'): 120}"}]),
+            "change": "A fixed tuple is unpacked into variables and reused as a safe dictionary key.",
+        },
+        "Set Operations And Membership": {
+            "inputs": {"ids": _table([{"left": "{1, 2, 3}", "right": "{3, 4}"}])},
+            "code": """left = {1, 2, 3}
+right = {3, 4}
+union_ids = left | right
+common_ids = left & right
+new_only = right - left""",
+            "output": _table([{"union_ids": "{1, 2, 3, 4}", "common_ids": "{3}", "new_only": "{4}"}]),
+            "change": "Set operators compare groups of values without manual loops.",
+        },
+        "Dictionary Operations And Update Patterns": {
+            "inputs": {"events": _table([{"events": "['click', 'view', 'click']"}])},
+            "code": """counts = {}
+for event in ['click', 'view', 'click']:
+    counts[event] = counts.get(event, 0) + 1
+
+record = {'id': 1, 'status': 'new'}
+record.update({'status': 'done'})""",
+            "output": _table([{"counts": "{'click': 2, 'view': 1}", "record": "{'id': 1, 'status': 'done'}"}]),
+            "change": "get prevents missing-key errors during counting; update changes only the provided fields.",
+        },
+        "String Operations And Type Conversion": {
+            "inputs": {"raw text": _table([{"text": "  Order-101 | 19.95  "}])},
+            "code": """text = "  Order-101 | 19.95  "
+clean = text.strip()
+order_id, price_text = [part.strip() for part in clean.split("|")]
+price = float(price_text)""",
+            "output": _table([{"order_id": "Order-101", "price_text": "19.95", "price": 19.95}]),
+            "change": "Whitespace is removed, text is split into fields, and numeric text becomes a float.",
+        },
+        "Loops, Branching, And Comprehensions": {
+            "inputs": {"numbers": _table([{"values": "[-2, 3, 4, 7]"}])},
+            "code": """values = [-2, 3, 4, 7]
+labels = []
+for value in values:
+    if value < 0:
+        labels.append("negative")
+    elif value % 2 == 0:
+        labels.append("even")
     else:
-        before = "Input values: lists, records, strings, files, API responses, or tabular rows."
-        if any(word in title for word in ["list", "tuple", "set", "dictionary"]):
-            action = "Choose the data structure based on update needs, uniqueness, order, and lookup speed."
-            after = "Data is shaped into a structure that makes the next operation simple and efficient."
-        elif "file" in title or "json" in title or "csv" in title:
-            action = "Open the file, parse the external format, transform records, then write or return structured data."
-            after = "Python dictionaries/lists/DataFrames that the rest of the program can process safely."
-        elif "api" in title or "requests" in keywords:
-            action = "Send a request with timeouts, validate the status, parse JSON, and retry only safe operations."
-            after = "A checked response payload or a surfaced error instead of a silent failure."
-        elif "pandas" in title:
-            action = "Use vectorized DataFrame operations to clean, group, merge, and summarize tabular data."
-            after = "A transformed table without slow row-by-row Python loops."
-        else:
-            action = "Parse inputs, apply control flow or helper functions, and return one clear output."
-            after = "A deterministic result that can be tested with examples and edge cases."
+        labels.append("odd")""",
+            "output": _table([{"labels": "['negative', 'odd', 'even', 'odd']"}]),
+            "change": "Each input value travels through branch rules and produces one label.",
+        },
+        "Functions, Arguments, And Reusable Helpers": {
+            "inputs": {"names": _table([{"name": "  Asha  "}, {"name": ""}])},
+            "code": """def normalize_name(name, fallback="unknown"):
+    cleaned = name.strip()
+    return cleaned or fallback
 
-    return before, action, after
+result = [normalize_name("  Asha  "), normalize_name("")]""",
+            "output": _table([{"result": "['Asha', 'unknown']"}]),
+            "change": "The helper centralizes cleanup logic and returns predictable output for normal and empty input.",
+        },
+        "Strings, Parsing, And Regular Expressions": {
+            "inputs": {"payloads": _table([{"payload": "order=101 amount=25"}, {"payload": "order=102 amount=40"}])},
+            "code": """import re
+payload = "order=101 amount=25"
+order_id = re.search(r"order=(\\d+)", payload).group(1)
+numbers = re.findall(r"\\d+", payload)""",
+            "output": _table([{"order_id": "101", "numbers": "['101', '25']"}]),
+            "change": "Regex extracts structured values from unstructured text.",
+        },
+        "Hashing Helpers And Collections Module": {
+            "inputs": {"events": _table([{"events": "['click', 'view', 'click', 'buy']"}])},
+            "code": """from collections import Counter, defaultdict
+events = ['click', 'view', 'click', 'buy']
+counts = Counter(events)
+grouped = defaultdict(list)
+for event in events:
+    grouped[event[0]].append(event)""",
+            "output": _table([{"counts": "Counter({'click': 2, 'view': 1, 'buy': 1})", "grouped": "{'c': ['click', 'click'], 'v': ['view'], 'b': ['buy']}"}]),
+            "change": "Counter handles frequency counting and defaultdict handles grouped lists with less boilerplate.",
+        },
+        "Sorting, Searching, And Complexity Thinking": {
+            "inputs": {"records": _table([
+                {"user": "Asha", "score": 80},
+                {"user": "Ben", "score": 95},
+                {"user": "Cara", "score": 90},
+            ])},
+            "code": """records = [{'user': 'Asha', 'score': 80}, {'user': 'Ben', 'score': 95}, {'user': 'Cara', 'score': 90}]
+ordered = sorted(records, key=lambda row: row['score'], reverse=True)
+top_user = ordered[0]['user']""",
+            "output": _table([
+                {"rank": 1, "user": "Ben", "score": 95},
+                {"rank": 2, "user": "Cara", "score": 90},
+                {"rank": 3, "user": "Asha", "score": 80},
+            ]),
+            "change": "Sorting reorders the records by score so the top item becomes easy to read.",
+        },
+        "Files, CSV, JSON, And Path Handling": {
+            "inputs": {"input.json": _table([{"file_text": '{"orders": [{"id": 1, "amount": 20}, {"id": 2, "amount": 30}]}' }])},
+            "code": """import json
+payload = {"orders": [{"id": 1, "amount": 20}, {"id": 2, "amount": 30}]}
+total = sum(row["amount"] for row in payload["orders"])
+output_text = json.dumps({"total": total})""",
+            "output": _table([{"parsed_orders": 2, "total": 50, "output_text": '{"total": 50}'}]),
+            "change": "JSON text becomes Python dictionaries/lists, then Python result data can be serialized back to JSON.",
+        },
+        "Datetime, Math, And Utility Modules": {
+            "inputs": {"timestamps": _table([{"start": "2024-01-01 10:00", "end": "2024-01-01 11:45"}])},
+            "code": """from datetime import datetime
+import math
+start = datetime.fromisoformat("2024-01-01 10:00")
+end = datetime.fromisoformat("2024-01-01 11:45")
+minutes = int((end - start).total_seconds() / 60)
+batches = math.ceil(minutes / 60)""",
+            "output": _table([{"minutes": 105, "batches": 2}]),
+            "change": "Timestamp strings become datetime objects, duration becomes minutes, and ceil rounds capacity upward.",
+        },
+        "Requests, APIs, And Retry Patterns": {
+            "inputs": {"api response": _table([{"status_code": 200, "body": '{"id": 1, "status": "ok"}'}])},
+            "code": """response_json = {"id": 1, "status": "ok"}
+record = {
+    "id": response_json["id"],
+    "is_success": response_json["status"] == "ok",
+}""",
+            "output": _table([{"id": 1, "is_success": True}]),
+            "change": "An external JSON response is validated and reshaped into the fields the pipeline needs.",
+        },
+        "Pandas, NumPy, And Tabular Transformations": {
+            "inputs": {"df before": _table([
+                {"user_id": 1, "event_ts": "2024-01-01", "amount": 20},
+                {"user_id": 1, "event_ts": "2024-01-03", "amount": 30},
+                {"user_id": 2, "event_ts": "2024-01-02", "amount": 40},
+            ])},
+            "code": """result = (
+    df.sort_values(["user_id", "event_ts"])
+      .drop_duplicates(["user_id"], keep="last")
+      .groupby("user_id", as_index=False)
+      .agg(latest_amount=("amount", "sum"))
+)""",
+            "output": _table([
+                {"user_id": 1, "latest_amount": 30},
+                {"user_id": 2, "latest_amount": 40},
+            ]),
+            "change": "The table is sorted, reduced to latest row per user, then summarized in a vectorized way.",
+        },
+    }
+    return examples.get(title, examples["Core Script Skeleton And Input Handling"])
 
 
-def render_deep_explanation(section, language):
-    before, action, after = _visual_example(section, language)
+def _pyspark_example(section):
+    title = section["title"]
+    base_input = _table([
+        {"user_id": 1, "region": "South", "amount": 120, "event_date": "2024-01-01"},
+        {"user_id": 1, "region": "South", "amount": 80, "event_date": "2024-01-03"},
+        {"user_id": 2, "region": "West", "amount": 240, "event_date": "2024-01-02"},
+    ])
+    if "Join" in title:
+        return {
+            "inputs": {
+                "orders_df": base_input,
+                "users_df": _table([{"user_id": 1, "name": "Asha"}, {"user_id": 2, "name": "Ben"}]),
+            },
+            "code": """result = orders_df.join(users_df, "user_id", "left")""",
+            "output": _table([
+                {"user_id": 1, "region": "South", "amount": 120, "name": "Asha"},
+                {"user_id": 1, "region": "South", "amount": 80, "name": "Asha"},
+                {"user_id": 2, "region": "West", "amount": 240, "name": "Ben"},
+            ]),
+            "change": "Spark creates a joined DataFrame plan; rows execute only when an action like show/count/write runs.",
+        }
+    if "Aggregation" in title:
+        code = """result = orders_df.groupBy("region").agg(
+    sum("amount").alias("revenue"),
+    count("*").alias("orders")
+)"""
+        output = _table([{"region": "South", "revenue": 200, "orders": 2}, {"region": "West", "revenue": 240, "orders": 1}])
+    elif "Window" in title:
+        code = """window_spec = Window.partitionBy("user_id").orderBy("event_date")
+result = orders_df.withColumn(
+    "running_amount",
+    sum("amount").over(window_spec)
+)"""
+        output = _table([
+            {"user_id": 1, "event_date": "2024-01-01", "amount": 120, "running_amount": 120},
+            {"user_id": 1, "event_date": "2024-01-03", "amount": 80, "running_amount": 200},
+            {"user_id": 2, "event_date": "2024-01-02", "amount": 240, "running_amount": 240},
+        ])
+    elif "Conditional" in title:
+        code = """result = orders_df.withColumn(
+    "amount_bucket",
+    when(col("amount") >= 100, "high").otherwise("normal")
+)"""
+        output = _table([
+            {"user_id": 1, "amount": 120, "amount_bucket": "high"},
+            {"user_id": 1, "amount": 80, "amount_bucket": "normal"},
+            {"user_id": 2, "amount": 240, "amount_bucket": "high"},
+        ])
+    elif "Date" in title:
+        code = """result = orders_df.withColumn("event_dt", to_date(col("event_date"))) \\
+    .withColumn("event_month", date_format(col("event_dt"), "yyyy-MM"))"""
+        output = _table([
+            {"user_id": 1, "event_dt": "2024-01-01", "event_month": "2024-01"},
+            {"user_id": 1, "event_dt": "2024-01-03", "event_month": "2024-01"},
+            {"user_id": 2, "event_dt": "2024-01-02", "event_month": "2024-01"},
+        ])
+    elif "Complex Types" in title:
+        code = """result = users_df.withColumn("tag", explode(col("tags")))"""
+        return {
+            "inputs": {"users_df": _table([{"user_id": 1, "tags": "['sql', 'spark']"}, {"user_id": 2, "tags": "['python']"}])},
+            "code": code,
+            "output": _table([{"user_id": 1, "tag": "sql"}, {"user_id": 1, "tag": "spark"}, {"user_id": 2, "tag": "python"}]),
+            "change": "explode converts each array element into its own row.",
+        }
+    elif "Union" in title:
+        code = """result = df_a.unionByName(df_b).dropDuplicates(["user_id"])"""
+        return {
+            "inputs": {"df_a": _table([{"user_id": 1}, {"user_id": 2}]), "df_b": _table([{"user_id": 2}, {"user_id": 3}])},
+            "code": code,
+            "output": _table([{"user_id": 1}, {"user_id": 2}, {"user_id": 3}]),
+            "change": "DataFrames are stacked by column name and duplicates are removed.",
+        }
+    elif "Actions" in title or "Explain" in title or "RDD" in title or "Write" in title or "Read" in title or "Spark Session" in title:
+        code = """orders_df = spark.createDataFrame(rows)
+orders_df.printSchema()
+orders_df.show()
+orders_df.explain("formatted")"""
+        output = _table([{"visible_effect": "schema printed, rows displayed, physical plan explained"}])
+    else:
+        code = """result = (
+    orders_df
+    .filter(col("amount") >= 100)
+    .withColumn("double_amount", col("amount") * 2)
+    .select("user_id", "region", "double_amount")
+)"""
+        output = _table([
+            {"user_id": 1, "region": "South", "double_amount": 240},
+            {"user_id": 2, "region": "West", "double_amount": 480},
+        ])
 
-    st.markdown("**Syntax anatomy**")
-    for line in _syntax_lines(section["syntax"])[:12]:
-        st.markdown(f"- `{line}`: {_explain_syntax_line(line, language)}")
+    return {
+        "inputs": {"orders_df before": base_input},
+        "code": code,
+        "output": output,
+        "change": "The DataFrame is not changed in place; Spark returns a new lazy DataFrame plan that produces this output when executed.",
+    }
 
-    if len(_syntax_lines(section["syntax"])) > 12:
-        st.caption("Long syntax blocks are summarized to the first key lines; the full reusable template is shown below.")
 
-    st.markdown("**Before -> Action -> After visualization**")
-    before_col, action_col, after_col = st.columns(3)
-    before_col.info(f"Before\n\n{before}")
-    action_col.warning(f"What the syntax does\n\n{action}")
-    after_col.success(f"After\n\n{after}")
+def _concept_example(section, language):
+    if language == "sql":
+        return _sql_example(section)
+    if language == "pyspark":
+        return _pyspark_example(section)
+    return _python_example(section)
 
-    with st.expander("How to read this concept during practice"):
-        st.markdown(
-            f"- Start by identifying the input grain: one row, one group, one partition, one file, or one function call.\n"
-            f"- Read the syntax from top to bottom and name what each step changes.\n"
-            f"- Compare the before and after state; if the shape changed, explain whether rows, columns, partitions, or values changed.\n"
-            f"- Use the tip below as the interview shortcut for choosing this concept quickly."
-        )
+
+def _render_table_block(label, rows):
+    st.markdown(f"**{label}**")
+    st.dataframe(rows, use_container_width=True, hide_index=True)
+
+
+def render_practical_example(section, language, code_language):
+    example = _concept_example(section, language)
+    st.markdown("#### Practical Execution View")
+    st.caption("Read this as: input data before execution -> code/syntax -> output data after execution.")
+
+    input_col, output_col = st.columns(2)
+    with input_col:
+        st.markdown("**Before execution: input data**")
+        for label, rows in example["inputs"].items():
+            _render_table_block(label, rows)
+
+    with output_col:
+        st.markdown("**After execution: output data**")
+        _render_table_block("result", example["output"])
+
+    st.markdown("**Code that creates the after table/data**")
+    st.code(example["code"], language=code_language, wrap_lines=True)
+    st.success(f"What changed: {example['change']}")
+
+    with st.expander("Line-by-line syntax meaning"):
+        for line in _syntax_lines(example["code"])[:12]:
+            st.markdown(f"- `{line}`: {_explain_syntax_line(line, language)}")
 
 
 def render_reference_section(section, code_language, concept_language):
@@ -1163,12 +1682,13 @@ def render_reference_section(section, code_language, concept_language):
         st.markdown(f"### {section['title']}")
         st.markdown(f"**What it refers to**: {section['concept']}")
         st.markdown(f"**Key syntax / keywords**: `{section['keywords']}`")
-        render_deep_explanation(section, concept_language)
+        render_practical_example(section, concept_language, code_language)
         if section.get("operations"):
             st.markdown("**Common operations index**")
             for operation_name, operation_summary in section["operations"]:
                 st.markdown(f"- `{operation_name}`: {operation_summary}")
-        st.code(section["syntax"], language=code_language, wrap_lines=True)
+        with st.expander("Reusable syntax template"):
+            st.code(section["syntax"], language=code_language, wrap_lines=True)
         st.markdown(f"**How to think about it**: {section['tip']}")
 
 
