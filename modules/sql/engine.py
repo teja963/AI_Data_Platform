@@ -3,6 +3,7 @@ import datetime as dt
 import importlib.util
 import os
 import re
+import shutil
 import sqlite3
 import sys
 from functools import lru_cache
@@ -209,15 +210,40 @@ def run_query(conn, query):
 
 
 def is_pyspark_available():
-    return importlib.util.find_spec("pyspark") is not None
+    return importlib.util.find_spec("pyspark") is not None and shutil.which("java") is not None
+
+
+def get_pyspark_unavailable_message():
+    if importlib.util.find_spec("pyspark") is None:
+        return "PySpark is not installed in the current Python environment."
+
+    if shutil.which("java") is None:
+        return (
+            "Java is not available in this Streamlit runtime. PySpark needs a Java runtime to start "
+            "the Spark gateway. On Streamlit Cloud, this app installs Java from `packages.txt` after redeploy."
+        )
+
+    return None
+
+
+def _format_pyspark_error(error):
+    message = str(error)
+    if "JAVA_GATEWAY_EXITED" in message or "Java gateway process exited" in message:
+        return (
+            "PySpark could not start the Java gateway.\n\n"
+            "This usually means the deployed Streamlit environment does not have Java available yet, "
+            "or the app needs to be redeployed after adding Java support. Push the latest code so "
+            "Streamlit Cloud installs `openjdk-17-jre-headless` from `packages.txt`."
+        )
+
+    return message
 
 
 @lru_cache(maxsize=1)
 def get_spark_session():
-    if not is_pyspark_available():
-        raise ModuleNotFoundError(
-            "PySpark is not installed in the current interpreter."
-        )
+    unavailable_message = get_pyspark_unavailable_message()
+    if unavailable_message:
+        raise RuntimeError(unavailable_message)
 
     from pyspark.sql import SparkSession
 
@@ -226,10 +252,13 @@ def get_spark_session():
 
     spark = (
         SparkSession.builder
-        .master("local[*]")
+        .master("local[1]")
         .appName("AI_Data_Engg")
         .config("spark.ui.enabled", "false")
         .config("spark.sql.shuffle.partitions", "4")
+        .config("spark.driver.host", "127.0.0.1")
+        .config("spark.driver.bindAddress", "127.0.0.1")
+        .config("spark.driver.memory", "768m")
         .config("spark.pyspark.python", sys.executable)
         .config("spark.pyspark.driver.python", sys.executable)
         .getOrCreate()
@@ -289,4 +318,4 @@ def run_pyspark_code(tables, code):
 
         return result_df.toPandas(), None
     except Exception as e:
-        return None, str(e)
+        return None, _format_pyspark_error(e)

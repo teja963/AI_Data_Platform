@@ -17,7 +17,13 @@ from core.interview import (
 )
 from core.loader import group_by_category, load_questions
 from core.progress import clear_progress, load_progress, save_progress
-from modules.sql.engine import create_db, is_pyspark_available, run_pyspark_code, run_query
+from modules.sql.engine import (
+    create_db,
+    get_pyspark_unavailable_message,
+    is_pyspark_available,
+    run_pyspark_code,
+    run_query,
+)
 from modules.sql.validator import validate
 
 EDITOR_TRACKS = {
@@ -373,11 +379,9 @@ def render_practice_workspace(questions):
                 "or the last DataFrame variable you create."
             )
 
-            if not is_pyspark_available():
-                st.warning(
-                    "PySpark is not available in the interpreter currently running this app. "
-                    "Restart Streamlit from your virtual environment and try again."
-                )
+            pyspark_unavailable = get_pyspark_unavailable_message()
+            if pyspark_unavailable:
+                st.warning(pyspark_unavailable)
 
         draft_key = f"sql_practice::{question_key}::{editor_mode.lower()}"
         starter_template = build_editor_starter(question, editor_mode)
@@ -576,7 +580,7 @@ def render_interview_setup(questions):
 
         pyspark_blocked = editor_mode == "PySpark" and not is_pyspark_available()
         if pyspark_blocked:
-            st.warning("PySpark interviews require Streamlit to run from your virtual environment.")
+            st.warning(get_pyspark_unavailable_message())
 
         if available_count == 0:
             st.warning("No questions match the selected filters. Adjust category or difficulty to continue.")
