@@ -2,6 +2,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 import streamlit as st
 import os
+from urllib.parse import urlparse
 
 # Use Streamlit secrets if available (for Cloud deployment), 
 # then check environment variables (for terminal migrations),
@@ -30,3 +31,10 @@ engine = create_engine(
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 Base = declarative_base()
+
+
+def get_database_host():
+    try:
+        return urlparse(DATABASE_URL).hostname
+    except Exception:
+        return None

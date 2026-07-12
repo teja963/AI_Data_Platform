@@ -1,6 +1,7 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import json
+from sqlalchemy.exc import SQLAlchemyError
 
 # -------- SESSION INIT (MANDATORY) --------
 if "user" not in st.session_state:
@@ -37,8 +38,19 @@ query_params = st.query_params
 # --- simple auth guard
 from core.auth import create_user, login_user, verify_otp, generate_and_store_otp, update_password, verify_email_otp, validate_email, validate_phone
 from core.activity import flush_section_activity, track_section_activity
-from core.db import SessionLocal
+from core.db import SessionLocal, get_database_host
 from core.models import User
+
+
+def _show_database_unavailable(error):
+    database_host = get_database_host()
+    st.error(
+        "Database is currently unavailable. Please check the PostgreSQL/Neon connection URL "
+        "in Streamlit secrets and try again."
+    )
+    if database_host:
+        st.caption(f"Configured DB host: `{database_host}`")
+    st.caption(f"Database detail: {error}")
 
 # --- persistent login using query params + session state
 if "user" not in st.session_state:
@@ -416,6 +428,8 @@ elif not st.session_state.get("user") and not st.session_state.get("pending_admi
 
         except PermissionError as pe:
             st.warning(str(pe))
+        except SQLAlchemyError as db_error:
+            _show_database_unavailable(db_error)
 
     if signup_clicked:
         st.session_state["signup_mode"] = True
@@ -437,17 +451,22 @@ if st.session_state.get("pending_admin"):
             st.rerun()
 
     if verify_clicked:
-        if verify_otp(st.session_state["pending_admin"], otp_code):
-            session = SessionLocal()
-            u = session.query(User).filter_by(username=st.session_state["pending_admin"]).first()
-            st.session_state["user"] = u.username
-            st.session_state["role"] = u.role
-            st.session_state.pop("pending_admin")
-            _set_auth_url(u.username)
-            session.close()
-            st.rerun()
-        else:
-            st.error("Invalid Authenticator code.")
+        try:
+            if verify_otp(st.session_state["pending_admin"], otp_code):
+                session = SessionLocal()
+                try:
+                    u = session.query(User).filter_by(username=st.session_state["pending_admin"]).first()
+                    st.session_state["user"] = u.username
+                    st.session_state["role"] = u.role
+                    st.session_state.pop("pending_admin")
+                    _set_auth_url(u.username)
+                finally:
+                    session.close()
+                st.rerun()
+            else:
+                st.error("Invalid Authenticator code.")
+        except SQLAlchemyError as db_error:
+            _show_database_unavailable(db_error)
 
     st.stop()
 
