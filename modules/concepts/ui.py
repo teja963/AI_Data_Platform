@@ -1650,7 +1650,7 @@ def _concept_example(section, language):
 
 def _render_table_block(label, rows):
     st.markdown(f"**{label}**")
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.dataframe(rows, width="stretch", hide_index=True)
 
 
 def render_practical_example(section, language, code_language):

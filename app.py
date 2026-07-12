@@ -1,6 +1,5 @@
 import streamlit as st
-import streamlit.components.v1 as components
-import json
+import time
 from sqlalchemy.exc import SQLAlchemyError
 
 # -------- SESSION INIT (MANDATORY) --------
@@ -37,7 +36,7 @@ query_params = st.query_params
 
 # --- simple auth guard
 from core.auth import create_user, login_user, verify_otp, generate_and_store_otp, update_password, verify_email_otp, validate_email, validate_phone
-from core.activity import flush_section_activity, track_section_activity
+from core.activity import flush_section_activity, track_section_activity, track_section_render
 from core.db import SessionLocal, get_database_host
 from core.models import User
 
@@ -156,83 +155,15 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# If client has stored user in localStorage, ensure URL contains it so Streamlit can restore on reload
-components.html(
-    """
-    <script>
-    (function(){
-        try{
-            const SESSION_TTL = 12 * 3600000; // 12 hours in ms
-            const params = new URLSearchParams(window.location.search);
-            const stored = localStorage.getItem('ai_data_user');
-            const ts = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
-            const now = Date.now();
-
-            // If the stored session is expired, clear storage and remove user param
-            if (stored && ts && (now - ts > SESSION_TTL)) {
-                localStorage.removeItem('ai_data_user');
-                localStorage.removeItem('ai_data_user_ts');
-                params.delete('user');
-                const query = params.toString();
-                window.location.replace(window.location.pathname + (query ? '?' + query : ''));
-                return;
-            }
-
-            // If no user param (or empty) but localStorage has a fresh user, restore
-            const urlUser = params.get('user');
-            if ((!urlUser || urlUser === "") && stored) {
-                params.set('user', stored);
-                window.location.replace(window.location.pathname + '?' + params.toString());
-                return;
-            }
-
-            // Keep timestamp refreshed on user activity
-            function touch(){ if(localStorage.getItem('ai_data_user')){ localStorage.setItem('ai_data_user_ts', Date.now().toString()); } }
-            ['click','keydown','mousemove','touchstart'].forEach(evt=>window.addEventListener(evt, touch, {passive:true}));
-
-            // Auto-logout monitor
-            setInterval(function(){
-                const stored2 = localStorage.getItem('ai_data_user');
-                const ts2 = parseInt(localStorage.getItem('ai_data_user_ts')||'0',10);
-                if(stored2 && ts2 && (Date.now() - ts2 > SESSION_TTL)){
-                    localStorage.removeItem('ai_data_user');
-                    localStorage.removeItem('ai_data_user_ts');
-                    window.location.replace(window.location.pathname);
-                }
-            }, 60*1000);
-        }catch(e){console.warn(e)}
-    })();
-    </script>
-    """,
-    height=0,
-)
 # If URL has ?user= set, try to restore session
 def _set_auth_url(username):
     """Helper to strictly set user in URL and reload if necessary."""
     st.query_params["user"] = username
-    encoded_username = json.dumps(username)
-    # Immediate JS sync to localStorage so refresh works right after login
-    components.html(f"""
-    <script>
-    try{{
-        localStorage.setItem('ai_data_user', {encoded_username});
-        localStorage.setItem('ai_data_user_ts', Date.now().toString());
-    }}catch(e){{}}
-    </script>
-    """, height=0)
 
 
 def _clear_auth_url():
-    """Helper to strictly clear user from URL and localStorage."""
+    """Helper to strictly clear user from URL."""
     st.query_params.pop("user", None)
-    components.html("""
-    <script>
-    try{
-        localStorage.removeItem('ai_data_user');
-        localStorage.removeItem('ai_data_user_ts');
-    }catch(e){console.warn(e)}
-    </script>
-    """, height=0)
 
 def _safe_query_param(name):
     v = st.query_params.get(name)
@@ -296,7 +227,7 @@ if st.session_state.get("signup_mode"):
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button("Send OTP", use_container_width=True):
+            if st.button("Send OTP", width="stretch"):
                 if validate_email(email):
                     generate_and_store_otp(email)
                     st.session_state["email"] = email
@@ -307,7 +238,7 @@ if st.session_state.get("signup_mode"):
                     st.error("Invalid email")
 
         with col2:
-            if st.button("⬅ Back", use_container_width=True):
+            if st.button("⬅ Back", width="stretch"):
                 st.session_state["signup_mode"] = False
                 st.rerun()
 
@@ -320,7 +251,7 @@ if st.session_state.get("signup_mode"):
         col1, col2 = st.columns(2)
 
         with col1:
-            if st.button("Verify OTP", use_container_width=True):
+            if st.button("Verify OTP", width="stretch"):
                 if verify_email_otp(st.session_state["email"], otp):
                     st.session_state["step"] = 3
                     st.success("Email verified")
@@ -329,7 +260,7 @@ if st.session_state.get("signup_mode"):
                     st.error("Invalid or expired OTP")
 
         with col2:
-            if st.button("⬅ Back", use_container_width=True):
+            if st.button("⬅ Back", width="stretch"):
                 st.session_state["step"] = 1
                 st.rerun()
 
@@ -350,7 +281,7 @@ if st.session_state.get("signup_mode"):
         col1, col2 = st.columns(2)
 
         with col1:
-            if col1.button("Create Account", use_container_width=True):
+            if col1.button("Create Account", width="stretch"):
                 if not all([name, username, password]):
                     st.warning("Please fill all required fields")
                 else:
@@ -372,7 +303,7 @@ if st.session_state.get("signup_mode"):
                         st.error(str(e))
 
         with col2:
-            if st.button("⬅ Back", use_container_width=True):
+            if st.button("⬅ Back", width="stretch"):
                 st.session_state["step"] = 2
                 st.rerun()
 
@@ -402,8 +333,8 @@ elif not st.session_state.get("user") and not st.session_state.get("pending_admi
         password = st.text_input("Password", type="password", key="auth_pass").strip()
 
         col1, col2 = st.columns(2)
-        login_clicked = col1.form_submit_button("Login", use_container_width=True)
-        signup_clicked = col2.form_submit_button("Signup", use_container_width=True)
+        login_clicked = col1.form_submit_button("Login", width="stretch")
+        signup_clicked = col2.form_submit_button("Signup", width="stretch")
 
     if st.button("Forgot Password?"):
         st.session_state["forgot_password"] = True
@@ -444,7 +375,7 @@ if st.session_state.get("pending_admin"):
     with st.form("otp_form"):
         st.info(f"Admin Verification for **{st.session_state['pending_admin']}**")
         otp_code = st.text_input("Enter 6-digit Authenticator Code", max_chars=6)
-        verify_clicked = st.form_submit_button("Verify & Login", use_container_width=True)
+        verify_clicked = st.form_submit_button("Verify & Login", width="stretch")
         
         if st.form_submit_button("Cancel"):
             st.session_state.pop("pending_admin")
@@ -474,16 +405,6 @@ if st.session_state.get("pending_admin"):
 if st.session_state.get("user"):
     # --- Main App (Only reached if authenticated)
     with st.sidebar:
-        encoded_session_user = json.dumps(st.session_state["user"])
-        components.html(f"""
-            <script>
-            try {{
-                localStorage.setItem('ai_data_user', {encoded_session_user});
-                localStorage.setItem('ai_data_user_ts', Date.now().toString());
-            }} catch(e) {{}}
-            </script>
-        """, height=0)
-
         st.write(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
         if st.button("Logout"):
             flush_section_activity(st.session_state.get("user"))
@@ -552,6 +473,7 @@ if st.session_state.get("user"):
             {"label": "Python", "question_module": "python", "progress_track": "python"},
         ]
         cols = st.columns(3)
+        chart_rows = []
         for i, module_config in enumerate(modules):
             with cols[i % 3]:
                 try:
@@ -572,6 +494,16 @@ if st.session_state.get("user"):
                 st.metric("Solved", f"{solved} / {total}")
                 st.progress(progress_ratio)
                 st.caption(f"{round(progress_ratio * 100)}% complete")
+                chart_rows.append({
+                    "Track": module_config["label"],
+                    "Solved": solved,
+                    "Remaining": max(total - solved, 0),
+                })
+
+        if chart_rows:
+            st.markdown("### Progress Overview")
+            st.bar_chart(chart_rows, x="Track", y=["Solved", "Remaining"], stack=True)
+
         st.markdown("---")
         st.subheader("Interview Simulator")
         history = load_interview_history()
@@ -587,7 +519,7 @@ if st.session_state.get("user"):
             m3.metric("Best Score", f"{best_run['score_percent']}%")
             m4.metric("Average Score", f"{average_score}%")
             recent_runs = [{"finished_at": r["finished_at"], "track": r["track"], "score": f"{r['total_score']}/{r['max_score']}", "accuracy": f"{r['correct_count']}/{r['total_questions']}", "time_used": f"{r.get('elapsed_seconds', 0)}s", "reason": r.get("finished_reason", "completed").replace("_", " ").title()} for r in reversed(history[-5:])]
-            st.dataframe(recent_runs, use_container_width=True, hide_index=True)
+            st.dataframe(recent_runs, width="stretch", hide_index=True)
 
     # Map labels to rendering functions
     ROUTER = {
@@ -602,4 +534,8 @@ if st.session_state.get("user"):
     }
 
     if module in ROUTER:
+        render_started_at = time.perf_counter()
         ROUTER[module]()
+        render_elapsed_ms = int((time.perf_counter() - render_started_at) * 1000)
+        track_section_render(st.session_state.get("user"), module, render_elapsed_ms)
+        st.caption(f"Section loaded in {render_elapsed_ms} ms")

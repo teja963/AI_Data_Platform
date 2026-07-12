@@ -6,6 +6,7 @@ import streamlit as st
 from sqlalchemy import inspect, text
 
 PROGRESS_FILE = "data/progress.json"
+_PROGRESS_SCHEMA_READY = False
 
 
 def _current_username():
@@ -14,6 +15,10 @@ def _current_username():
 
 def _ensure_progress_schema():
     """Add progress columns for existing deployments without dropping data."""
+    global _PROGRESS_SCHEMA_READY
+    if _PROGRESS_SCHEMA_READY:
+        return
+
     from core.db import engine
 
     inspector = inspect(engine)
@@ -21,6 +26,7 @@ def _ensure_progress_schema():
         from core.models import Base
 
         Base.metadata.create_all(bind=engine)
+        _PROGRESS_SCHEMA_READY = True
         return
 
     existing_columns = {column["name"] for column in inspector.get_columns("progress")}
@@ -34,6 +40,7 @@ def _ensure_progress_schema():
         statements.append("ALTER TABLE progress ADD COLUMN updated_at TIMESTAMP")
 
     if not statements:
+        _PROGRESS_SCHEMA_READY = True
         return
 
     with engine.begin() as connection:
@@ -42,6 +49,7 @@ def _ensure_progress_schema():
         connection.execute(
             text("UPDATE progress SET updated_at = CURRENT_TIMESTAMP WHERE updated_at IS NULL")
         )
+    _PROGRESS_SCHEMA_READY = True
 
 
 def _get_current_user_id(session):
@@ -57,6 +65,10 @@ def _get_current_user_id(session):
 
 def _db_available():
     return bool(st.session_state.get("user"))
+
+
+def _progress_cache_key(track):
+    return f"progress_cache::{_current_username()}::{track}"
 
 
 def _normalize_progress_data(data):
@@ -153,6 +165,10 @@ def _clear_local_progress(track=None):
 
 
 def load_progress(track="sql"):
+    cache_key = _progress_cache_key(track)
+    if cache_key in st.session_state:
+        return set(st.session_state[cache_key])
+
     if _db_available():
         try:
             from core.db import SessionLocal
@@ -170,13 +186,19 @@ def load_progress(track="sql"):
                     .filter_by(user_id=user_id, track=track, status="solved")
                     .all()
                 )
-                return {row[0] for row in rows if row[0]}
+                solved = {row[0] for row in rows if row[0]}
+                st.session_state[cache_key] = solved
+                return solved
             finally:
                 session.close()
         except Exception:
-            return _load_local_progress(track)
+            solved = _load_local_progress(track)
+            st.session_state[cache_key] = solved
+            return solved
 
-    return _load_local_progress(track)
+    solved = _load_local_progress(track)
+    st.session_state[cache_key] = solved
+    return solved
 
 
 def save_progress(solved_set, track="sql"):
@@ -216,6 +238,7 @@ def save_progress(solved_set, track="sql"):
                     )
                 session.commit()
                 _save_local_progress(existing_keys | solved_set, track)
+                st.session_state[_progress_cache_key(track)] = existing_keys | solved_set
                 return
             except Exception:
                 session.rollback()
@@ -227,6 +250,7 @@ def save_progress(solved_set, track="sql"):
             return
 
     _save_local_progress(solved_set, track)
+    st.session_state[_progress_cache_key(track)] = solved_set
 
 
 def clear_progress(track=None):
@@ -254,3 +278,9 @@ def clear_progress(track=None):
             pass
 
     _clear_local_progress(track)
+    if track is None:
+        for key in list(st.session_state.keys()):
+            if key.startswith(f"progress_cache::{_current_username()}::"):
+                st.session_state.pop(key, None)
+    else:
+        st.session_state.pop(_progress_cache_key(track), None)

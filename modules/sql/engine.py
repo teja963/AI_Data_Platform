@@ -233,7 +233,7 @@ def _format_pyspark_error(error):
             "PySpark could not start the Java gateway.\n\n"
             "This usually means the deployed Streamlit environment does not have Java available yet, "
             "or the app needs to be redeployed after adding Java support. Push the latest code so "
-            "Streamlit Cloud installs `openjdk-17-jre-headless` from `packages.txt`."
+            "Streamlit Cloud installs `default-jdk-headless` from `packages.txt`."
         )
 
     return message

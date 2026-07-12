@@ -25,7 +25,7 @@ def render_ai_chat(section_key, title, topic):
                 height=100,
                 placeholder=f"Ask about {topic}...",
             )
-            submitted = st.form_submit_button("Ask AI", use_container_width=True)
+            submitted = st.form_submit_button("Ask AI", width="stretch")
 
         if submitted and user_input.strip():
             cleaned_input = user_input.strip()

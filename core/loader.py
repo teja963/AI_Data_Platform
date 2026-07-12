@@ -2,6 +2,7 @@ import json
 import os
 
 import streamlit as st
+from sqlalchemy import text
 
 
 def _format_category_name(category_name):
@@ -30,7 +31,7 @@ def _load_question_file(file_path, module, category=None):
     return question
 
 
-@st.cache_data(ttl=600, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
 def load_questions(module):
     # Prefer DB-stored SQL/PySpark questions if present, otherwise fall back to local data.
     # Python evaluator questions stay local because tests may contain pandas/numpy objects.
@@ -39,9 +40,28 @@ def load_questions(module):
         try:
             from core.db import SessionLocal
             from core.models import Question
+            from core.views import ensure_reporting_views
 
+            ensure_reporting_views()
             session = SessionLocal()
-            db_rows = session.query(Question).filter_by(module=module).all()
+            try:
+                db_rows = session.execute(
+                    text(
+                        """
+                        SELECT id, category, difficulty, payload
+                        FROM coding_question_catalog_view
+                        WHERE module = :module
+                        ORDER BY category, id
+                        """
+                    ),
+                    {"module": module},
+                ).fetchall()
+            except Exception:
+                db_rows = []
+
+            if not db_rows:
+                db_rows = session.query(Question).filter_by(module=module).all()
+
             if db_rows:
                 questions = []
                 for r in db_rows:

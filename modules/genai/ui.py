@@ -464,7 +464,7 @@ def render_roadmap_tab():
     render_stage_cards()
 
     st.subheader("Skill Ladder: Data Engineer -> AI Data Engineer")
-    st.dataframe(pd.DataFrame(GENAI_SKILL_MATRIX), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(GENAI_SKILL_MATRIX), width="stretch", hide_index=True)
 
     st.subheader("What A Strong AI Data Engineer Can Explain End To End")
     checklist = [
@@ -492,7 +492,7 @@ def render_interview_tab():
     )
 
     st.subheader("High-Value Interview Themes")
-    st.dataframe(pd.DataFrame(INTERVIEW_PLAYBOOK), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(INTERVIEW_PLAYBOOK), width="stretch", hide_index=True)
 
     st.subheader("Answer Framework For System Design Questions")
     steps = [

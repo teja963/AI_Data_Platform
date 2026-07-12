@@ -4,6 +4,13 @@ from core.db import SessionLocal, engine
 from core.models import User
 from core.activity import ensure_activity_schema
 from core.progress import _ensure_progress_schema
+from core.views import ensure_reporting_views
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _read_sql_cached(query, params=None):
+    return pd.read_sql(query, engine, params=params)
+
 
 def render_admin():
     if st.session_state.get("role") != "admin":
@@ -58,7 +65,7 @@ def render_admin():
                         "Last Login": u.last_login.strftime("%Y-%m-%d %H:%M") if u.last_login else "Never"
                     })
 
-                st.dataframe(pd.DataFrame(user_data), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame(user_data), width="stretch", hide_index=True)
 
                 st.divider()
 
@@ -147,20 +154,19 @@ def render_admin():
     with tab2:
         st.subheader("📈 Recent User Logins")
 
-        df_activity = pd.read_sql(
+        df_activity = _read_sql_cached(
             """
             SELECT username, email, last_login, created_at 
             FROM users 
             WHERE last_login IS NOT NULL
             """,
-            engine
         )
 
         if df_activity.empty:
             st.info("No login activity recorded yet.")
         else:
             df_activity = df_activity.sort_values("last_login", ascending=False)
-            st.dataframe(df_activity.reset_index(drop=True), use_container_width=True)
+            st.dataframe(df_activity.reset_index(drop=True), width="stretch")
 
     # =========================
     # ⏱️ TIME ANALYTICS
@@ -169,7 +175,18 @@ def render_admin():
         st.subheader("⏱️ Platform Time Analytics")
         try:
             ensure_activity_schema()
-            df_time = pd.read_sql(
+            ensure_reporting_views()
+            date_filter = st.date_input("Select analytics date")
+            df_daily = _read_sql_cached(
+                """
+                SELECT *
+                FROM admin_user_daily_activity_view
+                WHERE activity_date = %(activity_date)s
+                ORDER BY total_seconds DESC, last_seen DESC
+                """,
+                params={"activity_date": date_filter.isoformat()},
+            )
+            df_time = _read_sql_cached(
                 """
                 SELECT
                     u.username,
@@ -182,33 +199,80 @@ def render_admin():
                 JOIN users u ON u.id = a.user_id
                 ORDER BY a.total_seconds DESC, a.last_seen DESC
                 """,
-                engine,
             )
 
-            if df_time.empty:
-                st.info("No section time has been recorded yet. Analytics starts collecting after users navigate the app with this version.")
+            if df_daily.empty:
+                st.info("No user activity recorded for the selected date yet.")
             else:
-                total_seconds = int(df_time["total_seconds"].sum())
-                active_users = df_time["username"].nunique()
-                top_section = df_time.groupby("section")["total_seconds"].sum().sort_values(ascending=False).index[0]
+                total_seconds = int(df_daily["total_seconds"].sum())
+                active_users = df_daily["username"].nunique()
+                top_section = df_daily.groupby("section")["total_seconds"].sum().sort_values(ascending=False).index[0]
 
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Tracked Time", f"{round(total_seconds / 60, 1)} min")
+                m1.metric("Tracked Time Today", f"{round(total_seconds / 60, 1)} min")
                 m2.metric("Active Users", active_users)
                 m3.metric("Top Section", top_section)
 
-                st.markdown("#### Time By User And Section")
-                st.dataframe(df_time, use_container_width=True, hide_index=True)
+                st.markdown("#### Selected Date: Time By User And Section")
+                st.dataframe(df_daily, width="stretch", hide_index=True)
 
                 section_summary = (
-                    df_time.groupby("section", as_index=False)
+                    df_daily.groupby("section", as_index=False)
                     .agg(total_seconds=("total_seconds", "sum"), users=("username", "nunique"), visits=("visit_count", "sum"))
                 )
                 section_summary["total_minutes"] = (section_summary["total_seconds"] / 60).round(1)
                 section_summary = section_summary.sort_values("total_seconds", ascending=False)
 
-                st.markdown("#### Section Summary")
-                st.dataframe(section_summary, use_container_width=True, hide_index=True)
+                st.markdown("#### Selected Date: Section Summary")
+                st.dataframe(section_summary, width="stretch", hide_index=True)
+
+                user_summary = (
+                    df_daily.groupby("username", as_index=False)
+                    .agg(total_seconds=("total_seconds", "sum"), sections=("section", "nunique"), visits=("visit_count", "sum"))
+                )
+                user_summary["total_minutes"] = (user_summary["total_seconds"] / 60).round(1)
+                user_summary = user_summary.sort_values("total_seconds", ascending=False)
+
+                st.markdown("#### Selected Date: User Summary")
+                st.dataframe(user_summary, width="stretch", hide_index=True)
+
+            if not df_time.empty:
+                with st.expander("Lifetime Summary"):
+                    st.dataframe(df_time, width="stretch", hide_index=True)
+
+            df_perf = _read_sql_cached(
+                """
+                SELECT *
+                FROM admin_section_performance_view
+                WHERE activity_date = %(activity_date)s
+                ORDER BY avg_ms DESC, max_ms DESC
+                """,
+                params={"activity_date": date_filter.isoformat()},
+            )
+
+            st.markdown("#### Selected Date: Section Load Performance")
+            if df_perf.empty:
+                st.info("No section performance data recorded for the selected date yet.")
+            else:
+                p1, p2, p3 = st.columns(3)
+                p1.metric("Avg Load", f"{round(df_perf['avg_ms'].mean(), 1)} ms")
+                p2.metric("Slowest Load", f"{int(df_perf['max_ms'].max())} ms")
+                p3.metric("Render Samples", int(df_perf["render_count"].sum()))
+                st.dataframe(df_perf, width="stretch", hide_index=True)
+
+                perf_section_summary = (
+                    df_perf.groupby("section", as_index=False)
+                    .agg(
+                        renders=("render_count", "sum"),
+                        avg_ms=("avg_ms", "mean"),
+                        max_ms=("max_ms", "max"),
+                        users=("username", "nunique"),
+                    )
+                    .sort_values("avg_ms", ascending=False)
+                )
+                perf_section_summary["avg_ms"] = perf_section_summary["avg_ms"].round(1)
+                st.markdown("#### Selected Date: Performance By Section")
+                st.dataframe(perf_section_summary, width="stretch", hide_index=True)
         except Exception as e:
             st.error(f"Time analytics unavailable: {e}")
 
@@ -219,25 +283,18 @@ def render_admin():
         st.subheader("📚 User Question Progress")
         try:
             _ensure_progress_schema()
-            df_progress = pd.read_sql(
+            ensure_reporting_views()
+            df_progress = _read_sql_cached(
                 """
-                SELECT
-                    u.username,
-                    p.track,
-                    COUNT(*) AS solved_questions,
-                    MAX(p.updated_at) AS last_progress_at
-                FROM progress p
-                JOIN users u ON u.id = p.user_id
-                WHERE p.status = 'solved'
-                GROUP BY u.username, p.track
-                ORDER BY u.username, p.track
+                SELECT *
+                FROM admin_progress_summary_view
+                ORDER BY username, track
                 """,
-                engine,
             )
             if df_progress.empty:
                 st.info("No solved progress has been saved yet.")
             else:
-                st.dataframe(df_progress, use_container_width=True, hide_index=True)
+                st.dataframe(df_progress, width="stretch", hide_index=True)
         except Exception as e:
             st.error(f"Progress summary unavailable: {e}")
 
@@ -261,7 +318,7 @@ def render_admin():
                     if col in df_res.columns:
                         df_res[col] = "********"
 
-                st.dataframe(df_res, use_container_width=True)
+                st.dataframe(df_res, width="stretch")
 
             except Exception as e:
                 st.error(f"SQL Error: {e}")

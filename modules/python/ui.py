@@ -82,7 +82,7 @@ def preview_value(value):
 
 def render_wrapped_value(value):
     if isinstance(value, pd.DataFrame):
-        st.dataframe(value, use_container_width=True, hide_index=True)
+        st.dataframe(value, width="stretch", hide_index=True)
         return
 
     rendered = pformat(preview_value(value), width=70, sort_dicts=False)
@@ -605,7 +605,7 @@ def render_interview_report(report):
             }
         )
 
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.dataframe(rows, width="stretch", hide_index=True)
 
     if st.button("New Interview"):
         st.session_state.pop(INTERVIEW_REPORT_KEY, None)

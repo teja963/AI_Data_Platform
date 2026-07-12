@@ -96,7 +96,7 @@ def render_compact_table(data):
     table_height = min(max(100, 35 * (row_count + 1)), 220)
     st.dataframe(
         data,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         height=table_height,
     )
@@ -121,7 +121,7 @@ def render_execution_result(result):
     if row_count == 0:
         st.info("Code executed successfully, but the result has no rows.")
 
-    st.dataframe(result, use_container_width=True, hide_index=True)
+    st.dataframe(result, width="stretch", hide_index=True)
 
 
 def get_first_table_name(question):
@@ -619,7 +619,7 @@ def render_interview_setup(questions):
                 "time_used": format_duration(run.get("elapsed_seconds", 0)),
             })
 
-        st.dataframe(recent_rows, use_container_width=True, hide_index=True)
+        st.dataframe(recent_rows, width="stretch", hide_index=True)
 
 
 def render_interview_report(report):
@@ -655,7 +655,7 @@ def render_interview_report(report):
         })
 
     st.markdown("### Question Breakdown")
-    st.dataframe(rows, use_container_width=True, hide_index=True)
+    st.dataframe(rows, width="stretch", hide_index=True)
 
     if st.button("Start New Interview", key="restart_interview"):
         clear_interview_state(clear_report=True)

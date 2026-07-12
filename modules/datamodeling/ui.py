@@ -82,7 +82,7 @@ def render_box(text, color="#E8F4FD"):
 
 def render_df(data, columns):
     df = pd.DataFrame(data, columns=columns)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 
 def render_side_by_side(title1, data1, title2, data2, columns):
     col1, col2 = st.columns(2)
@@ -1848,7 +1848,7 @@ def render_ai_chat(section_key, title, topic):
                 height=100,
                 placeholder=f"Ask about {topic}...",
             )
-            submitted = st.form_submit_button("Ask AI", use_container_width=True)
+            submitted = st.form_submit_button("Ask AI", width="stretch")
 
         if submitted and user_input.strip():
             cleaned_input = user_input.strip()
@@ -2247,7 +2247,7 @@ def show_dimensional_modeling():
             ["Example", "sales_amt, quantity", "customer_name, city"]
         ], columns=["Aspect", "Fact Table", "Dimension Table"])
 
-        st.dataframe(df_compare, use_container_width=True, hide_index=True)
+        st.dataframe(df_compare, width="stretch", hide_index=True)
 
         # ---------------- EXAMPLE TABLES ----------------
         st.markdown("### 📊 Example Tables")
@@ -2625,11 +2625,11 @@ def show_dimensional_modeling():
 
         with c1:
             st.markdown("### Before")
-            st.dataframe(before, use_container_width=False, hide_index=True)
+            st.dataframe(before, width="content", hide_index=True)
 
         with c2:
             st.markdown("### After")
-            st.dataframe(after, use_container_width=False, hide_index=True)
+            st.dataframe(after, width="content", hide_index=True)
 
 
         # =====================================================

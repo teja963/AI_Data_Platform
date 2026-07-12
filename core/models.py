@@ -70,3 +70,37 @@ class UserActivitySummary(Base):
     visit_count = Column(Integer, default=0)
     last_seen = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserActivityDaily(Base):
+    __tablename__ = "user_activity_daily"
+    __table_args__ = (
+        UniqueConstraint("user_id", "section", "activity_date", name="uq_activity_user_section_date"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    section = Column(String)
+    activity_date = Column(String)
+    total_seconds = Column(Integer, default=0)
+    visit_count = Column(Integer, default=0)
+    last_seen = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SectionPerformanceDaily(Base):
+    __tablename__ = "section_performance_daily"
+    __table_args__ = (
+        UniqueConstraint("user_id", "section", "activity_date", name="uq_perf_user_section_date"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    section = Column(String)
+    activity_date = Column(String)
+    render_count = Column(Integer, default=0)
+    total_ms = Column(Integer, default=0)
+    max_ms = Column(Integer, default=0)
+    last_ms = Column(Integer, default=0)
+    last_seen = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

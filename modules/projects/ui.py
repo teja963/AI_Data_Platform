@@ -546,7 +546,7 @@ def render_panel(body_html):
 
 def render_table(title, columns, rows):
     st.markdown(f"#### {title}")
-    st.dataframe(pd.DataFrame(rows, columns=columns), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(rows, columns=columns), width="stretch", hide_index=True)
 
 
 def render_requirements(project):
@@ -587,7 +587,7 @@ def render_sizing(project):
     ]
     st.dataframe(
         pd.DataFrame(strategy_rows, columns=["Sizing Step", "How To Derive It", "Applied Decision"]),
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
 
@@ -822,7 +822,7 @@ def render_projects():
         st.title("Projects")
         st.info(f"No projects loaded yet for {company}. Add project dictionaries to PROJECTS_CATALOG to extend the dashboard dynamically.")
         overview_rows = [[name, len(items)] for name, items in PROJECTS_CATALOG.items()]
-        st.dataframe(pd.DataFrame(overview_rows, columns=["Company", "Projects"]), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(overview_rows, columns=["Company", "Projects"]), width="stretch", hide_index=True)
         return
 
     project_keys = [project["key"] for project in company_projects]
