@@ -55,6 +55,10 @@ def render_code_editor(draft_key, language, starter, height=520, placeholder=Non
     placeholder = placeholder or starter
 
     if st_ace is None:
+        st.warning(
+            "Code editor dependency is not installed, so Tab indentation and line numbers are unavailable. "
+            "Deploy with `streamlit-ace` from requirements.txt to enable the full editor."
+        )
         code = st.text_area(
             "Write Code",
             value=current_value,
@@ -69,13 +73,13 @@ def render_code_editor(draft_key, language, starter, height=520, placeholder=Non
             value=current_value,
             placeholder=placeholder,
             language=language,
-            theme="textmate",
+            theme="monokai",
             keybinding="vscode",
             min_lines=line_count,
             max_lines=line_count,
-            font_size=14,
+            font_size=15,
             tab_size=4,
-            wrap=True,
+            wrap=False,
             show_gutter=True,
             show_print_margin=False,
             readonly=disabled,

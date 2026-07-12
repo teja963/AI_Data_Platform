@@ -141,10 +141,6 @@ st.markdown(
         background-color: rgba(14, 17, 23, 0.8) !important;
     }
 
-    /* Filter for Ace Editor to prevent light theme glare in dark mode */
-    [data-theme='dark'] .ace_editor {
-        filter: invert(0.9) hue-rotate(180deg) !important;
-    }
     [data-theme='dark'] input, [data-theme='dark'] textarea, [data-theme='dark'] select { color:#e6eef8 !important; background:#071233 !important; border-color:#334155 !important }
     [data-theme='dark'] .stAlert { color:#e6eef8 !important; background:#071233 !important; border-color:#334155 !important }
     </style>
