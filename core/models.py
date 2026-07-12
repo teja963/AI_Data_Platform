@@ -55,3 +55,18 @@ class InterviewRun(Base):
     score = Column(Integer)
     accuracy = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class UserActivitySummary(Base):
+    __tablename__ = "user_activity_summary"
+    __table_args__ = (
+        UniqueConstraint("user_id", "section", name="uq_activity_user_section"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    section = Column(String)
+    total_seconds = Column(Integer, default=0)
+    visit_count = Column(Integer, default=0)
+    last_seen = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

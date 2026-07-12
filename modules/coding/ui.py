@@ -13,6 +13,11 @@ def _get_query_param(name, default):
     return value
 
 
+def _set_query_param_if_changed(name, value):
+    if _get_query_param(name, None) != value:
+        st.query_params[name] = value
+
+
 def render_coding():
     st.sidebar.title("Coding Workspace")
 
@@ -24,7 +29,7 @@ def render_coding():
         st.session_state.coding_track = initial_track
 
     track = st.sidebar.radio("Track", TRACKS, key="coding_track")
-    st.query_params["coding_track"] = track
+    _set_query_param_if_changed("coding_track", track)
 
     if track == "Python":
         render_python(show_sidebar_title=False)

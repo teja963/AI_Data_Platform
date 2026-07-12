@@ -1,6 +1,5 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import matplotlib.pyplot as plt
 import json
 
 # -------- SESSION INIT (MANDATORY) --------
@@ -30,10 +29,6 @@ from core.constants import (
     SECTION_ORDER,
 )
 
-# Enforce non-interactive backend for reliable chart rendering
-import matplotlib
-matplotlib.use('Agg')
-
 st.set_page_config(layout="wide")
 
 # --- Global Query Params Initialization (Fixes NameError) ---
@@ -41,6 +36,7 @@ query_params = st.query_params
 
 # --- simple auth guard
 from core.auth import create_user, login_user, verify_otp, generate_and_store_otp, update_password, verify_email_otp, validate_email, validate_phone
+from core.activity import flush_section_activity, track_section_activity
 from core.db import SessionLocal
 from core.models import User
 
@@ -239,6 +235,12 @@ def _safe_query_param(name):
     if name == "user" and "," in str(v):
         return str(v).split(",")[-1].strip()
     return v
+
+
+def _set_query_param_if_changed(name, value):
+    current_value = _safe_query_param(name)
+    if current_value != value:
+        st.query_params[name] = value
 
 # --- RESTORE SESSION FROM URL (Refresh Persistence) ---
 # Pick up the 'user' parameter set by the JavaScript restoration script
@@ -465,6 +467,7 @@ if st.session_state.get("user"):
 
         st.write(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
         if st.button("Logout"):
+            flush_section_activity(st.session_state.get("user"))
             st.session_state["user"] = None
             st.session_state["role"] = "user"
             _clear_auth_url()
@@ -498,17 +501,25 @@ if st.session_state.get("user"):
         selected_module = DASHBOARD_SECTION_LABEL
 
     st.sidebar.markdown("### Navigation")
-    visible_sections = [s for s in SECTION_ORDER if s != ADMIN_SECTION_LABEL or st.session_state.get("role") == "admin"]
+    admin_only_sections = {ADMIN_SECTION_LABEL, PROJECTS_SECTION_LABEL}
+    is_admin = st.session_state.get("role") == "admin"
+    visible_sections = [
+        s for s in SECTION_ORDER
+        if is_admin or s not in admin_only_sections
+    ]
 
-    module = st.sidebar.selectbox(
+    if selected_module not in visible_sections:
+        selected_module = DASHBOARD_SECTION_LABEL
+
+    module = st.sidebar.radio(
         "Choose Section",
         visible_sections,
         index=visible_sections.index(selected_module) if selected_module in visible_sections else 0,
-        label_visibility="visible",
     )
 
     st.session_state["module"] = module
-    st.query_params["module"] = module
+    _set_query_param_if_changed("module", module)
+    track_section_activity(st.session_state.get("user"), module)
 
     def render_dashboard():
         from core.interview import load_interview_history
@@ -532,25 +543,16 @@ if st.session_state.get("user"):
                 total = len(questions)
                 solved_keys = load_progress(module_config["progress_track"])
                 solved = len([q for q in questions if q.get("progress_key") in solved_keys])
-                unsolved = total - solved
-
                 st.markdown(f"### 📘 {module_config['label'].upper()}")
 
                 if total == 0:
                     st.info("No questions yet")
                     continue
 
-                fig, ax = plt.subplots(figsize=(2.5, 2.5))
-                ax.pie(
-                    [solved, unsolved],
-                    labels=["✔", "✖"],
-                    autopct="%1.0f%%",
-                    textprops={"fontsize": 8},
-                )
-                ax.axis("equal")
-                st.pyplot(fig, clear_figure=True)
-                # Render Solved metric exactly once
-                st.markdown(f"<div style='text-align:center'><b>{solved} / {total}</b><br>Solved</div>", unsafe_allow_html=True)
+                progress_ratio = solved / total if total else 0
+                st.metric("Solved", f"{solved} / {total}")
+                st.progress(progress_ratio)
+                st.caption(f"{round(progress_ratio * 100)}% complete")
         st.markdown("---")
         st.subheader("Interview Simulator")
         history = load_interview_history()

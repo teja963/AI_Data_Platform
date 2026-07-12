@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 from core.db import SessionLocal, engine
 from core.models import User
+from core.activity import ensure_activity_schema
 from core.progress import _ensure_progress_schema
 
 def render_admin():
@@ -11,9 +12,10 @@ def render_admin():
 
     st.title("🛡️ Admin Dashboard")
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "👥 User Management",
-        "📈 User Activity",
+        "📈 Login Activity",
+        "⏱️ Time Analytics",
         "📚 Progress",
         "🔍 SQL Console"
     ])
@@ -161,9 +163,59 @@ def render_admin():
             st.dataframe(df_activity.reset_index(drop=True), use_container_width=True)
 
     # =========================
-    # 📚 PROGRESS
+    # ⏱️ TIME ANALYTICS
     # =========================
     with tab3:
+        st.subheader("⏱️ Platform Time Analytics")
+        try:
+            ensure_activity_schema()
+            df_time = pd.read_sql(
+                """
+                SELECT
+                    u.username,
+                    a.section,
+                    a.total_seconds,
+                    ROUND(a.total_seconds / 60.0, 1) AS total_minutes,
+                    a.visit_count,
+                    a.last_seen
+                FROM user_activity_summary a
+                JOIN users u ON u.id = a.user_id
+                ORDER BY a.total_seconds DESC, a.last_seen DESC
+                """,
+                engine,
+            )
+
+            if df_time.empty:
+                st.info("No section time has been recorded yet. Analytics starts collecting after users navigate the app with this version.")
+            else:
+                total_seconds = int(df_time["total_seconds"].sum())
+                active_users = df_time["username"].nunique()
+                top_section = df_time.groupby("section")["total_seconds"].sum().sort_values(ascending=False).index[0]
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Tracked Time", f"{round(total_seconds / 60, 1)} min")
+                m2.metric("Active Users", active_users)
+                m3.metric("Top Section", top_section)
+
+                st.markdown("#### Time By User And Section")
+                st.dataframe(df_time, use_container_width=True, hide_index=True)
+
+                section_summary = (
+                    df_time.groupby("section", as_index=False)
+                    .agg(total_seconds=("total_seconds", "sum"), users=("username", "nunique"), visits=("visit_count", "sum"))
+                )
+                section_summary["total_minutes"] = (section_summary["total_seconds"] / 60).round(1)
+                section_summary = section_summary.sort_values("total_seconds", ascending=False)
+
+                st.markdown("#### Section Summary")
+                st.dataframe(section_summary, use_container_width=True, hide_index=True)
+        except Exception as e:
+            st.error(f"Time analytics unavailable: {e}")
+
+    # =========================
+    # 📚 PROGRESS
+    # =========================
+    with tab4:
         st.subheader("📚 User Question Progress")
         try:
             _ensure_progress_schema()
@@ -192,7 +244,7 @@ def render_admin():
     # =========================
     # 🔍 SQL CONSOLE
     # =========================
-    with tab4:
+    with tab5:
         st.subheader("🔍 SQL Explorer")
 
         query_input = st.text_area(
