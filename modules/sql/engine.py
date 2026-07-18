@@ -249,6 +249,8 @@ def get_spark_session():
 
     os.environ["PYSPARK_PYTHON"] = sys.executable
     os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
+    os.environ["SPARK_LOCAL_HOSTNAME"] = "localhost"
+    os.environ["SPARK_LOCAL_IP"] = "127.0.0.1"
 
     spark = (
         SparkSession.builder
@@ -300,10 +302,21 @@ def _extract_result_dataframe(namespace, table_names):
 def run_pyspark_code(tables, code):
     try:
         spark = get_spark_session()
+        from pyspark.sql import functions as spark_functions
+
+        function_namespace = {
+            name: getattr(spark_functions, name)
+            for name in dir(spark_functions)
+            if not name.startswith("_")
+        }
+        if "countDistinct" not in function_namespace and "count_distinct" in function_namespace:
+            function_namespace["countDistinct"] = function_namespace["count_distinct"]
+
         table_dfs = create_spark_tables(tables)
         namespace = {
             "__builtins__": __builtins__,
             "spark": spark,
+            **function_namespace,
             **table_dfs,
         }
 

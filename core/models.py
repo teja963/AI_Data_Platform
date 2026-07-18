@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Boolean, UniqueConstraint, LargeBinary
 from datetime import datetime
 from core.db import Base
 
@@ -103,4 +103,19 @@ class SectionPerformanceDaily(Base):
     max_ms = Column(Integer, default=0)
     last_ms = Column(Integer, default=0)
     last_seen = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ArchitectureDiagram(Base):
+    __tablename__ = "architecture_diagrams"
+
+    id = Column(Integer, primary_key=True)
+    title = Column(String)
+    description = Column(Text, nullable=True)
+    file_name = Column(String)
+    content_type = Column(String, nullable=True)
+    file_data = Column(LargeBinary)
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

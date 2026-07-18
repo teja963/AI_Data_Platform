@@ -24,6 +24,7 @@ from core.constants import (
     PYTHON_SECTION_LABEL,
     SPARK_SECTION_LABEL,
     DATA_MODELING_SECTION_LABEL,
+    ARCHITECTURE_SECTION_LABEL,
     PROJECTS_SECTION_LABEL,
     ADMIN_SECTION_LABEL,
     SECTION_ORDER,
@@ -184,6 +185,24 @@ def _set_query_param_if_changed(name, value):
     current_value = _safe_query_param(name)
     if current_value != value:
         st.query_params[name] = value
+
+
+def _render_section_navigation(visible_sections, selected_module):
+    st.sidebar.markdown("### Navigation")
+    st.sidebar.caption("Quick jump to any section")
+
+    for section in visible_sections:
+        is_current = section == selected_module
+        label = f"Current: {section}" if is_current else section
+        if st.sidebar.button(
+            label,
+            key=f"nav_{section}",
+            type="primary" if is_current else "secondary",
+            width="stretch",
+        ):
+            st.session_state["module"] = section
+            _set_query_param_if_changed("module", section)
+            st.rerun()
 
 # --- RESTORE SESSION FROM URL (Refresh Persistence) ---
 # Pick up the 'user' parameter set by the JavaScript restoration script
@@ -440,7 +459,6 @@ if st.session_state.get("user"):
     if selected_module not in SECTION_ORDER:
         selected_module = DASHBOARD_SECTION_LABEL
 
-    st.sidebar.markdown("### Navigation")
     admin_only_sections = {ADMIN_SECTION_LABEL, PROJECTS_SECTION_LABEL}
     is_admin = st.session_state.get("role") == "admin"
     visible_sections = [
@@ -450,12 +468,10 @@ if st.session_state.get("user"):
 
     if selected_module not in visible_sections:
         selected_module = DASHBOARD_SECTION_LABEL
+        st.session_state["module"] = selected_module
 
-    module = st.sidebar.radio(
-        "Choose Section",
-        visible_sections,
-        index=visible_sections.index(selected_module) if selected_module in visible_sections else 0,
-    )
+    _render_section_navigation(visible_sections, selected_module)
+    module = st.session_state.get("module", selected_module)
 
     st.session_state["module"] = module
     _set_query_param_if_changed("module", module)
@@ -529,6 +545,7 @@ if st.session_state.get("user"):
         GENAI_SECTION_LABEL: lambda: __import__("modules.genai.ui", fromlist=["render_genai"]).render_genai(),
         SPARK_SECTION_LABEL: lambda: __import__("modules.spark.ui", fromlist=["render_spark"]).render_spark(),
         DATA_MODELING_SECTION_LABEL: lambda: __import__("modules.datamodeling.ui", fromlist=["render_datamodeling"]).render_datamodeling(),
+        ARCHITECTURE_SECTION_LABEL: lambda: __import__("modules.architecture.ui", fromlist=["render_architecture"]).render_architecture(),
         PROJECTS_SECTION_LABEL: lambda: __import__("modules.projects.ui", fromlist=["render_projects"]).render_projects(),
         ADMIN_SECTION_LABEL: lambda: __import__("modules.admin.ui", fromlist=["render_admin"]).render_admin(),
     }
