@@ -1,10 +1,14 @@
 import hashlib
 import os
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
 import streamlit as st
+
+APP_STARTED_AT = datetime.now(timezone.utc)
 
 
 _VERSION_ENV_KEYS = (
@@ -86,8 +90,31 @@ def get_running_commit():
     return head
 
 
+def _format_duration(seconds):
+    if seconds is None:
+        return "unknown"
+
+    seconds = max(int(seconds), 0)
+    minutes, sec = divmod(seconds, 60)
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        return f"{hours}h {minutes}m {sec}s"
+    if minutes:
+        return f"{minutes}m {sec}s"
+    return f"{sec}s"
+
+
+def _parse_github_datetime(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 @st.cache_data(ttl=300, show_spinner=False)
-def get_latest_github_commit(repo, branch):
+def get_latest_github_commit_info(repo, branch):
     try:
         request = Request(
             f"https://api.github.com/repos/{repo}/commits/{branch}",
@@ -96,18 +123,26 @@ def get_latest_github_commit(repo, branch):
         with urlopen(request, timeout=5) as response:
             payload = response.read().decode("utf-8", errors="ignore")
     except (OSError, URLError):
-        return ""
+        return {"sha": "", "committed_at": None}
 
-    marker = '"sha":'
-    marker_index = payload.find(marker)
-    if marker_index == -1:
-        return ""
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return {"sha": "", "committed_at": None}
 
-    after_marker = payload[marker_index + len(marker):].strip()
-    if not after_marker.startswith('"'):
-        return ""
+    committed_at = (
+        data.get("commit", {})
+        .get("committer", {})
+        .get("date")
+    )
+    return {
+        "sha": data.get("sha", ""),
+        "committed_at": _parse_github_datetime(committed_at),
+    }
 
-    return after_marker.split('"', 2)[1]
+
+def get_latest_github_commit(repo, branch):
+    return get_latest_github_commit_info(repo, branch).get("sha", "")
 
 
 def get_app_version():
@@ -159,14 +194,23 @@ def get_deploy_health():
     repo = get_git_repo()
     branch = get_git_branch()
     running_commit = get_running_commit()
-    latest_commit = get_latest_github_commit(repo, branch)
+    latest_info = get_latest_github_commit_info(repo, branch)
+    latest_commit = latest_info.get("sha", "")
+    latest_committed_at = latest_info.get("committed_at")
     is_current = bool(running_commit and latest_commit and running_commit[:12] == latest_commit[:12])
+    deploy_latency_seconds = None
+    if latest_committed_at and is_current:
+        deploy_latency_seconds = (APP_STARTED_AT - latest_committed_at).total_seconds()
 
     return {
         "repo": repo,
         "branch": branch,
         "running_commit": running_commit,
         "latest_commit": latest_commit,
+        "latest_committed_at": latest_committed_at,
+        "app_started_at": APP_STARTED_AT,
+        "deploy_latency_seconds": deploy_latency_seconds,
+        "deploy_latency": _format_duration(deploy_latency_seconds),
         "is_current": is_current,
         "app_version": get_app_version(),
     }

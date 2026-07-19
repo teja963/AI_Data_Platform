@@ -430,12 +430,21 @@ def render_admin():
         c2.metric("Running Commit", (health["running_commit"] or "unknown")[:12])
         c3.metric("GitHub Latest", (health["latest_commit"] or "unknown")[:12])
 
+        t1, t2, t3 = st.columns(3)
+        t1.metric("Estimated Redeploy Time", health.get("deploy_latency", "unknown"))
+        t2.caption(f"GitHub commit time: `{health.get('latest_committed_at') or 'unknown'}`")
+        t3.caption(f"App start time: `{health.get('app_started_at') or 'unknown'}`")
+
         st.write(f"Repository: `{health['repo']}`")
         st.write(f"Branch: `{health['branch']}`")
 
         if health["latest_commit"] and health["running_commit"]:
             if health["is_current"]:
                 st.success("Streamlit is running the latest GitHub commit.")
+                st.caption(
+                    "Redeploy time is estimated from GitHub commit timestamp to this Streamlit app process start time. "
+                    "Streamlit Cloud does not expose per-stage build timings inside the app."
+                )
             else:
                 st.error(
                     "GitHub has a newer commit than the running Streamlit app. "

@@ -1,6 +1,6 @@
 import streamlit as st
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.exc import SQLAlchemyError
 
 # -------- SESSION INIT (MANDATORY) --------
@@ -48,6 +48,10 @@ from core.runtime import clear_cached_runtime_data, ensure_fresh_runtime, get_de
 
 APP_VERSION = ensure_fresh_runtime()
 SESSION_TTL_HOURS = 24
+
+
+def _utc_now():
+    return datetime.now(timezone.utc)
 
 
 def _show_database_unavailable(error):
@@ -182,7 +186,10 @@ def _expire_session_if_needed():
     if not login_ts:
         return
 
-    if datetime.utcnow() - login_ts > timedelta(hours=SESSION_TTL_HOURS):
+    if login_ts.tzinfo is None:
+        login_ts = login_ts.replace(tzinfo=timezone.utc)
+
+    if _utc_now() - login_ts > timedelta(hours=SESSION_TTL_HOURS):
         flush_section_activity(st.session_state.get("user"))
         st.session_state["user"] = None
         st.session_state["role"] = "user"
@@ -238,16 +245,19 @@ def _render_section_navigation(visible_sections, selected_module):
         unsafe_allow_html=True,
     )
 
-    if st.session_state.get("nav_jump") not in visible_sections:
-        st.session_state["nav_jump"] = selected_module if selected_module in visible_sections else visible_sections[0]
+    nav_value = st.session_state.get("nav_jump")
+    if nav_value not in visible_sections:
+        nav_value = selected_module if selected_module in visible_sections else visible_sections[0]
 
-    st.sidebar.selectbox(
+    selected_nav = st.sidebar.selectbox(
         "Jump To Section",
         visible_sections,
-        index=visible_sections.index(st.session_state["nav_jump"]),
+        index=visible_sections.index(nav_value),
         key="nav_jump",
-        on_change=_select_navigation_section,
     )
+    if selected_nav != st.session_state.get("module"):
+        st.session_state["module"] = selected_nav
+        _set_query_param_if_changed("module", selected_nav)
 
 
 def _show_deploy_status_banner():
@@ -294,7 +304,7 @@ if url_user and not st.session_state.get("user"):
         if u:
             st.session_state["user"] = u.username
             st.session_state["role"] = u.role
-            st.session_state.setdefault("login_ts", datetime.utcnow())
+            st.session_state.setdefault("login_ts", _utc_now())
         session.close()
     except Exception:
         # DB connection might fail temporarily; don't set user if so
@@ -451,7 +461,7 @@ elif not st.session_state.get("user") and not st.session_state.get("pending_admi
                 else:
                     st.session_state["role"] = user.role
                     st.session_state["user"] = user.username
-                    st.session_state["login_ts"] = datetime.utcnow()
+                    st.session_state["login_ts"] = _utc_now()
                     _set_auth_url(user.username)
                     st.rerun()
             else:
@@ -489,7 +499,7 @@ if st.session_state.get("pending_admin"):
                     u = session.query(User).filter_by(username=st.session_state["pending_admin"]).first()
                     st.session_state["user"] = u.username
                     st.session_state["role"] = u.role
-                    st.session_state["login_ts"] = datetime.utcnow()
+                    st.session_state["login_ts"] = _utc_now()
                     st.session_state.pop("pending_admin")
                     _set_auth_url(u.username)
                     record_login(u.id, u.username)
