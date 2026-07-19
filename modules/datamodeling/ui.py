@@ -34,10 +34,11 @@ def render_datamodeling():
     # 🔥 STEP 2: TAB-LIKE UI (REPLACES st.tabs)
     # =====================================================
     selected_tab = st.radio(
-        "",
+        "Data Modelling Topic",
         tab_labels,
         index=tab_labels.index(selected),
-        horizontal=True
+        horizontal=True,
+        label_visibility="collapsed",
     )
 
     # =====================================================

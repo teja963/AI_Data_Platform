@@ -124,7 +124,6 @@ def _parse_github_datetime(value):
         return None
 
 
-@st.cache_data(ttl=300, show_spinner=False)
 def get_latest_github_commit_info(repo, branch):
     try:
         request = Request(
