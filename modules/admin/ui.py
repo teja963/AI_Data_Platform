@@ -8,7 +8,7 @@ from core.login_history import ensure_login_history_schema
 from core.models import User
 from core.activity import ensure_activity_schema
 from core.progress import _ensure_progress_schema
-from core.runtime import get_app_version
+from core.runtime import get_app_version, get_deploy_health
 from core.views import ensure_reporting_views
 
 IST = timezone(timedelta(hours=5, minutes=30))
@@ -423,12 +423,33 @@ def render_admin():
 
     with tab6:
         st.subheader("🚀 Deploy Health")
-        st.metric("Running App Version", get_app_version())
-        st.write(
-            "After every GitHub push, this version should change after Streamlit Cloud redeploys. "
-            "If GitHub has the new commit but this value does not change, the Streamlit Cloud webhook/repo connection is not redeploying."
-        )
+        health = get_deploy_health()
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Running App Version", health["app_version"])
+        c2.metric("Running Commit", (health["running_commit"] or "unknown")[:12])
+        c3.metric("GitHub Latest", (health["latest_commit"] or "unknown")[:12])
+
+        st.write(f"Repository: `{health['repo']}`")
+        st.write(f"Branch: `{health['branch']}`")
+
+        if health["latest_commit"] and health["running_commit"]:
+            if health["is_current"]:
+                st.success("Streamlit is running the latest GitHub commit.")
+            else:
+                st.error(
+                    "GitHub has a newer commit than the running Streamlit app. "
+                    "This means Streamlit Cloud has not redeployed the latest push yet."
+                )
+        else:
+            st.warning(
+                "Could not compare running commit with GitHub latest commit. "
+                "Check Streamlit Cloud repo/branch settings and GitHub access."
+            )
+
         st.info(
-            "Permanent deployment check: confirm Streamlit Cloud is connected to the correct GitHub repo, branch, and `app.py` main file. "
-            "If pushes do not update this version, reconnect the app to GitHub or trigger redeploy from Streamlit Cloud."
+            "The `Refresh Latest App/Data` button clears Streamlit data cache only. "
+            "It cannot load new Python source code into an already-running Streamlit container. "
+            "For source-code changes, Streamlit Cloud must redeploy/reboot the app. "
+            "If this tab shows GitHub Latest is newer than Running Commit, reconnect the Streamlit app to the correct GitHub repo/branch or manually trigger redeploy."
         )
