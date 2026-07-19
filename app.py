@@ -43,7 +43,7 @@ from core.access import get_allowed_sections
 from core.db import SessionLocal, get_database_host
 from core.login_history import record_login
 from core.models import User
-from core.runtime import clear_cached_runtime_data, ensure_fresh_runtime
+from core.runtime import clear_cached_runtime_data, ensure_fresh_runtime, get_deploy_health
 
 
 APP_VERSION = ensure_fresh_runtime()
@@ -248,6 +248,30 @@ def _render_section_navigation(visible_sections, selected_module):
         key="nav_jump",
         on_change=_select_navigation_section,
     )
+
+
+def _show_deploy_status_banner():
+    health = get_deploy_health()
+    running_commit = health.get("running_commit") or ""
+    latest_commit = health.get("latest_commit") or ""
+
+    if running_commit and latest_commit and not health.get("is_current"):
+        message = (
+            "New GitHub version detected, but Streamlit Cloud is still running an older build. "
+            f"Running: `{running_commit[:12]}` | GitHub latest: `{latest_commit[:12]}`. "
+            "Refresh Latest App/Data clears cached data only; Streamlit Cloud must redeploy to load new Python source code."
+        )
+        st.error(message)
+
+        notify_key = f"deploy_stale_notified::{latest_commit[:12]}"
+        if not st.session_state.get(notify_key):
+            st.toast("New GitHub version detected, but Streamlit has not redeployed yet.")
+            st.session_state[notify_key] = True
+    elif not latest_commit:
+        st.warning(
+            "Could not verify the latest GitHub commit from this running app. "
+            "If updates are not appearing, check Streamlit Cloud GitHub connection and branch settings."
+        )
 
 # --- RESTORE SESSION FROM URL (Refresh Persistence) ---
 # Pick up the 'user' parameter set by the JavaScript restoration script
@@ -482,6 +506,7 @@ if st.session_state.get("pending_admin"):
 # --- Main Application Logic (Only reached if st.session_state["user"] is set) ---
 if st.session_state.get("user"):
     _expire_session_if_needed()
+    _show_deploy_status_banner()
     # --- Main App (Only reached if authenticated)
     with st.sidebar:
         st.write(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
