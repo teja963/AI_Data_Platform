@@ -70,6 +70,22 @@ class Progress(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class CodingSubmission(Base):
+    __tablename__ = "coding_submissions"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    username = Column(String)
+    track = Column(String)
+    question_key = Column(String)
+    question_title = Column(String)
+    correct = Column(Boolean, default=False)
+    elapsed_ms = Column(Integer, default=0)
+    code = Column(Text, nullable=True)
+    result_summary = Column(Text, nullable=True)
+    submitted_at = Column(DateTime, default=datetime.utcnow)
+
+
 class InterviewRun(Base):
     __tablename__ = "interview_runs"
     id = Column(Integer, primary_key=True)

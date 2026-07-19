@@ -18,6 +18,7 @@ from core.interview import (
 )
 from core.loader import group_by_category, load_questions
 from core.progress import clear_progress, load_progress, save_progress
+from core.submissions import get_recent_submissions, get_submission_stats, record_submission
 from modules.sql.engine import (
     create_db,
     get_pyspark_unavailable_message,
@@ -257,33 +258,49 @@ def finalize_interview(reason):
 
 
 def render_question_content(question, show_expected_output=True):
-    st.subheader(question["title"])
-    meta = f"`{question['category']}`"
-    if "difficulty" in question:
-        meta += f"  |  `{question['difficulty']}`"
-    st.caption(meta)
+    with st.container(height=720, border=True):
+        st.subheader(question["title"])
+        meta = f"`{question['category']}`"
+        if "difficulty" in question:
+            meta += f"  |  `{question['difficulty']}`"
+        st.caption(meta)
 
-    tags = question.get("tags", [])
-    if tags:
-        st.caption("Tags: " + " ".join(f"`{tag}`" for tag in tags))
+        tags = question.get("tags", [])
+        if tags:
+            st.caption("Tags: " + " ".join(f"`{tag}`" for tag in tags))
 
-    if show_expected_output:
-        prompt_tab, tables_tab, output_tab = st.tabs(["Prompt", "Input Tables", "Expected Output"])
-    else:
-        prompt_tab, tables_tab = st.tabs(["Prompt", "Input Tables"])
-        output_tab = None
-
-    with prompt_tab:
+        st.markdown("### Problem")
         st.write(question["description"])
 
-    with tables_tab:
+        st.markdown("### Input Tables")
         for table, data in question["tables"].items():
             st.markdown(f"#### {table}")
             render_compact_table(data)
 
-    if output_tab is not None:
-        with output_tab:
+        if show_expected_output:
+            st.markdown("### Expected Output")
             render_compact_table(question["expected_output"])
+
+        with st.expander("Solution / Explanation"):
+            solution_tabs = st.tabs(["SQL", "PySpark"])
+            with solution_tabs[0]:
+                st.code(format_sql_vertical(question.get("sql_solution", "")), language="sql")
+            with solution_tabs[1]:
+                st.code(question.get("pyspark_solution", ""), language="python")
+
+
+def render_submission_summary(track, question_key):
+    username = st.session_state.get("user")
+    stats = get_submission_stats(username, track, question_key)
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Submissions", stats["total"])
+    s2.metric("Accepted", stats["accepted"])
+    s3.metric("Accuracy", f"{stats['accuracy']}%")
+
+    recent = get_recent_submissions(username, track, question_key)
+    if recent:
+        st.markdown("### Recent Submissions")
+        st.dataframe(recent, width="stretch", hide_index=True)
 
 
 def render_practice_workspace(questions):
@@ -414,23 +431,48 @@ def render_practice_workspace(questions):
             else:
                 execution_started_at = time.perf_counter()
                 result, error = execute_code(question, editor_mode, query)
+                elapsed_ms = int((time.perf_counter() - execution_started_at) * 1000)
                 track_query_execution(
                     st.session_state.get("user"),
                     EDITOR_TRACKS[editor_mode],
-                    int((time.perf_counter() - execution_started_at) * 1000),
+                    elapsed_ms,
                 )
 
                 if error:
                     st.error(error)
+                    if submit:
+                        record_submission(
+                            st.session_state.get("user"),
+                            EDITOR_TRACKS[editor_mode],
+                            question_key,
+                            question["title"],
+                            False,
+                            elapsed_ms,
+                            query,
+                            error,
+                        )
                 else:
                     render_execution_result(result)
 
                     if submit:
-                        if validate(result, question["expected_output"]):
+                        correct = validate(result, question["expected_output"])
+                        record_submission(
+                            st.session_state.get("user"),
+                            EDITOR_TRACKS[editor_mode],
+                            question_key,
+                            question["title"],
+                            correct,
+                            elapsed_ms,
+                            query,
+                            f"{len(result.index)} rows x {len(result.columns)} columns",
+                        )
+                        if correct:
                             mark_question_solved(editor_mode, question_key)
                             st.success("Correct")
                         else:
                             st.error("Incorrect")
+
+        render_submission_summary(EDITOR_TRACKS[editor_mode], question_key)
 
         st.markdown("### AI Tools")
 
@@ -462,16 +504,6 @@ def render_practice_workspace(questions):
                     ),
                 )
             )
-
-        with st.expander("Show Solution"):
-            sql_tab, pyspark_tab = st.tabs(["SQL", "PySpark"])
-
-            with sql_tab:
-                st.code(format_sql_vertical(question.get("sql_solution", "")), language="sql")
-
-            with pyspark_tab:
-                st.code(question.get("pyspark_solution", ""), language="python")
-
 
 def render_interview_setup(questions):
     st.title("Interview Simulator")
@@ -768,10 +800,11 @@ def render_active_interview():
             else:
                 execution_started_at = time.perf_counter()
                 result, error = execute_code(current_question, interview_state["editor_mode"], query)
+                elapsed_ms = int((time.perf_counter() - execution_started_at) * 1000)
                 track_query_execution(
                     st.session_state.get("user"),
                     EDITOR_TRACKS[interview_state["editor_mode"]],
-                    int((time.perf_counter() - execution_started_at) * 1000),
+                    elapsed_ms,
                 )
                 st.session_state[output_key] = {
                     "result": result,
@@ -780,14 +813,36 @@ def render_active_interview():
 
                 if error:
                     st.error(error)
+                    if submit:
+                        record_submission(
+                            st.session_state.get("user"),
+                            EDITOR_TRACKS[interview_state["editor_mode"]],
+                            question_key,
+                            current_question["title"],
+                            False,
+                            elapsed_ms,
+                            query,
+                            error,
+                        )
                 else:
                     render_execution_result(result)
 
                     if submit:
                         attempts = current_result.get("attempts", 0) + 1
                         time_spent_seconds = int(time.time() - interview_state["question_started_at"])
+                        correct = validate(result, current_question["expected_output"])
+                        record_submission(
+                            st.session_state.get("user"),
+                            EDITOR_TRACKS[interview_state["editor_mode"]],
+                            question_key,
+                            current_question["title"],
+                            correct,
+                            elapsed_ms,
+                            query,
+                            f"{len(result.index)} rows x {len(result.columns)} columns",
+                        )
 
-                        if validate(result, current_question["expected_output"]):
+                        if correct:
                             score = calculate_question_score(
                                 correct=True,
                                 time_spent_seconds=time_spent_seconds,
@@ -834,6 +889,8 @@ def render_active_interview():
             }
             st.session_state[INTERVIEW_STATE_KEY] = interview_state
             st.rerun()
+
+        render_submission_summary(EDITOR_TRACKS[interview_state["editor_mode"]], question_key)
 
         st.markdown("### Status")
         status_col1, status_col2, status_col3 = st.columns(3)

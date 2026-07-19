@@ -20,6 +20,7 @@ from core.interview import (
 )
 from core.loader import group_by_category, load_questions
 from core.progress import clear_progress, load_progress, save_progress
+from core.submissions import get_recent_submissions, get_submission_stats, record_submission
 from modules.python.engine import preview_python_question, run_python_question
 
 WORKSPACES = ["Practice", "Interview Simulator"]
@@ -151,46 +152,39 @@ def render_result_panel(execution):
 
 
 def render_question_content(question, show_solution_note=True):
-    st.subheader(question["title"])
-    meta = f"`{question['category']}`  |  `{question['difficulty']}`"
-    st.caption(meta)
+    with st.container(height=720, border=True):
+        st.subheader(question["title"])
+        meta = f"`{question['category']}`  |  `{question['difficulty']}`"
+        st.caption(meta)
 
-    tags = question.get("tags", [])
-    if tags:
-        st.caption("Tags: " + " ".join(f"`{tag}`" for tag in tags))
+        tags = question.get("tags", [])
+        if tags:
+            st.caption("Tags: " + " ".join(f"`{tag}`" for tag in tags))
 
-    prompt_tab, examples_tab, evaluator_tab = st.tabs(["Prompt", "Examples", "Evaluator"])
-
-    with prompt_tab:
         st.info(question["submission_mode"])
         if question.get("practice_fixture_paths"):
             st.caption("Sample practice files for local runs:")
             for path in question["practice_fixture_paths"]:
                 st.markdown(f"- `{path}`")
 
-        st.markdown("#### Problem")
+        st.markdown("### Problem")
         st.write(question["description"])
 
-        contract_col1, contract_col2 = st.columns(2)
-        with contract_col1:
-            st.markdown("#### What To Write")
-            render_wrapped_value(f"def {question['signature']}:")
-            st.markdown("#### Input Format")
-            for item in question["input_format"]:
-                st.markdown(f"- {item}")
-        with contract_col2:
-            st.markdown("#### Output Format")
-            st.write(question["output_format"])
-            st.markdown("#### Constraints")
-            for item in question["constraints"]:
-                st.markdown(f"- {item}")
+        st.markdown("### What To Write")
+        render_wrapped_value(f"def {question['signature']}:")
 
-        if show_solution_note:
-            st.caption(
-                "Submit expects only the function. Use the main-template button only when you want optional local scratch practice."
-            )
+        st.markdown("### Input Format")
+        for item in question["input_format"]:
+            st.markdown(f"- {item}")
 
-    with examples_tab:
+        st.markdown("### Output Format")
+        st.write(question["output_format"])
+
+        st.markdown("### Constraints")
+        for item in question["constraints"]:
+            st.markdown(f"- {item}")
+
+        st.markdown("### Examples")
         for example in question["examples"]:
             with st.container(border=True):
                 st.markdown(f"**{example['label']}**")
@@ -207,17 +201,33 @@ def render_question_content(question, show_solution_note=True):
                     st.markdown("**Expected Output**")
                     render_wrapped_value(example["expected"])
 
-    with evaluator_tab:
-        st.markdown(f"- Base regression cases: `{len(question['tests'])}`")
-        st.markdown(f"- Function name required: `{question['entry_point']}`")
-        st.markdown("- Submission mode: function only")
-        st.markdown("- `input()` and `__main__` are not required for submission")
-        st.markdown("- `Run` previews your function output on the visible examples")
-        st.markdown("- `Submit` validates against the full backend evaluator")
-        if any(test.get("files") for test in question["tests"]):
-            st.markdown("- File paths are passed into the function by the evaluator")
-        if any(isinstance(test["expected"], pd.DataFrame) for test in question["tests"]):
-            st.markdown("- Includes pandas-style result validation")
+        with st.expander("Evaluator / Solution"):
+            st.markdown(f"- Base regression cases: `{len(question['tests'])}`")
+            st.markdown(f"- Function name required: `{question['entry_point']}`")
+            st.markdown("- Submission mode: function only")
+            st.markdown("- `Run` previews your function output on the visible examples")
+            st.markdown("- `Submit` validates against the full backend evaluator")
+            if any(test.get("files") for test in question["tests"]):
+                st.markdown("- File paths are passed into the function by the evaluator")
+            if any(isinstance(test["expected"], pd.DataFrame) for test in question["tests"]):
+                st.markdown("- Includes pandas-style result validation")
+            if show_solution_note:
+                st.caption("Submit expects only the function. Use the main-template button only for local scratch practice.")
+            st.code(question["solution"], language="python", wrap_lines=True)
+
+
+def render_submission_summary(track, question_key):
+    username = st.session_state.get("user")
+    stats = get_submission_stats(username, track, question_key)
+    s1, s2, s3 = st.columns(3)
+    s1.metric("Submissions", stats["total"])
+    s2.metric("Accepted", stats["accepted"])
+    s3.metric("Accuracy", f"{stats['accuracy']}%")
+
+    recent = get_recent_submissions(username, track, question_key)
+    if recent:
+        st.markdown("### Recent Submissions")
+        st.dataframe(recent, width="stretch", hide_index=True)
 
 
 def mark_question_solved(question_key):
@@ -262,10 +272,6 @@ def render_ai_tools(question, code, button_prefix):
                     ),
                 )
             )
-
-    with st.expander("Show Solution"):
-        st.code(question["solution"], language="python", wrap_lines=True)
-
 
 def render_practice_workspace(questions):
     grouped = group_by_category(questions)
@@ -362,10 +368,11 @@ def render_practice_workspace(questions):
             else:
                 execution_started_at = time.perf_counter()
                 execution = preview_python_question(question, code) if run else run_python_question(question, code)
+                elapsed_ms = int((time.perf_counter() - execution_started_at) * 1000)
                 track_query_execution(
                     st.session_state.get("user"),
                     "python",
-                    int((time.perf_counter() - execution_started_at) * 1000),
+                    elapsed_ms,
                 )
                 st.session_state[result_key] = {
                     "mode": "preview" if run else "submit",
@@ -374,6 +381,18 @@ def render_practice_workspace(questions):
                 render_result_panel(execution)
 
                 if submit:
+                    result_count = len(execution.get("results", []))
+                    passed_count = sum(1 for item in execution.get("results", []) if item.get("passed"))
+                    record_submission(
+                        st.session_state.get("user"),
+                        "python",
+                        selected_question_key,
+                        question["title"],
+                        execution["passed"],
+                        elapsed_ms,
+                        code,
+                        f"{passed_count}/{result_count} tests passed",
+                    )
                     if execution["passed"]:
                         mark_question_solved(selected_question_key)
                         st.success("All tests passed. Progress saved.")
@@ -383,6 +402,7 @@ def render_practice_workspace(questions):
             stored_result = st.session_state[result_key]
             render_result_panel(stored_result.get("execution", stored_result))
 
+        render_submission_summary("python", selected_question_key)
         render_ai_tools(question, code, f"practice_{selected_question_key}")
 
 
@@ -675,10 +695,11 @@ def render_active_interview():
             else:
                 execution_started_at = time.perf_counter()
                 execution = preview_python_question(question, code) if run else run_python_question(question, code)
+                elapsed_ms = int((time.perf_counter() - execution_started_at) * 1000)
                 track_query_execution(
                     st.session_state.get("user"),
                     "python",
-                    int((time.perf_counter() - execution_started_at) * 1000),
+                    elapsed_ms,
                 )
                 st.session_state[result_key] = {
                     "mode": "preview" if run else "submit",
@@ -690,6 +711,18 @@ def render_active_interview():
                 time_spent_seconds = int(time.time() - interview_state["question_started_at"])
 
                 if submit:
+                    result_count = len(execution.get("results", []))
+                    passed_count = sum(1 for item in execution.get("results", []) if item.get("passed"))
+                    record_submission(
+                        st.session_state.get("user"),
+                        "python",
+                        question_key,
+                        question["title"],
+                        execution["passed"],
+                        elapsed_ms,
+                        code,
+                        f"{passed_count}/{result_count} tests passed",
+                    )
                     if execution["passed"]:
                         score = calculate_question_score(
                             True,
@@ -722,6 +755,8 @@ def render_active_interview():
         stored_result = st.session_state.get(result_key)
         if stored_result and not (run or submit):
             render_result_panel(stored_result.get("execution", stored_result))
+
+        render_submission_summary("python", question_key)
 
         if skip:
             interview_state["results"][question_key] = {
