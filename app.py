@@ -187,11 +187,39 @@ def _set_query_param_if_changed(name, value):
         st.query_params[name] = value
 
 
+def _select_navigation_section():
+    selected = st.session_state.get("nav_jump")
+    if selected:
+        st.session_state["module"] = selected
+        _set_query_param_if_changed("module", selected)
+
+
 def _render_section_navigation(visible_sections, selected_module):
     st.sidebar.markdown("### Navigation")
-    st.sidebar.caption("Quick jump to any section")
+    st.sidebar.caption("Search and jump immediately")
 
-    for section in visible_sections:
+    search = st.sidebar.text_input("Find section", key="nav_filter", placeholder="Type SQL, Spark, Admin...")
+    filtered_sections = [
+        section for section in visible_sections
+        if not search or search.lower() in section.lower()
+    ]
+
+    if not filtered_sections:
+        st.sidebar.info("No matching sections.")
+        return
+
+    if st.session_state.get("nav_jump") not in filtered_sections:
+        st.session_state["nav_jump"] = selected_module if selected_module in filtered_sections else filtered_sections[0]
+
+    st.sidebar.selectbox(
+        "Jump To",
+        filtered_sections,
+        index=filtered_sections.index(st.session_state["nav_jump"]),
+        key="nav_jump",
+        on_change=_select_navigation_section,
+    )
+
+    for section in filtered_sections:
         is_current = section == selected_module
         label = f"Current: {section}" if is_current else section
         if st.sidebar.button(
@@ -202,7 +230,6 @@ def _render_section_navigation(visible_sections, selected_module):
         ):
             st.session_state["module"] = section
             _set_query_param_if_changed("module", section)
-            st.rerun()
 
 # --- RESTORE SESSION FROM URL (Refresh Persistence) ---
 # Pick up the 'user' parameter set by the JavaScript restoration script

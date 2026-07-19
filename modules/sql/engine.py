@@ -311,6 +311,11 @@ def run_pyspark_code(tables, code):
         }
         if "countDistinct" not in function_namespace and "count_distinct" in function_namespace:
             function_namespace["countDistinct"] = function_namespace["count_distinct"]
+        if "countDistinct" in function_namespace:
+            function_namespace["countDIstinct"] = function_namespace["countDistinct"]
+            function_namespace["countdistinct"] = function_namespace["countDistinct"]
+        function_namespace["F"] = spark_functions
+        function_namespace["functions"] = spark_functions
 
         table_dfs = create_spark_tables(tables)
         namespace = {

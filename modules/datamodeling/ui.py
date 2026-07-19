@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from core.components import render_ai_chat
+from core.components import render_ai_chat as render_shared_ai_chat
 import random
 from datetime import datetime
 
@@ -1822,72 +1822,7 @@ def render_dm_interview_report():
 # =========================================================
 
 def render_ai_chat(section_key, title, topic):
-    chat_key = f"{section_key}_chat"
-    input_key = f"{section_key}_chat_input"
-    submit_key = f"{section_key}_chat_submit"
-
-    if chat_key not in st.session_state:
-        st.session_state[chat_key] = []
-
-    st.markdown("---")
-    with st.expander(f"💬 {title}", expanded=False):
-        if st.session_state[chat_key]:
-            for chat in st.session_state[chat_key]:
-                tone = "#F8FAFC" if chat["role"] == "assistant" else "#EEF2FF"
-                label = "Assistant" if chat["role"] == "assistant" else "You"
-                st.markdown(
-                    f"<div style='border:1px solid #d1d5db;padding:10px 12px;background:{tone};"
-                    f"margin-bottom:8px;border-radius:0;'><b>{label}:</b><br>{chat['content']}</div>",
-                    unsafe_allow_html=True,
-                )
-
-        with st.form(f"{section_key}_ai_form", clear_on_submit=True):
-            user_input = st.text_area(
-                "Ask anything",
-                key=input_key,
-                height=100,
-                placeholder=f"Ask about {topic}...",
-            )
-            submitted = st.form_submit_button("Ask AI", width="stretch")
-
-        if submitted and user_input.strip():
-            cleaned_input = user_input.strip()
-            st.session_state[chat_key].append({
-                "role": "user",
-                "content": cleaned_input
-            })
-
-            prompt = f"""
-                You are a senior data engineer at Amazon, Google, or Microsoft.
-
-                Answer the following question on {topic}.
-
-                Question:
-                {cleaned_input}
-
-                Requirements:
-                - Clear and well-detailed structured answer
-                - Must include at least 2 real-world examples (different domains if possible)
-                - Provide interview-ready explanation with reasoning
-                - Include edge cases, trade-offs, or pitfalls if applicable
-                - Use bullet points for clarity
-                - Keep explanation concise but insightful (avoid unnecessary verbosity)
-                - If applicable, include schema/table examples
-                - Avoid generic textbook answers — make it practical and scenario-driven
-
-                Format:
-                - Definition (if applicable)
-                - Explanation
-                - Real-world examples
-                - Edge cases / interview insights
-                """
-
-            response = ask_ai(prompt)
-            st.session_state[chat_key].append({
-                "role": "assistant",
-                "content": response
-            })
-            st.rerun()
+    render_shared_ai_chat(section_key, title, topic)
 
 # =========================================================
 # 🔹 FUNDAMENTALS

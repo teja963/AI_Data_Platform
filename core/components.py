@@ -35,22 +35,25 @@ def render_ai_chat(section_key, title, topic):
             })
 
             prompt = f"""
-                You are a senior data engineer at a top tech company.
+                You are a senior data engineer at Amazon, Google, or Microsoft.
                 Answer the following question on {topic}.
 
                 Question:
                 {cleaned_input}
 
                 Requirements:
-                - Detailed structured answer with at least 2 real-world examples.
-                - Interview-ready explanation with trade-offs and edge cases.
-                - Concise but insightful.
+                - Clear, practical, and well-structured answer.
+                - Must include at least 2 real-world examples when useful.
+                - Provide interview-ready explanation with reasoning.
+                - Include edge cases, trade-offs, or pitfalls when applicable.
+                - Include schema/table examples when they make the concept clearer.
+                - Avoid generic textbook answers.
 
                 Format:
-                - Definition
+                - Definition, if applicable
                 - Explanation
                 - Real-world examples
-                - Interview insights
+                - Edge cases / interview insights
                 """
 
             response = ask_ai(prompt)
