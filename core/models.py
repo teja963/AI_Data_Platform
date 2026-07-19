@@ -19,6 +19,28 @@ class User(Base):
     last_login = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+
+class UserSectionAccess(Base):
+    __tablename__ = "user_section_access"
+    __table_args__ = (
+        UniqueConstraint("user_id", "section", name="uq_user_section_access"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    section = Column(String)
+    allowed = Column(Boolean, default=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class LoginEvent(Base):
+    __tablename__ = "login_events"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    username = Column(String)
+    logged_in_at = Column(DateTime, default=datetime.utcnow)
+
 class Question(Base):
     __tablename__ = "questions"
     id = Column(Integer, primary_key=True)
@@ -99,6 +121,24 @@ class SectionPerformanceDaily(Base):
     section = Column(String)
     activity_date = Column(String)
     render_count = Column(Integer, default=0)
+    total_ms = Column(Integer, default=0)
+    max_ms = Column(Integer, default=0)
+    last_ms = Column(Integer, default=0)
+    last_seen = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class QueryPerformanceDaily(Base):
+    __tablename__ = "query_performance_daily"
+    __table_args__ = (
+        UniqueConstraint("user_id", "track", "activity_date", name="uq_query_perf_user_track_date"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"))
+    track = Column(String)
+    activity_date = Column(String)
+    run_count = Column(Integer, default=0)
     total_ms = Column(Integer, default=0)
     max_ms = Column(Integer, default=0)
     last_ms = Column(Integer, default=0)

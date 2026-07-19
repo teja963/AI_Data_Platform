@@ -4,6 +4,8 @@ import os
 import streamlit as st
 from sqlalchemy import text
 
+from core.runtime import get_app_version
+
 
 def _format_category_name(category_name):
     return category_name.replace("_", " ").replace("-", " ").title()
@@ -31,8 +33,12 @@ def _load_question_file(file_path, module, category=None):
     return question
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
 def load_questions(module):
+    return _load_questions_cached(module, get_app_version())
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _load_questions_cached(module, app_version):
     # Prefer DB-stored SQL/PySpark questions if present, otherwise fall back to local data.
     # Python evaluator questions stay local because tests may contain pandas/numpy objects.
     session = None

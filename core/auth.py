@@ -154,6 +154,12 @@ def login_user(username, password):
         if bcrypt.checkpw(password.encode(), user.password.encode()):
             user.last_login = datetime.utcnow()
             session.commit()
+            try:
+                from core.login_history import record_login
+
+                record_login(user.id, user.username)
+            except Exception:
+                pass
 
             return type("UserSession", (), {
                 "username": user.username,

@@ -7,6 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from core.ai import ask_ai
+from core.activity import track_query_execution
 from core.editor import clear_editor_draft, render_code_editor, set_editor_draft
 from core.interview import (
     append_interview_run,
@@ -359,7 +360,13 @@ def render_practice_workspace(questions):
             if not code.strip():
                 st.warning("Write a Python function before running.")
             else:
+                execution_started_at = time.perf_counter()
                 execution = preview_python_question(question, code) if run else run_python_question(question, code)
+                track_query_execution(
+                    st.session_state.get("user"),
+                    "python",
+                    int((time.perf_counter() - execution_started_at) * 1000),
+                )
                 st.session_state[result_key] = {
                     "mode": "preview" if run else "submit",
                     "execution": execution,
@@ -666,7 +673,13 @@ def render_active_interview():
             if not code.strip():
                 st.warning("Write a Python function before running.")
             else:
+                execution_started_at = time.perf_counter()
                 execution = preview_python_question(question, code) if run else run_python_question(question, code)
+                track_query_execution(
+                    st.session_state.get("user"),
+                    "python",
+                    int((time.perf_counter() - execution_started_at) * 1000),
+                )
                 st.session_state[result_key] = {
                     "mode": "preview" if run else "submit",
                     "execution": execution,

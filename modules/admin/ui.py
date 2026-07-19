@@ -1,15 +1,36 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime, timedelta, timezone
+from core.access import default_user_sections, get_allowed_sections, set_allowed_sections
+from core.constants import SECTION_ORDER
 from core.db import SessionLocal, engine
+from core.login_history import ensure_login_history_schema
 from core.models import User
 from core.activity import ensure_activity_schema
 from core.progress import _ensure_progress_schema
+from core.runtime import get_app_version
 from core.views import ensure_reporting_views
+
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _format_ist_12h(value):
+    if pd.isna(value):
+        return "Never"
+    if not isinstance(value, datetime):
+        value = pd.to_datetime(value).to_pydatetime()
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(IST).strftime("%d %b %Y, %I:%M %p IST")
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _read_sql_cached(query, params=None):
+def _read_sql_cached_with_version(query, app_version, params=None):
     return pd.read_sql(query, engine, params=params)
+
+
+def _read_sql_cached(query, params=None):
+    return _read_sql_cached_with_version(query, get_app_version(), params=params)
 
 
 def render_admin():
@@ -19,12 +40,13 @@ def render_admin():
 
     st.title("🛡️ Admin Dashboard")
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
         "👥 User Management",
         "📈 Login Activity",
         "⏱️ Time Analytics",
         "📚 Progress",
-        "🔍 SQL Console"
+        "🔍 SQL Console",
+        "🚀 Deploy Health",
     ])
 
     # =========================
@@ -50,6 +72,15 @@ def render_admin():
             if not users:
                 st.info("No users found.")
             else:
+                active_30_days = sum(
+                    1 for u in users
+                    if u.last_login and u.last_login >= datetime.utcnow() - timedelta(days=30)
+                )
+                c1, c2, c3 = st.columns(3)
+                c1.metric("Total Users", len(users))
+                c2.metric("Approved Users", len([u for u in users if u.is_approved]))
+                c3.metric("Active Last 30 Days", active_30_days)
+
                 # -------- TABLE VIEW --------
                 user_data = []
                 for u in users:
@@ -62,7 +93,7 @@ def render_admin():
                         "Email": u.email,
                         "Verified": "✅" if u.email_verified else "❌",
                         "Approved": "✅" if u.is_approved else "⏳",
-                        "Last Login": u.last_login.strftime("%Y-%m-%d %H:%M") if u.last_login else "Never"
+                        "Last Login": _format_ist_12h(u.last_login)
                     })
 
                 st.dataframe(pd.DataFrame(user_data), width="stretch", hide_index=True)
@@ -113,37 +144,48 @@ def render_admin():
                 st.markdown("### ⚙️ Advanced Controls")
 
                 for u in users:
-                    col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+                    with st.expander(f"{u.username} ({u.email})"):
+                        col1, col2, col3 = st.columns(3)
 
-                    col1.write(f"{u.username} ({u.email})")
+                        if u.is_approved:
+                            if col1.button("Revoke Access", key=f"revoke_{u.id}"):
+                                u.is_approved = False
+                                session.commit()
+                                st.warning(f"{u.username} approval revoked")
+                                st.rerun()
+                        else:
+                            if col1.button("Approve Access", key=f"approve2_{u.id}"):
+                                u.is_approved = True
+                                session.commit()
+                                st.success(f"{u.username} approved")
+                                st.rerun()
 
-                    # Toggle approval
-                    if u.is_approved:
-                        if col2.button("Revoke", key=f"revoke_{u.id}"):
-                            u.is_approved = False
+                        if col2.button("Toggle Email Verify", key=f"verify_{u.id}"):
+                            u.email_verified = not u.email_verified
                             session.commit()
-                            st.warning(f"{u.username} approval revoked")
+                            st.info(f"{u.username} verification updated")
                             st.rerun()
-                    else:
-                        if col2.button("Approve", key=f"approve2_{u.id}"):
-                            u.is_approved = True
+
+                        if col3.button("Delete User", key=f"delete_{u.id}"):
+                            session.delete(u)
                             session.commit()
-                            st.success(f"{u.username} approved")
+                            st.error(f"{u.username} deleted")
                             st.rerun()
 
-                    # Toggle verification (debug)
-                    if col3.button("Toggle Verify", key=f"verify_{u.id}"):
-                        u.email_verified = not u.email_verified
-                        session.commit()
-                        st.info(f"{u.username} verification updated")
-                        st.rerun()
-
-                    # Delete user
-                    if col4.button("Delete", key=f"delete_{u.id}"):
-                        session.delete(u)
-                        session.commit()
-                        st.error(f"{u.username} deleted")
-                        st.rerun()
+                        if u.role == "admin":
+                            st.info("Admin users always have access to every section.")
+                        else:
+                            current_sections = get_allowed_sections(u.username, u.role)
+                            selected_sections = st.multiselect(
+                                "Visible Sections For This User",
+                                SECTION_ORDER,
+                                default=current_sections or default_user_sections(False),
+                                key=f"sections_{u.id}",
+                            )
+                            if st.button("Save Section Access", key=f"save_sections_{u.id}"):
+                                set_allowed_sections(u.id, selected_sections)
+                                st.success(f"Section access updated for {u.username}")
+                                st.rerun()
 
         finally:
             session.close()
@@ -152,21 +194,28 @@ def render_admin():
     # 📈 USER ACTIVITY
     # =========================
     with tab2:
-        st.subheader("📈 Recent User Logins")
+        st.subheader("📈 Login History - Last 30 Days")
+        ensure_login_history_schema()
 
         df_activity = _read_sql_cached(
             """
-            SELECT username, email, last_login, created_at 
-            FROM users 
-            WHERE last_login IS NOT NULL
+            SELECT
+                le.username,
+                u.email,
+                le.logged_in_at
+            FROM login_events le
+            LEFT JOIN users u ON u.id = le.user_id
+            WHERE le.logged_in_at >= NOW() - INTERVAL '30 days'
+            ORDER BY le.logged_in_at DESC
             """,
         )
 
         if df_activity.empty:
             st.info("No login activity recorded yet.")
         else:
-            df_activity = df_activity.sort_values("last_login", ascending=False)
-            st.dataframe(df_activity.reset_index(drop=True), width="stretch")
+            df_activity["Login Time"] = df_activity["logged_in_at"].apply(_format_ist_12h)
+            df_activity = df_activity.rename(columns={"username": "Username", "email": "Email"})
+            st.dataframe(df_activity[["Username", "Email", "Login Time"]], width="stretch", hide_index=True)
 
     # =========================
     # ⏱️ TIME ANALYTICS
@@ -209,32 +258,40 @@ def render_admin():
                 top_section = df_daily.groupby("section")["total_seconds"].sum().sort_values(ascending=False).index[0]
 
                 m1, m2, m3 = st.columns(3)
-                m1.metric("Tracked Time Today", f"{round(total_seconds / 60, 1)} min")
+                m1.metric("Tracked Time", f"{round(total_seconds / 60, 1)} min")
                 m2.metric("Active Users", active_users)
                 m3.metric("Top Section", top_section)
 
-                st.markdown("#### Selected Date: Time By User And Section")
-                st.dataframe(df_daily, width="stretch", hide_index=True)
+                time_view = df_daily[["username", "section", "total_minutes", "last_seen"]].copy()
+                time_view["last_seen"] = time_view["last_seen"].apply(_format_ist_12h)
+                time_view = time_view.rename(columns={
+                    "username": "Username",
+                    "section": "Section",
+                    "total_minutes": "Minutes Spent",
+                    "last_seen": "Last Seen",
+                })
+                st.markdown("#### Time Spent By User And Section")
+                st.dataframe(time_view, width="stretch", hide_index=True)
 
                 section_summary = (
                     df_daily.groupby("section", as_index=False)
-                    .agg(total_seconds=("total_seconds", "sum"), users=("username", "nunique"), visits=("visit_count", "sum"))
+                    .agg(total_seconds=("total_seconds", "sum"), users=("username", "nunique"))
                 )
                 section_summary["total_minutes"] = (section_summary["total_seconds"] / 60).round(1)
                 section_summary = section_summary.sort_values("total_seconds", ascending=False)
 
-                st.markdown("#### Selected Date: Section Summary")
-                st.dataframe(section_summary, width="stretch", hide_index=True)
+                st.markdown("#### Section Summary")
+                st.dataframe(section_summary[["section", "users", "total_minutes"]], width="stretch", hide_index=True)
 
                 user_summary = (
                     df_daily.groupby("username", as_index=False)
-                    .agg(total_seconds=("total_seconds", "sum"), sections=("section", "nunique"), visits=("visit_count", "sum"))
+                    .agg(total_seconds=("total_seconds", "sum"), sections=("section", "nunique"))
                 )
                 user_summary["total_minutes"] = (user_summary["total_seconds"] / 60).round(1)
                 user_summary = user_summary.sort_values("total_seconds", ascending=False)
 
-                st.markdown("#### Selected Date: User Summary")
-                st.dataframe(user_summary, width="stretch", hide_index=True)
+                st.markdown("#### User Summary")
+                st.dataframe(user_summary[["username", "sections", "total_minutes"]], width="stretch", hide_index=True)
 
             if not df_time.empty:
                 with st.expander("Lifetime Summary"):
@@ -273,6 +330,31 @@ def render_admin():
                 perf_section_summary["avg_ms"] = perf_section_summary["avg_ms"].round(1)
                 st.markdown("#### Selected Date: Performance By Section")
                 st.dataframe(perf_section_summary, width="stretch", hide_index=True)
+
+            df_query_perf = _read_sql_cached(
+                """
+                SELECT
+                    u.username,
+                    q.track,
+                    q.activity_date,
+                    q.run_count,
+                    ROUND(q.total_ms::numeric / NULLIF(q.run_count, 0), 1) AS avg_ms,
+                    q.max_ms,
+                    q.last_ms,
+                    q.last_seen
+                FROM query_performance_daily q
+                JOIN users u ON u.id = q.user_id
+                WHERE q.activity_date = %(activity_date)s
+                ORDER BY avg_ms DESC, q.max_ms DESC
+                """,
+                params={"activity_date": date_filter.isoformat()},
+            )
+            st.markdown("#### Coding Query / Code Run Performance")
+            if df_query_perf.empty:
+                st.info("No coding execution performance recorded for the selected date yet.")
+            else:
+                df_query_perf["last_seen"] = df_query_perf["last_seen"].apply(_format_ist_12h)
+                st.dataframe(df_query_perf, width="stretch", hide_index=True)
         except Exception as e:
             st.error(f"Time analytics unavailable: {e}")
 
@@ -280,10 +362,17 @@ def render_admin():
     # 📚 PROGRESS
     # =========================
     with tab4:
-        st.subheader("📚 User Question Progress")
+        st.subheader("📚 Coding Progress")
         try:
             _ensure_progress_schema()
             ensure_reporting_views()
+            from core.loader import load_questions
+
+            totals = {
+                "sql": len(load_questions("sql")),
+                "pyspark": len(load_questions("sql")),
+                "python": len(load_questions("python")),
+            }
             df_progress = _read_sql_cached(
                 """
                 SELECT *
@@ -294,6 +383,10 @@ def render_admin():
             if df_progress.empty:
                 st.info("No solved progress has been saved yet.")
             else:
+                df_progress["total_questions"] = df_progress["track"].map(totals).fillna(0).astype(int)
+                df_progress["remaining_questions"] = (
+                    df_progress["total_questions"] - df_progress["solved_questions"]
+                ).clip(lower=0)
                 st.dataframe(df_progress, width="stretch", hide_index=True)
         except Exception as e:
             st.error(f"Progress summary unavailable: {e}")
@@ -311,6 +404,11 @@ def render_admin():
 
         if st.button("Execute Query"):
             try:
+                normalized_query = query_input.strip().lower()
+                if not (normalized_query.startswith("select") or normalized_query.startswith("with")):
+                    st.error("Only read-only SELECT/WITH queries are allowed from the admin console.")
+                    return
+
                 df_res = pd.read_sql(query_input, engine)
 
                 # Mask sensitive columns
@@ -322,3 +420,15 @@ def render_admin():
 
             except Exception as e:
                 st.error(f"SQL Error: {e}")
+
+    with tab6:
+        st.subheader("🚀 Deploy Health")
+        st.metric("Running App Version", get_app_version())
+        st.write(
+            "After every GitHub push, this version should change after Streamlit Cloud redeploys. "
+            "If GitHub has the new commit but this value does not change, the Streamlit Cloud webhook/repo connection is not redeploying."
+        )
+        st.info(
+            "Permanent deployment check: confirm Streamlit Cloud is connected to the correct GitHub repo, branch, and `app.py` main file. "
+            "If pushes do not update this version, reconnect the app to GitHub or trigger redeploy from Streamlit Cloud."
+        )

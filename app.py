@@ -1,5 +1,6 @@
 import streamlit as st
 import time
+from datetime import datetime, timedelta
 from sqlalchemy.exc import SQLAlchemyError
 
 # -------- SESSION INIT (MANDATORY) --------
@@ -38,8 +39,15 @@ query_params = st.query_params
 # --- simple auth guard
 from core.auth import create_user, login_user, verify_otp, generate_and_store_otp, update_password, verify_email_otp, validate_email, validate_phone
 from core.activity import flush_section_activity, track_section_activity, track_section_render
+from core.access import get_allowed_sections
 from core.db import SessionLocal, get_database_host
+from core.login_history import record_login
 from core.models import User
+from core.runtime import clear_cached_runtime_data, ensure_fresh_runtime
+
+
+APP_VERSION = ensure_fresh_runtime()
+SESSION_TTL_HOURS = 24
 
 
 def _show_database_unavailable(error):
@@ -160,11 +168,28 @@ st.markdown(
 def _set_auth_url(username):
     """Helper to strictly set user in URL and reload if necessary."""
     st.query_params["user"] = username
+    st.query_params["auth_ts"] = str(int(time.time()))
 
 
 def _clear_auth_url():
     """Helper to strictly clear user from URL."""
     st.query_params.pop("user", None)
+    st.query_params.pop("auth_ts", None)
+
+
+def _expire_session_if_needed():
+    login_ts = st.session_state.get("login_ts")
+    if not login_ts:
+        return
+
+    if datetime.utcnow() - login_ts > timedelta(hours=SESSION_TTL_HOURS):
+        flush_section_activity(st.session_state.get("user"))
+        st.session_state["user"] = None
+        st.session_state["role"] = "user"
+        st.session_state.pop("login_ts", None)
+        _clear_auth_url()
+        st.warning("Session expired after 24 hours. Please log in again.")
+        st.rerun()
 
 def _safe_query_param(name):
     v = st.query_params.get(name)
@@ -235,6 +260,16 @@ def _render_section_navigation(visible_sections, selected_module):
 # Pick up the 'user' parameter set by the JavaScript restoration script
 url_user = _safe_query_param("user")
 if url_user and not st.session_state.get("user"):
+    auth_ts = _safe_query_param("auth_ts")
+    if auth_ts:
+        try:
+            auth_age_seconds = time.time() - int(auth_ts)
+        except (TypeError, ValueError):
+            auth_age_seconds = SESSION_TTL_HOURS * 3600 + 1
+        if auth_age_seconds > SESSION_TTL_HOURS * 3600:
+            _clear_auth_url()
+            st.warning("Session expired after 24 hours. Please log in again.")
+            st.stop()
     try:
         session = SessionLocal()
         # Verify the user actually exists in the DB before restoring
@@ -242,6 +277,7 @@ if url_user and not st.session_state.get("user"):
         if u:
             st.session_state["user"] = u.username
             st.session_state["role"] = u.role
+            st.session_state.setdefault("login_ts", datetime.utcnow())
         session.close()
     except Exception:
         # DB connection might fail temporarily; don't set user if so
@@ -398,6 +434,7 @@ elif not st.session_state.get("user") and not st.session_state.get("pending_admi
                 else:
                     st.session_state["role"] = user.role
                     st.session_state["user"] = user.username
+                    st.session_state["login_ts"] = datetime.utcnow()
                     _set_auth_url(user.username)
                     st.rerun()
             else:
@@ -435,8 +472,10 @@ if st.session_state.get("pending_admin"):
                     u = session.query(User).filter_by(username=st.session_state["pending_admin"]).first()
                     st.session_state["user"] = u.username
                     st.session_state["role"] = u.role
+                    st.session_state["login_ts"] = datetime.utcnow()
                     st.session_state.pop("pending_admin")
                     _set_auth_url(u.username)
+                    record_login(u.id, u.username)
                 finally:
                     session.close()
                 st.rerun()
@@ -449,9 +488,15 @@ if st.session_state.get("pending_admin"):
 
 # --- Main Application Logic (Only reached if st.session_state["user"] is set) ---
 if st.session_state.get("user"):
+    _expire_session_if_needed()
     # --- Main App (Only reached if authenticated)
     with st.sidebar:
         st.write(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
+        st.caption(f"App version: `{APP_VERSION}`")
+        if st.button("Refresh Latest App/Data", width="stretch"):
+            clear_cached_runtime_data()
+            st.success("Cleared cached data. Reloading latest available app state.")
+            st.rerun()
         if st.button("Logout"):
             flush_section_activity(st.session_state.get("user"))
             st.session_state["user"] = None
@@ -486,12 +531,8 @@ if st.session_state.get("user"):
     if selected_module not in SECTION_ORDER:
         selected_module = DASHBOARD_SECTION_LABEL
 
-    admin_only_sections = {ADMIN_SECTION_LABEL, PROJECTS_SECTION_LABEL}
     is_admin = st.session_state.get("role") == "admin"
-    visible_sections = [
-        s for s in SECTION_ORDER
-        if is_admin or s not in admin_only_sections
-    ]
+    visible_sections = get_allowed_sections(st.session_state.get("user"), st.session_state.get("role", "user"))
 
     if selected_module not in visible_sections:
         selected_module = DASHBOARD_SECTION_LABEL

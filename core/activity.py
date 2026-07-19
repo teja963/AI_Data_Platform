@@ -24,6 +24,7 @@ def ensure_activity_schema():
         "user_activity_summary",
         "user_activity_daily",
         "section_performance_daily",
+        "query_performance_daily",
     }
     if not required_tables.issubset(tables):
         Base.metadata.create_all(bind=engine)
@@ -257,6 +258,58 @@ def track_section_render(username, section, elapsed_ms):
     )
     if should_flush:
         _flush_pending_activity(username)
+
+
+def track_query_execution(username, track, elapsed_ms):
+    if not username or not track or elapsed_ms < 0:
+        return
+
+    try:
+        from core.db import SessionLocal
+        from core.models import QueryPerformanceDaily
+
+        ensure_activity_schema()
+        session = SessionLocal()
+        try:
+            user_id = _get_user_id(session, username)
+            if user_id is None:
+                return
+
+            now = datetime.utcnow()
+            activity_date = now.date().isoformat()
+            perf = (
+                session.query(QueryPerformanceDaily)
+                .filter_by(user_id=user_id, track=track, activity_date=activity_date)
+                .first()
+            )
+            if perf is None:
+                perf = QueryPerformanceDaily(
+                    user_id=user_id,
+                    track=track,
+                    activity_date=activity_date,
+                    run_count=0,
+                    total_ms=0,
+                    max_ms=0,
+                    last_ms=0,
+                    last_seen=now,
+                    updated_at=now,
+                )
+                session.add(perf)
+
+            elapsed_ms = int(max(elapsed_ms, 0))
+            perf.run_count = int(perf.run_count or 0) + 1
+            perf.total_ms = int(perf.total_ms or 0) + elapsed_ms
+            perf.max_ms = max(int(perf.max_ms or 0), elapsed_ms)
+            perf.last_ms = elapsed_ms
+            perf.last_seen = now
+            perf.updated_at = now
+            session.commit()
+        except Exception:
+            session.rollback()
+        finally:
+            session.close()
+    except Exception:
+        return
 
 
 def flush_section_activity(username):

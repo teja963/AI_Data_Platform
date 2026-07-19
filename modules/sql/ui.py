@@ -4,6 +4,7 @@ import uuid
 
 import streamlit as st
 
+from core.activity import track_query_execution
 from core.ai import ask_ai
 from core.editor import clear_editor_draft, render_code_editor, set_editor_draft
 from core.interview import (
@@ -411,7 +412,13 @@ def render_practice_workspace(questions):
             if not query.strip():
                 st.warning(f"Write {editor_mode} code")
             else:
+                execution_started_at = time.perf_counter()
                 result, error = execute_code(question, editor_mode, query)
+                track_query_execution(
+                    st.session_state.get("user"),
+                    EDITOR_TRACKS[editor_mode],
+                    int((time.perf_counter() - execution_started_at) * 1000),
+                )
 
                 if error:
                     st.error(error)
@@ -759,7 +766,13 @@ def render_active_interview():
             if not query.strip():
                 st.warning(f"Write {interview_state['editor_mode']} code")
             else:
+                execution_started_at = time.perf_counter()
                 result, error = execute_code(current_question, interview_state["editor_mode"], query)
+                track_query_execution(
+                    st.session_state.get("user"),
+                    EDITOR_TRACKS[interview_state["editor_mode"]],
+                    int((time.perf_counter() - execution_started_at) * 1000),
+                )
                 st.session_state[output_key] = {
                     "result": result,
                     "error": error,
