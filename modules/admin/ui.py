@@ -431,9 +431,20 @@ def render_admin():
         c3.metric("GitHub Latest", (health["latest_commit"] or "unknown")[:12])
 
         t1, t2, t3 = st.columns(3)
-        t1.metric("Estimated Redeploy Time", health.get("deploy_latency", "unknown"))
-        t2.caption(f"GitHub commit time: `{health.get('latest_committed_at') or 'unknown'}`")
-        t3.caption(f"App start time: `{health.get('app_started_at') or 'unknown'}`")
+        t1.metric("Redeploy Lag", health.get("deploy_latency", "unknown"))
+        t2.metric("Status", "Current" if health.get("is_current") else "Pending")
+        t3.metric("Server Time", health.get("server_now_display", "unknown"))
+
+        st.dataframe(
+            [
+                {"Checkpoint": "GitHub latest commit", "Time": health.get("latest_committed_at_display", "unknown")},
+                {"Checkpoint": "Streamlit app started", "Time": health.get("app_started_at_display", "unknown")},
+                {"Checkpoint": "Current server time", "Time": health.get("server_now_display", "unknown")},
+                {"Checkpoint": "Commit to running app lag", "Time": health.get("deploy_latency", "unknown")},
+            ],
+            width="stretch",
+            hide_index=True,
+        )
 
         st.write(f"Repository: `{health['repo']}`")
         st.write(f"Branch: `{health['branch']}`")

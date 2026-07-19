@@ -1,7 +1,7 @@
 import hashlib
 import os
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -104,6 +104,17 @@ def _format_duration(seconds):
     return f"{sec}s"
 
 
+def _format_datetime_ist(value):
+    if value is None:
+        return "unknown"
+
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+
+    ist = timezone(timedelta(hours=5, minutes=30))
+    return value.astimezone(ist).strftime("%Y-%m-%d %I:%M:%S %p IST")
+
+
 def _parse_github_datetime(value):
     if not value:
         return None
@@ -201,6 +212,7 @@ def get_deploy_health():
     deploy_latency_seconds = None
     if latest_committed_at and is_current:
         deploy_latency_seconds = (APP_STARTED_AT - latest_committed_at).total_seconds()
+    now = datetime.now(timezone.utc)
 
     return {
         "repo": repo,
@@ -209,6 +221,10 @@ def get_deploy_health():
         "latest_commit": latest_commit,
         "latest_committed_at": latest_committed_at,
         "app_started_at": APP_STARTED_AT,
+        "server_now": now,
+        "latest_committed_at_display": _format_datetime_ist(latest_committed_at),
+        "app_started_at_display": _format_datetime_ist(APP_STARTED_AT),
+        "server_now_display": _format_datetime_ist(now),
         "deploy_latency_seconds": deploy_latency_seconds,
         "deploy_latency": _format_duration(deploy_latency_seconds),
         "is_current": is_current,
