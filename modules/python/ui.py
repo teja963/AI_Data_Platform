@@ -153,55 +153,60 @@ def render_result_panel(execution):
 
 def render_question_content(question, show_solution_note=True):
     with st.container(height=720, border=True):
-        st.subheader(question["title"])
-        meta = f"`{question['category']}`  |  `{question['difficulty']}`"
-        st.caption(meta)
+        question_tab, solution_tab, comments_tab = st.tabs(["Question", "Solution", "Comments"])
 
-        tags = question.get("tags", [])
-        if tags:
-            st.caption("Tags: " + " ".join(f"`{tag}`" for tag in tags))
+        with question_tab:
+            st.subheader(question["title"])
+            meta = f"`{question['category']}`  |  `{question['difficulty']}`"
+            st.caption(meta)
 
-        st.info(question["submission_mode"])
-        if question.get("practice_fixture_paths"):
-            st.caption("Sample practice files for local runs:")
-            for path in question["practice_fixture_paths"]:
-                st.markdown(f"- `{path}`")
+            tags = question.get("tags", [])
+            if tags:
+                st.caption("Tags: " + " ".join(f"`{tag}`" for tag in tags))
 
-        st.markdown("### Problem")
-        st.write(question["description"])
+            st.info(question["submission_mode"])
+            if question.get("practice_fixture_paths"):
+                st.caption("Sample practice files for local runs:")
+                for path in question["practice_fixture_paths"]:
+                    st.markdown(f"- `{path}`")
 
-        st.markdown("### What To Write")
-        render_wrapped_value(f"def {question['signature']}:")
+            st.markdown("### Problem")
+            st.write(question["description"])
 
-        st.markdown("### Input Format")
-        for item in question["input_format"]:
-            st.markdown(f"- {item}")
+            st.markdown("### What To Write")
+            render_wrapped_value(f"def {question['signature']}:")
 
-        st.markdown("### Output Format")
-        st.write(question["output_format"])
+            with st.expander("Input / Output Format", expanded=True):
+                st.markdown("### Input Format")
+                for item in question["input_format"]:
+                    st.markdown(f"- {item}")
 
-        st.markdown("### Constraints")
-        for item in question["constraints"]:
-            st.markdown(f"- {item}")
+                st.markdown("### Output Format")
+                st.write(question["output_format"])
 
-        st.markdown("### Examples")
-        for example in question["examples"]:
-            with st.container(border=True):
-                st.markdown(f"**{example['label']}**")
-                if example.get("files"):
-                    st.markdown("**Fixture Files**")
-                    for path, content in example["files"].items():
-                        st.markdown(f"- `{path}`")
-                        render_wrapped_value(content)
-                example_col1, example_col2 = st.columns(2)
-                with example_col1:
-                    st.markdown("**Input**")
-                    render_wrapped_value(example["inputs"])
-                with example_col2:
-                    st.markdown("**Expected Output**")
-                    render_wrapped_value(example["expected"])
+            with st.expander("Constraints", expanded=False):
+                for item in question["constraints"]:
+                    st.markdown(f"- {item}")
 
-        with st.expander("Evaluator / Solution"):
+            with st.expander("Examples / Expected Output", expanded=True):
+                for example in question["examples"]:
+                    with st.container(border=True):
+                        st.markdown(f"**{example['label']}**")
+                        if example.get("files"):
+                            st.markdown("**Fixture Files**")
+                            for path, content in example["files"].items():
+                                st.markdown(f"- `{path}`")
+                                render_wrapped_value(content)
+                        example_col1, example_col2 = st.columns(2)
+                        with example_col1:
+                            st.markdown("**Input**")
+                            render_wrapped_value(example["inputs"])
+                        with example_col2:
+                            st.markdown("**Expected Output**")
+                            render_wrapped_value(example["expected"])
+
+        with solution_tab:
+            st.markdown("### Solution / Explanation")
             st.markdown(f"- Base regression cases: `{len(question['tests'])}`")
             st.markdown(f"- Function name required: `{question['entry_point']}`")
             st.markdown("- Submission mode: function only")
@@ -214,6 +219,16 @@ def render_question_content(question, show_solution_note=True):
             if show_solution_note:
                 st.caption("Submit expects only the function. Use the main-template button only for local scratch practice.")
             st.code(question["solution"], language="python", wrap_lines=True)
+
+        with comments_tab:
+            st.markdown("### Approach Notes")
+            st.write(question.get("hint", "Use this tab to write your approach, edge cases, and revision notes for this question."))
+            st.text_area(
+                "Your Comments / Approach",
+                key=f"python_comments_{question['progress_key']}",
+                height=260,
+                placeholder="Write your approach, mistakes, edge cases, complexity, or notes for revision...",
+            )
 
 
 def render_submission_summary(track, question_key):
@@ -331,79 +346,80 @@ def render_practice_workspace(questions):
     draft_key = f"python_practice::{selected_question_key}"
     starter = question["starter_code"]
 
-    left_col, right_col = st.columns([3, 4])
+    left_col, right_col = st.columns([1, 1], gap="medium")
 
     with left_col:
         render_question_content(question)
 
     with right_col:
-        st.subheader("Editor")
-        st.caption("Tab inserts indentation. The editor syncs live, so Run always uses the latest code on screen and drafts stay preserved.")
-        helper_col1, helper_col2, helper_col3 = st.columns(3)
-        if helper_col1.button("Function Template", key=f"{selected_question_key}_starter"):
-            set_editor_draft(draft_key, starter)
-            st.rerun()
-        if helper_col2.button("Main Template", key=f"{selected_question_key}_script_starter"):
-            set_editor_draft(draft_key, question["script_starter"])
-            st.rerun()
-        if helper_col3.button("Clear Draft", key=f"{selected_question_key}_clear"):
-            clear_editor_draft(draft_key)
-            st.rerun()
+        with st.container(height=720, border=True):
+            st.subheader("Editor")
+            button_col1, button_col2 = st.columns(2)
+            run = button_col1.button("Run", key=f"{selected_question_key}_run", width="stretch")
+            submit = button_col2.button("Submit", key=f"{selected_question_key}_submit", width="stretch")
+            render_submission_summary("python", selected_question_key)
 
-        code = render_code_editor(
-            draft_key=draft_key,
-            language="python",
-            starter=starter,
-            height=520,
-            placeholder=starter,
-        )
+            st.caption("Tab inserts indentation. The editor syncs live, so Run always uses the latest code on screen and drafts stay preserved.")
+            helper_col1, helper_col2, helper_col3 = st.columns(3)
+            if helper_col1.button("Function Template", key=f"{selected_question_key}_starter"):
+                set_editor_draft(draft_key, starter)
+                st.rerun()
+            if helper_col2.button("Main Template", key=f"{selected_question_key}_script_starter"):
+                set_editor_draft(draft_key, question["script_starter"])
+                st.rerun()
+            if helper_col3.button("Clear Draft", key=f"{selected_question_key}_clear"):
+                clear_editor_draft(draft_key)
+                st.rerun()
 
-        button_col1, button_col2 = st.columns(2)
-        run = button_col1.button("Run", key=f"{selected_question_key}_run")
-        submit = button_col2.button("Submit", key=f"{selected_question_key}_submit")
+            code = render_code_editor(
+                draft_key=draft_key,
+                language="python",
+                starter=starter,
+                height=420,
+                placeholder=starter,
+            )
 
-        if run or submit:
-            if not code.strip():
-                st.warning("Write a Python function before running.")
-            else:
-                execution_started_at = time.perf_counter()
-                execution = preview_python_question(question, code) if run else run_python_question(question, code)
-                elapsed_ms = int((time.perf_counter() - execution_started_at) * 1000)
-                track_query_execution(
-                    st.session_state.get("user"),
-                    "python",
-                    elapsed_ms,
-                )
-                st.session_state[result_key] = {
-                    "mode": "preview" if run else "submit",
-                    "execution": execution,
-                }
-                render_result_panel(execution)
-
-                if submit:
-                    result_count = len(execution.get("results", []))
-                    passed_count = sum(1 for item in execution.get("results", []) if item.get("passed"))
-                    record_submission(
+            if run or submit:
+                if not code.strip():
+                    st.warning("Write a Python function before running.")
+                else:
+                    execution_started_at = time.perf_counter()
+                    execution = preview_python_question(question, code) if run else run_python_question(question, code)
+                    elapsed_ms = int((time.perf_counter() - execution_started_at) * 1000)
+                    track_query_execution(
                         st.session_state.get("user"),
                         "python",
-                        selected_question_key,
-                        question["title"],
-                        execution["passed"],
                         elapsed_ms,
-                        code,
-                        f"{passed_count}/{result_count} tests passed",
                     )
-                    if execution["passed"]:
-                        mark_question_solved(selected_question_key)
-                        st.success("All tests passed. Progress saved.")
-                    else:
-                        st.error("Some tests are still failing. Refine the solution and submit again.")
-        elif result_key in st.session_state:
-            stored_result = st.session_state[result_key]
-            render_result_panel(stored_result.get("execution", stored_result))
+                    st.session_state[result_key] = {
+                        "mode": "preview" if run else "submit",
+                        "execution": execution,
+                    }
+                    render_result_panel(execution)
 
-        render_submission_summary("python", selected_question_key)
-        render_ai_tools(question, code, f"practice_{selected_question_key}")
+                    if submit:
+                        result_count = len(execution.get("results", []))
+                        passed_count = sum(1 for item in execution.get("results", []) if item.get("passed"))
+                        record_submission(
+                            st.session_state.get("user"),
+                            "python",
+                            selected_question_key,
+                            question["title"],
+                            execution["passed"],
+                            elapsed_ms,
+                            code,
+                            f"{passed_count}/{result_count} tests passed",
+                        )
+                        if execution["passed"]:
+                            mark_question_solved(selected_question_key)
+                            st.success("All tests passed. Progress saved.")
+                        else:
+                            st.error("Some tests are still failing. Refine the solution and submit again.")
+            elif result_key in st.session_state:
+                stored_result = st.session_state[result_key]
+                render_result_panel(stored_result.get("execution", stored_result))
+
+            render_ai_tools(question, code, f"practice_{selected_question_key}")
 
 
 def get_interview_state():

@@ -259,34 +259,48 @@ def finalize_interview(reason):
 
 def render_question_content(question, show_expected_output=True):
     with st.container(height=720, border=True):
-        st.subheader(question["title"])
-        meta = f"`{question['category']}`"
-        if "difficulty" in question:
-            meta += f"  |  `{question['difficulty']}`"
-        st.caption(meta)
+        question_tab, solution_tab, comments_tab = st.tabs(["Question", "Solution", "Comments"])
 
-        tags = question.get("tags", [])
-        if tags:
-            st.caption("Tags: " + " ".join(f"`{tag}`" for tag in tags))
+        with question_tab:
+            st.subheader(question["title"])
+            meta = f"`{question['category']}`"
+            if "difficulty" in question:
+                meta += f"  |  `{question['difficulty']}`"
+            st.caption(meta)
 
-        st.markdown("### Problem")
-        st.write(question["description"])
+            tags = question.get("tags", [])
+            if tags:
+                st.caption("Tags: " + " ".join(f"`{tag}`" for tag in tags))
 
-        st.markdown("### Input Tables")
-        for table, data in question["tables"].items():
-            st.markdown(f"#### {table}")
-            render_compact_table(data)
+            st.markdown("### Problem")
+            st.write(question["description"])
 
-        if show_expected_output:
-            st.markdown("### Expected Output")
-            render_compact_table(question["expected_output"])
+            with st.expander("Input Tables", expanded=True):
+                for table, data in question["tables"].items():
+                    st.markdown(f"#### {table}")
+                    render_compact_table(data)
 
-        with st.expander("Solution / Explanation"):
+            if show_expected_output:
+                with st.expander("Expected Output", expanded=True):
+                    render_compact_table(question["expected_output"])
+
+        with solution_tab:
+            st.markdown("### Solution / Explanation")
             solution_tabs = st.tabs(["SQL", "PySpark"])
             with solution_tabs[0]:
                 st.code(format_sql_vertical(question.get("sql_solution", "")), language="sql")
             with solution_tabs[1]:
                 st.code(question.get("pyspark_solution", ""), language="python")
+
+        with comments_tab:
+            st.markdown("### Approach Notes")
+            st.write(question.get("explanation", "Use this tab to reason about the approach, edge cases, and optimization ideas for this question."))
+            st.text_area(
+                "Your Comments / Approach",
+                key=f"sql_comments_{question['progress_key']}",
+                height=260,
+                placeholder="Write your approach, mistakes, edge cases, or notes for revision...",
+            )
 
 
 def render_submission_summary(track, question_key):
@@ -299,8 +313,8 @@ def render_submission_summary(track, question_key):
 
     recent = get_recent_submissions(username, track, question_key)
     if recent:
-        st.markdown("### Recent Submissions")
-        st.dataframe(recent, width="stretch", hide_index=True)
+        with st.expander("Recent Submissions", expanded=False):
+            st.dataframe(recent, width="stretch", hide_index=True)
 
 
 def render_practice_workspace(questions):
@@ -375,135 +389,135 @@ def render_practice_workspace(questions):
     question = next(item for item in sub_qs if item["progress_key"] == selected_question_key)
     question_key = selected_question_key
 
-    col1, col2 = st.columns([2, 3])
+    col1, col2 = st.columns([1, 1], gap="medium")
 
     with col1:
         render_question_content(question)
 
     with col2:
-        st.subheader("Editor")
+        with st.container(height=720, border=True):
+            st.subheader("Editor")
 
-        editor_mode = st.radio(
-            "Mode",
-            ["SQL", "PySpark"],
-            horizontal=True,
-            key="editor_mode",
-        )
-        st.query_params["editor_mode"] = editor_mode
-
-        if editor_mode == "PySpark":
-            st.caption(
-                "Write DataFrame API code. The app will display `result` if you assign it, "
-                "or the last DataFrame variable you create."
+            editor_mode = st.radio(
+                "Mode",
+                ["SQL", "PySpark"],
+                horizontal=True,
+                key="editor_mode",
             )
+            st.query_params["editor_mode"] = editor_mode
 
-            pyspark_unavailable = get_pyspark_unavailable_message()
-            if pyspark_unavailable:
-                st.warning(pyspark_unavailable)
+            c1, c2 = st.columns(2)
+            run = c1.button("Run", key=f"practice_run_{question_key}_{editor_mode}", width="stretch")
+            submit = c2.button("Submit", key=f"practice_submit_{question_key}_{editor_mode}", width="stretch")
+            render_submission_summary(EDITOR_TRACKS[editor_mode], question_key)
 
-        draft_key = f"sql_practice::{question_key}::{editor_mode.lower()}"
-        starter_template = build_editor_starter(question, editor_mode)
-
-        helper_col1, helper_col2 = st.columns(2)
-        if helper_col1.button("Load Starter", key=f"practice_starter_{question_key}_{editor_mode}"):
-            set_editor_draft(draft_key, starter_template)
-            st.rerun()
-        if helper_col2.button("Clear Draft", key=f"practice_clear_{question_key}_{editor_mode}"):
-            clear_editor_draft(draft_key)
-            st.rerun()
-
-        st.caption("Tab inserts indentation. Drafts are preserved automatically while you move across sections.")
-        query = render_code_editor(
-            draft_key=draft_key,
-            language="sql" if editor_mode == "SQL" else "python",
-            starter=starter_template,
-            height=500,
-            placeholder=starter_template,
-        )
-
-        c1, c2 = st.columns(2)
-        run = c1.button("Run", key=f"practice_run_{question_key}_{editor_mode}")
-        submit = c2.button("Submit", key=f"practice_submit_{question_key}_{editor_mode}")
-
-        if run or submit:
-            if not query.strip():
-                st.warning(f"Write {editor_mode} code")
-            else:
-                execution_started_at = time.perf_counter()
-                result, error = execute_code(question, editor_mode, query)
-                elapsed_ms = int((time.perf_counter() - execution_started_at) * 1000)
-                track_query_execution(
-                    st.session_state.get("user"),
-                    EDITOR_TRACKS[editor_mode],
-                    elapsed_ms,
+            if editor_mode == "PySpark":
+                st.caption(
+                    "Write DataFrame API code. The app will display `result` if you assign it, "
+                    "or the last DataFrame variable you create."
                 )
 
-                if error:
-                    st.error(error)
-                    if submit:
-                        record_submission(
-                            st.session_state.get("user"),
-                            EDITOR_TRACKS[editor_mode],
-                            question_key,
-                            question["title"],
-                            False,
-                            elapsed_ms,
-                            query,
-                            error,
-                        )
+                pyspark_unavailable = get_pyspark_unavailable_message()
+                if pyspark_unavailable:
+                    st.warning(pyspark_unavailable)
+
+            draft_key = f"sql_practice::{question_key}::{editor_mode.lower()}"
+            starter_template = build_editor_starter(question, editor_mode)
+
+            helper_col1, helper_col2 = st.columns(2)
+            if helper_col1.button("Load Starter", key=f"practice_starter_{question_key}_{editor_mode}"):
+                set_editor_draft(draft_key, starter_template)
+                st.rerun()
+            if helper_col2.button("Clear Draft", key=f"practice_clear_{question_key}_{editor_mode}"):
+                clear_editor_draft(draft_key)
+                st.rerun()
+
+            st.caption("Tab inserts indentation. Drafts are preserved automatically while you move across sections.")
+            query = render_code_editor(
+                draft_key=draft_key,
+                language="sql" if editor_mode == "SQL" else "python",
+                starter=starter_template,
+                height=420,
+                placeholder=starter_template,
+            )
+
+            if run or submit:
+                if not query.strip():
+                    st.warning(f"Write {editor_mode} code")
                 else:
-                    render_execution_result(result)
+                    execution_started_at = time.perf_counter()
+                    result, error = execute_code(question, editor_mode, query)
+                    elapsed_ms = int((time.perf_counter() - execution_started_at) * 1000)
+                    track_query_execution(
+                        st.session_state.get("user"),
+                        EDITOR_TRACKS[editor_mode],
+                        elapsed_ms,
+                    )
 
-                    if submit:
-                        correct = validate(result, question["expected_output"])
-                        record_submission(
-                            st.session_state.get("user"),
-                            EDITOR_TRACKS[editor_mode],
-                            question_key,
-                            question["title"],
-                            correct,
-                            elapsed_ms,
-                            query,
-                            f"{len(result.index)} rows x {len(result.columns)} columns",
-                        )
-                        if correct:
-                            mark_question_solved(editor_mode, question_key)
-                            st.success("Correct")
-                        else:
-                            st.error("Incorrect")
+                    if error:
+                        st.error(error)
+                        if submit:
+                            record_submission(
+                                st.session_state.get("user"),
+                                EDITOR_TRACKS[editor_mode],
+                                question_key,
+                                question["title"],
+                                False,
+                                elapsed_ms,
+                                query,
+                                error,
+                            )
+                    else:
+                        render_execution_result(result)
 
-        render_submission_summary(EDITOR_TRACKS[editor_mode], question_key)
+                        if submit:
+                            correct = validate(result, question["expected_output"])
+                            record_submission(
+                                st.session_state.get("user"),
+                                EDITOR_TRACKS[editor_mode],
+                                question_key,
+                                question["title"],
+                                correct,
+                                elapsed_ms,
+                                query,
+                                f"{len(result.index)} rows x {len(result.columns)} columns",
+                            )
+                            if correct:
+                                mark_question_solved(editor_mode, question_key)
+                                st.success("Correct")
+                            else:
+                                st.error("Incorrect")
 
-        st.markdown("### AI Tools")
+            st.markdown("### AI Tools")
 
-        c_a, c_b = st.columns(2)
-        hint = c_a.button("Hint", key=f"practice_hint_{question_key}_{editor_mode}")
-        explain = c_b.button("Explain", key=f"practice_explain_{question_key}_{editor_mode}")
+            c_a, c_b = st.columns(2)
+            hint = c_a.button("Hint", key=f"practice_hint_{question_key}_{editor_mode}")
+            explain = c_b.button("Explain", key=f"practice_explain_{question_key}_{editor_mode}")
 
-        if hint:
-            st.write(
-                ask_ai(
-                    f"Question:\n{question['description']}",
-                    system_prompt=(
-                        f"You are a {editor_mode} interview coach. Give only 2 or 3 directional hints. "
-                        "Do not provide the final query, final code, or a near-complete solution."
-                    ),
+            if hint:
+                st.write(
+                    ask_ai(
+                        f"Question:\n{question['description']}",
+                        system_prompt=(
+                            f"You are a {editor_mode} interview coach. Give only 2 or 3 directional hints. "
+                            "Do not provide the final query, final code, or a near-complete solution."
+                        ),
+                    )
                 )
-            )
-        elif explain and query.strip():
-            st.write(
-                ask_ai(
-                    (
-                        f"Question:\n{question['description']}\n\n"
-                        f"Candidate {editor_mode} code:\n```{ 'sql' if editor_mode == 'SQL' else 'python' }\n{query}\n```"
-                    ),
-                    system_prompt=(
-                        f"You are a {editor_mode} interview coach. Explain only what the candidate's current code does, "
-                        "what mistakes it likely has, and whether it matches the prompt. "
-                        "Do not provide corrected code or the final solution."
-                    ),
+            elif explain and query.strip():
+                st.write(
+                    ask_ai(
+                        (
+                            f"Question:\n{question['description']}\n\n"
+                            f"Candidate {editor_mode} code:\n```{ 'sql' if editor_mode == 'SQL' else 'python' }\n{query}\n```"
+                        ),
+                        system_prompt=(
+                            f"You are a {editor_mode} interview coach. Explain only what the candidate's current code does, "
+                            "what mistakes it likely has, and whether it matches the prompt. "
+                            "Do not provide corrected code or the final solution."
+                        ),
+                    )
                 )
-            )
 
 def render_interview_setup(questions):
     st.title("Interview Simulator")
