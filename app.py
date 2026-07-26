@@ -43,7 +43,7 @@ from core.access import get_allowed_sections
 from core.db import SessionLocal, get_database_host
 from core.login_history import record_login
 from core.models import User
-from core.runtime import clear_cached_runtime_data, ensure_fresh_runtime
+from core.runtime import ensure_fresh_runtime
 
 
 APP_VERSION = ensure_fresh_runtime()
@@ -76,7 +76,7 @@ st.markdown(
     <style>
     .block-container {
         max-width: 100% !important;
-        padding-top: 0.35rem !important;
+        padding-top: 3.25rem !important;
         padding-bottom: 0.35rem !important;
         padding-left: 0.6rem !important;
         padding-right: 0.6rem !important;
@@ -88,16 +88,6 @@ st.markdown(
         min-height: 2rem;
         padding: 0.2rem 0.55rem;
         border-radius: 0.35rem;
-    }
-    [data-testid="stPopover"] button {
-        min-height: 2rem;
-        padding: 0.2rem 0.5rem;
-    }
-    [data-testid="stPopover"] {
-        position: fixed;
-        top: 0.45rem;
-        right: 0.75rem;
-        z-index: 100000;
     }
     [data-theme='dark'] .stApp { background-color: #0e1117; }
 
@@ -484,13 +474,7 @@ if st.session_state.get("user"):
     with st.sidebar:
         st.caption(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
         st.caption(f"App version: `{APP_VERSION}`")
-
-    with st.popover("⋮"):
-        if st.button("Refresh app data", key="top_refresh_data"):
-            clear_cached_runtime_data()
-            st.success("Cleared cached data.")
-            st.rerun()
-        if st.button("Logout", key="top_logout"):
+        if st.button("↪", key="sidebar_logout", help="Logout"):
             flush_section_activity(st.session_state.get("user"))
             st.session_state["user"] = None
             st.session_state["role"] = "user"
