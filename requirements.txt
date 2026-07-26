@@ -1,5 +1,6 @@
 streamlit==1.59.1
 streamlit-ace==0.1.1
+streamlit-cookies-controller==0.0.4
 groq==1.5.0
 pandas==3.0.3
 numpy==2.5.1

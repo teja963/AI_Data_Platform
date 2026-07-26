@@ -1656,7 +1656,6 @@ def _render_table_block(label, rows):
 def render_practical_example(section, language, code_language):
     example = _concept_example(section, language)
     st.markdown("#### Practical Execution View")
-    st.caption("Read this as: input data before execution -> code/syntax -> output data after execution.")
 
     input_col, output_col = st.columns(2)
     with input_col:
@@ -1672,10 +1671,6 @@ def render_practical_example(section, language, code_language):
     st.code(example["code"], language=code_language, wrap_lines=True)
     st.success(f"What changed: {example['change']}")
 
-    with st.expander("Line-by-line syntax meaning"):
-        for line in _syntax_lines(example["code"])[:12]:
-            st.markdown(f"- `{line}`: {_explain_syntax_line(line, language)}")
-
 
 def render_reference_section(section, code_language, concept_language):
     with st.container(border=True):
@@ -1687,14 +1682,10 @@ def render_reference_section(section, code_language, concept_language):
             st.markdown("**Common operations index**")
             for operation_name, operation_summary in section["operations"]:
                 st.markdown(f"- `{operation_name}`: {operation_summary}")
-        with st.expander("Reusable syntax template"):
-            st.code(section["syntax"], language=code_language, wrap_lines=True)
-        st.markdown(f"**How to think about it**: {section['tip']}")
 
 
-def render_reference_tab(title, caption, sections, code_language, key_prefix, concept_language=None):
+def render_reference_tab(title, sections, code_language, key_prefix, concept_language=None):
     st.subheader(title)
-    st.caption(caption)
     concept_language = concept_language or code_language
 
     view_mode = st.radio(
@@ -1722,25 +1713,12 @@ def render_reference_tab(title, caption, sections, code_language, key_prefix, co
 
 def render_concepts():
     st.title("Syntax Concepts")
-    st.write(
-        "This page is a generic reference, not a question-specific guide. Use it to understand what each concept "
-        "means, which keywords belong to it, and the reusable syntax patterns you can apply in interviews."
-    )
-    st.info(
-        "The SQL side is written in MySQL-style interview syntax. PySpark covers DataFrame API concepts end to end, "
-        "and Python now includes interview-ready syntax for data structures, files, APIs, pandas, and complexity patterns."
-    )
-    st.caption(
-        "The layout is now optimized for studying: use the full page width, switch between SQL, PySpark, and Python tabs, "
-        "and focus on one concept at a time when you want a cleaner reading flow."
-    )
 
     sql_tab, pyspark_tab, python_tab = st.tabs(["SQL Reference", "PySpark Reference", "Python Reference"])
 
     with sql_tab:
         render_reference_tab(
             title="SQL Reference",
-            caption="Generic SQL syntax patterns and key terms. These are reusable templates, not dataset-specific code.",
             sections=SQL_CONCEPT_SECTIONS,
             code_language="sql",
             key_prefix="sql_reference",
@@ -1749,7 +1727,6 @@ def render_concepts():
     with pyspark_tab:
         render_reference_tab(
             title="PySpark Reference",
-            caption="Independent PySpark concepts with reusable DataFrame syntax, from session entry points to nested data and execution behavior.",
             sections=PYSPARK_CONCEPT_SECTIONS,
             code_language="python",
             key_prefix="pyspark_reference",
@@ -1759,7 +1736,6 @@ def render_concepts():
     with python_tab:
         render_reference_tab(
             title="Python Reference",
-            caption="Interview-ready Python syntax covering core coding, data structures, files, APIs, pandas, and data-engineering utility patterns.",
             sections=PYTHON_CONCEPT_SECTIONS,
             code_language="python",
             key_prefix="python_reference",

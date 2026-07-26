@@ -1,7 +1,11 @@
+import base64
+import hashlib
+import hmac
 import streamlit as st
 import time
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.exc import SQLAlchemyError
+from streamlit_cookies_controller import CookieController
 
 # -------- SESSION INIT (MANDATORY) --------
 if "user" not in st.session_state:
@@ -32,6 +36,8 @@ from core.constants import (
 )
 
 st.set_page_config(layout="wide")
+st.set_option("client.toolbarMode", "viewer")
+cookie_controller = CookieController(key="ai_data_engg_cookies")
 
 # --- Global Query Params Initialization (Fixes NameError) ---
 query_params = st.query_params
@@ -47,11 +53,72 @@ from core.runtime import ensure_fresh_runtime
 
 
 APP_VERSION = ensure_fresh_runtime()
-SESSION_TTL_HOURS = 24
+AUTH_COOKIE_NAME = "ai_data_engg_auth"
 
 
 def _utc_now():
     return datetime.now(timezone.utc)
+
+
+def _auth_token_for(user):
+    username_part = base64.urlsafe_b64encode(user.username.encode("utf-8")).decode("ascii").rstrip("=")
+    signature = hmac.new(
+        user.password.encode("utf-8"),
+        username_part.encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"{username_part}.{signature}"
+
+
+def _username_from_token(token):
+    try:
+        username_part, supplied_signature = token.split(".", 1)
+        padding = "=" * (-len(username_part) % 4)
+        username = base64.urlsafe_b64decode(username_part + padding).decode("utf-8")
+    except (AttributeError, ValueError, UnicodeDecodeError):
+        return None
+
+    session = SessionLocal()
+    try:
+        user = session.query(User).filter_by(username=username).first()
+        if not user:
+            return None
+        expected_signature = _auth_token_for(user).split(".", 1)[1]
+        if not hmac.compare_digest(supplied_signature, expected_signature):
+            return None
+        return user.username, user.role
+    except SQLAlchemyError:
+        return None
+    finally:
+        session.close()
+
+
+def _persist_login(user):
+    cookie_controller.set(
+        AUTH_COOKIE_NAME,
+        _auth_token_for(user),
+        expires=_utc_now() + timedelta(days=3650),
+        max_age=315360000,
+        secure=True,
+        same_site="strict",
+    )
+
+
+def _clear_persistent_login():
+    if cookie_controller.get(AUTH_COOKIE_NAME):
+        cookie_controller.remove(AUTH_COOKIE_NAME, secure=True, same_site="strict")
+
+
+def _restore_persistent_login():
+    if st.session_state.get("user"):
+        return
+    restored_user = _username_from_token(cookie_controller.get(AUTH_COOKIE_NAME))
+    if not restored_user:
+        return
+    username, role = restored_user
+    st.session_state["user"] = username
+    st.session_state["role"] = role
+    st.session_state["login_ts"] = _utc_now()
 
 
 def _show_database_unavailable(error):
@@ -187,23 +254,7 @@ st.markdown(
 # parameters created by older releases while preserving navigation parameters.
 st.query_params.pop("user", None)
 st.query_params.pop("auth_ts", None)
-
-
-def _expire_session_if_needed():
-    login_ts = st.session_state.get("login_ts")
-    if not login_ts:
-        return
-
-    if login_ts.tzinfo is None:
-        login_ts = login_ts.replace(tzinfo=timezone.utc)
-
-    if _utc_now() - login_ts > timedelta(hours=SESSION_TTL_HOURS):
-        flush_section_activity(st.session_state.get("user"))
-        st.session_state["user"] = None
-        st.session_state["role"] = "user"
-        st.session_state.pop("login_ts", None)
-        st.warning("Session expired after 24 hours. Please log in again.")
-        st.rerun()
+_restore_persistent_login()
 
 def _safe_query_param(name):
     v = st.query_params.get(name)
@@ -418,6 +469,7 @@ elif not st.session_state.get("user") and not st.session_state.get("pending_admi
                     st.session_state["role"] = user.role
                     st.session_state["user"] = user.username
                     st.session_state["login_ts"] = _utc_now()
+                    _persist_login(user)
                     st.rerun()
             else:
                 st.error("Invalid credentials")
@@ -456,6 +508,7 @@ if st.session_state.get("pending_admin"):
                     st.session_state["role"] = u.role
                     st.session_state["login_ts"] = _utc_now()
                     st.session_state.pop("pending_admin")
+                    _persist_login(u)
                     record_login(u.id, u.username)
                 finally:
                     session.close()
@@ -469,13 +522,13 @@ if st.session_state.get("pending_admin"):
 
 # --- Main Application Logic (Only reached if st.session_state["user"] is set) ---
 if st.session_state.get("user"):
-    _expire_session_if_needed()
     # --- Main App (Only reached if authenticated)
     with st.sidebar:
         st.caption(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
         st.caption(f"App version: `{APP_VERSION}`")
         if st.button("↪", key="sidebar_logout", help="Logout"):
             flush_section_activity(st.session_state.get("user"))
+            _clear_persistent_login()
             st.session_state["user"] = None
             st.session_state["role"] = "user"
             st.session_state.pop("login_ts", None)
@@ -600,4 +653,3 @@ if st.session_state.get("user"):
         ROUTER[module]()
         render_elapsed_ms = int((time.perf_counter() - render_started_at) * 1000)
         track_section_render(st.session_state.get("user"), module, render_elapsed_ms)
-        st.caption(f"Section loaded in {render_elapsed_ms} ms")
