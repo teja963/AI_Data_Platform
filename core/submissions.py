@@ -84,6 +84,7 @@ def get_recent_submissions(username, track, question_key=None, limit=10):
                 "runtime_ms": row.elapsed_ms,
                 "question": row.question_title,
                 "summary": row.result_summary or "",
+                "code": row.code or "",
             }
             for row in rows
         ]

@@ -457,19 +457,14 @@ def render_admin():
                     "Streamlit Cloud does not expose per-stage build timings inside the app."
                 )
             else:
-                st.error(
+                st.caption(
                     "GitHub has a newer commit than the running Streamlit app. "
                     "This means Streamlit Cloud has not redeployed the latest push yet."
                 )
         else:
-            st.warning(
-                "Could not compare running commit with GitHub latest commit. "
-                "Check Streamlit Cloud repo/branch settings and GitHub access."
-            )
+            st.caption("GitHub comparison is currently unavailable.")
 
-        st.info(
-            "The `Refresh Latest App/Data` button clears Streamlit data cache only. "
-            "It cannot load new Python source code into an already-running Streamlit container. "
-            "For source-code changes, Streamlit Cloud must redeploy/reboot the app. "
-            "If this tab shows GitHub Latest is newer than Running Commit, reconnect the Streamlit app to the correct GitHub repo/branch or manually trigger redeploy."
+        st.caption(
+            "Refresh app data clears cached app data. Source-code changes are picked up only when "
+            "Streamlit Cloud starts a new deployment."
         )

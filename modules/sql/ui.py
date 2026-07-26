@@ -95,7 +95,7 @@ def get_int_query_param(name, default, min_value=None, max_value=None):
 
 def render_compact_table(data):
     row_count = len(data) if hasattr(data, "__len__") else 0
-    table_height = min(max(100, 35 * (row_count + 1)), 220)
+    table_height = min(max(110, 35 * (row_count + 1)), 360)
     st.dataframe(
         data,
         width="stretch",
@@ -258,7 +258,7 @@ def finalize_interview(reason):
 
 
 def render_question_content(question, show_expected_output=True):
-    with st.container(height=720, border=True):
+    with st.container(height=780, border=False):
         question_tab, solution_tab, comments_tab = st.tabs(["Question", "Solution", "Comments"])
 
         with question_tab:
@@ -306,15 +306,23 @@ def render_question_content(question, show_expected_output=True):
 def render_submission_summary(track, question_key):
     username = st.session_state.get("user")
     stats = get_submission_stats(username, track, question_key)
-    s1, s2, s3 = st.columns(3)
-    s1.metric("Submissions", stats["total"])
-    s2.metric("Accepted", stats["accepted"])
-    s3.metric("Accuracy", f"{stats['accuracy']}%")
+    st.caption(
+        f"Submissions: **{stats['total']}**  |  "
+        f"Accepted: **{stats['accepted']}**  |  "
+        f"Accuracy: **{stats['accuracy']}%**"
+    )
 
     recent = get_recent_submissions(username, track, question_key)
     if recent:
-        with st.expander("Recent Submissions", expanded=False):
-            st.dataframe(recent, width="stretch", hide_index=True)
+        with st.popover("Recent Submissions"):
+            for index, submission in enumerate(recent, start=1):
+                submitted_at = submission.get("submitted_at")
+                status = submission.get("status", "Submitted")
+                runtime_ms = submission.get("runtime_ms", 0)
+                with st.expander(f"{index}. {status} | {runtime_ms} ms | {submitted_at}", expanded=False):
+                    if submission.get("summary"):
+                        st.caption(submission["summary"])
+                    st.code(submission.get("code", ""), language="sql" if track == "sql" else "python")
 
 
 def render_practice_workspace(questions):
@@ -395,21 +403,22 @@ def render_practice_workspace(questions):
         render_question_content(question)
 
     with col2:
-        with st.container(height=720, border=True):
-            st.subheader("Editor")
-
-            editor_mode = st.radio(
-                "Mode",
-                ["SQL", "PySpark"],
-                horizontal=True,
-                key="editor_mode",
-            )
+        with st.container(height=780, border=False):
+            control_cols = st.columns([1.7, 0.7, 0.8, 2.8])
+            with control_cols[0]:
+                editor_mode = st.selectbox(
+                    "Language",
+                    ["SQL", "PySpark"],
+                    key="editor_mode",
+                    label_visibility="collapsed",
+                )
             st.query_params["editor_mode"] = editor_mode
-
-            c1, c2 = st.columns(2)
-            run = c1.button("Run", key=f"practice_run_{question_key}_{editor_mode}", width="stretch")
-            submit = c2.button("Submit", key=f"practice_submit_{question_key}_{editor_mode}", width="stretch")
-            render_submission_summary(EDITOR_TRACKS[editor_mode], question_key)
+            with control_cols[1]:
+                run = st.button("Run", key=f"practice_run_{question_key}_{editor_mode}")
+            with control_cols[2]:
+                submit = st.button("Submit", key=f"practice_submit_{question_key}_{editor_mode}", type="primary")
+            with control_cols[3]:
+                render_submission_summary(EDITOR_TRACKS[editor_mode], question_key)
 
             if editor_mode == "PySpark":
                 st.caption(
@@ -424,7 +433,7 @@ def render_practice_workspace(questions):
             draft_key = f"sql_practice::{question_key}::{editor_mode.lower()}"
             starter_template = build_editor_starter(question, editor_mode)
 
-            helper_col1, helper_col2 = st.columns(2)
+            helper_col1, helper_col2, helper_spacer = st.columns([1, 1, 4])
             if helper_col1.button("Load Starter", key=f"practice_starter_{question_key}_{editor_mode}"):
                 set_editor_draft(draft_key, starter_template)
                 st.rerun()
@@ -432,12 +441,12 @@ def render_practice_workspace(questions):
                 clear_editor_draft(draft_key)
                 st.rerun()
 
-            st.caption("Tab inserts indentation. Drafts are preserved automatically while you move across sections.")
+            st.caption("Tab inserts indentation. Drafts are preserved automatically.")
             query = render_code_editor(
                 draft_key=draft_key,
                 language="sql" if editor_mode == "SQL" else "python",
                 starter=starter_template,
-                height=420,
+                height=560,
                 placeholder=starter_template,
             )
 
@@ -770,11 +779,22 @@ def render_active_interview():
         render_question_content(current_question)
 
     with col2:
-        st.subheader(f"{interview_state['editor_mode']} Editor")
-        st.caption(
-            "Run your code as many times as you want. Scoring uses only correctness, time spent, and the "
-            "number of submit attempts."
-        )
+        control_cols = st.columns([1.7, 0.7, 0.8, 0.9, 2.9])
+        with control_cols[0]:
+            st.selectbox(
+                "Language",
+                [interview_state["editor_mode"]],
+                key=f"interview_language_{session_id}_{question_key}",
+                label_visibility="collapsed",
+            )
+        with control_cols[1]:
+            run = st.button("Run", key=f"run_{question_key}", disabled=is_locked)
+        with control_cols[2]:
+            submit = st.button("Submit", key=f"submit_{question_key}", disabled=is_locked, type="primary")
+        with control_cols[3]:
+            skip = st.button("Skip", key=f"skip_{question_key}", disabled=is_locked)
+        with control_cols[4]:
+            st.caption("Scoring uses correctness, time, and submit attempts.")
 
         if interview_state["editor_mode"] == "PySpark":
             st.caption(
@@ -785,7 +805,7 @@ def render_active_interview():
         draft_key = f"sql_interview::{session_id}::{question_key}::{interview_state['editor_mode'].lower()}"
         starter_template = build_editor_starter(current_question, interview_state["editor_mode"])
 
-        helper_col1, helper_col2 = st.columns(2)
+        helper_col1, helper_col2, helper_spacer = st.columns([1, 1, 4])
         if helper_col1.button("Load Starter", key=f"interview_starter_{question_key}", disabled=is_locked):
             set_editor_draft(draft_key, starter_template)
             st.rerun()
@@ -802,11 +822,6 @@ def render_active_interview():
             placeholder=starter_template,
             disabled=is_locked,
         )
-
-        button_col1, button_col2, button_col3 = st.columns(3)
-        run = button_col1.button("Run Code", key=f"run_{question_key}", disabled=is_locked)
-        submit = button_col2.button("Submit Answer", key=f"submit_{question_key}", disabled=is_locked)
-        skip = button_col3.button("Skip Question", key=f"skip_{question_key}", disabled=is_locked)
 
         if run or submit:
             if not query.strip():

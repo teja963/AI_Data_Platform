@@ -43,7 +43,7 @@ from core.access import get_allowed_sections
 from core.db import SessionLocal, get_database_host
 from core.login_history import record_login
 from core.models import User
-from core.runtime import clear_cached_runtime_data, ensure_fresh_runtime, get_deploy_health
+from core.runtime import clear_cached_runtime_data, ensure_fresh_runtime
 
 
 APP_VERSION = ensure_fresh_runtime()
@@ -168,17 +168,10 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# If URL has ?user= set, try to restore session
-def _set_auth_url(username):
-    """Helper to strictly set user in URL and reload if necessary."""
-    st.query_params["user"] = username
-    st.query_params["auth_ts"] = str(int(time.time()))
-
-
-def _clear_auth_url():
-    """Helper to strictly clear user from URL."""
-    st.query_params.pop("user", None)
-    st.query_params.pop("auth_ts", None)
+# Authentication state must never be restored from URL parameters. Remove
+# parameters created by older releases while preserving navigation parameters.
+st.query_params.pop("user", None)
+st.query_params.pop("auth_ts", None)
 
 
 def _expire_session_if_needed():
@@ -194,7 +187,6 @@ def _expire_session_if_needed():
         st.session_state["user"] = None
         st.session_state["role"] = "user"
         st.session_state.pop("login_ts", None)
-        _clear_auth_url()
         st.warning("Session expired after 24 hours. Please log in again.")
         st.rerun()
 
@@ -258,57 +250,6 @@ def _render_section_navigation(visible_sections, selected_module):
     if selected_nav != st.session_state.get("module"):
         st.session_state["module"] = selected_nav
         _set_query_param_if_changed("module", selected_nav)
-
-
-def _show_deploy_status_banner():
-    health = get_deploy_health()
-    running_commit = health.get("running_commit") or ""
-    latest_commit = health.get("latest_commit") or ""
-
-    if running_commit and latest_commit and not health.get("is_current"):
-        message = (
-            "New GitHub version detected, but Streamlit Cloud is still running an older build. "
-            f"Running: `{running_commit[:12]}` | GitHub latest: `{latest_commit[:12]}`. "
-            "Refresh Latest App/Data clears cached data only; Streamlit Cloud must redeploy to load new Python source code."
-        )
-        st.error(message)
-
-        notify_key = f"deploy_stale_notified::{latest_commit[:12]}"
-        if not st.session_state.get(notify_key):
-            st.toast("New GitHub version detected, but Streamlit has not redeployed yet.")
-            st.session_state[notify_key] = True
-    elif not latest_commit:
-        st.warning(
-            "Could not verify the latest GitHub commit from this running app. "
-            "If updates are not appearing, check Streamlit Cloud GitHub connection and branch settings."
-        )
-
-# --- RESTORE SESSION FROM URL (Refresh Persistence) ---
-# Pick up the 'user' parameter set by the JavaScript restoration script
-url_user = _safe_query_param("user")
-if url_user and not st.session_state.get("user"):
-    auth_ts = _safe_query_param("auth_ts")
-    if auth_ts:
-        try:
-            auth_age_seconds = time.time() - int(auth_ts)
-        except (TypeError, ValueError):
-            auth_age_seconds = SESSION_TTL_HOURS * 3600 + 1
-        if auth_age_seconds > SESSION_TTL_HOURS * 3600:
-            _clear_auth_url()
-            st.warning("Session expired after 24 hours. Please log in again.")
-            st.stop()
-    try:
-        session = SessionLocal()
-        # Verify the user actually exists in the DB before restoring
-        u = session.query(User).filter_by(username=url_user).first()
-        if u:
-            st.session_state["user"] = u.username
-            st.session_state["role"] = u.role
-            st.session_state.setdefault("login_ts", _utc_now())
-        session.close()
-    except Exception:
-        # DB connection might fail temporarily; don't set user if so
-        pass
 
 
 # --- Authentication Flow ---
@@ -462,7 +403,6 @@ elif not st.session_state.get("user") and not st.session_state.get("pending_admi
                     st.session_state["role"] = user.role
                     st.session_state["user"] = user.username
                     st.session_state["login_ts"] = _utc_now()
-                    _set_auth_url(user.username)
                     st.rerun()
             else:
                 st.error("Invalid credentials")
@@ -501,7 +441,6 @@ if st.session_state.get("pending_admin"):
                     st.session_state["role"] = u.role
                     st.session_state["login_ts"] = _utc_now()
                     st.session_state.pop("pending_admin")
-                    _set_auth_url(u.username)
                     record_login(u.id, u.username)
                 finally:
                     session.close()
@@ -516,24 +455,27 @@ if st.session_state.get("pending_admin"):
 # --- Main Application Logic (Only reached if st.session_state["user"] is set) ---
 if st.session_state.get("user"):
     _expire_session_if_needed()
-    _show_deploy_status_banner()
     # --- Main App (Only reached if authenticated)
     with st.sidebar:
-        st.write(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
+        st.caption(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
         st.caption(f"App version: `{APP_VERSION}`")
-        if st.button("Refresh Latest App/Data", width="stretch"):
-            clear_cached_runtime_data()
-            st.success("Cleared cached data. Reloading latest available app state.")
-            st.rerun()
-        if st.button("Logout"):
-            flush_section_activity(st.session_state.get("user"))
-            st.session_state["user"] = None
-            st.session_state["role"] = "user"
-            _clear_auth_url()
-            if hasattr(st, "rerun"):
+
+    _, top_actions = st.columns([9, 1])
+    with top_actions:
+        with st.popover("⋮"):
+            if st.button("Refresh app data", key="top_refresh_data"):
+                clear_cached_runtime_data()
+                st.success("Cleared cached data.")
                 st.rerun()
-            else:
-                st.experimental_rerun()
+            if st.button("Logout", key="top_logout"):
+                flush_section_activity(st.session_state.get("user"))
+                st.session_state["user"] = None
+                st.session_state["role"] = "user"
+                st.session_state.pop("login_ts", None)
+                if hasattr(st, "rerun"):
+                    st.rerun()
+                else:
+                    st.experimental_rerun()
 
     if "module" not in st.session_state:
         st.session_state["module"] = DASHBOARD_SECTION_LABEL
