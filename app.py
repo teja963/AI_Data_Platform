@@ -74,6 +74,31 @@ if "role" not in st.session_state:
 st.markdown(
     """
     <style>
+    .block-container {
+        max-width: 100% !important;
+        padding-top: 0.35rem !important;
+        padding-bottom: 0.35rem !important;
+        padding-left: 0.6rem !important;
+        padding-right: 0.6rem !important;
+    }
+    [data-testid="stVerticalBlock"] {
+        gap: 0.35rem !important;
+    }
+    div.stButton > button {
+        min-height: 2rem;
+        padding: 0.2rem 0.55rem;
+        border-radius: 0.35rem;
+    }
+    [data-testid="stPopover"] button {
+        min-height: 2rem;
+        padding: 0.2rem 0.5rem;
+    }
+    [data-testid="stPopover"] {
+        position: fixed;
+        top: 0.45rem;
+        right: 0.75rem;
+        z-index: 100000;
+    }
     [data-theme='dark'] .stApp { background-color: #0e1117; }
 
     /* Theme-Aware Container Defaults (Light Mode) */
@@ -460,22 +485,20 @@ if st.session_state.get("user"):
         st.caption(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
         st.caption(f"App version: `{APP_VERSION}`")
 
-    _, top_actions = st.columns([9, 1])
-    with top_actions:
-        with st.popover("⋮"):
-            if st.button("Refresh app data", key="top_refresh_data"):
-                clear_cached_runtime_data()
-                st.success("Cleared cached data.")
+    with st.popover("⋮"):
+        if st.button("Refresh app data", key="top_refresh_data"):
+            clear_cached_runtime_data()
+            st.success("Cleared cached data.")
+            st.rerun()
+        if st.button("Logout", key="top_logout"):
+            flush_section_activity(st.session_state.get("user"))
+            st.session_state["user"] = None
+            st.session_state["role"] = "user"
+            st.session_state.pop("login_ts", None)
+            if hasattr(st, "rerun"):
                 st.rerun()
-            if st.button("Logout", key="top_logout"):
-                flush_section_activity(st.session_state.get("user"))
-                st.session_state["user"] = None
-                st.session_state["role"] = "user"
-                st.session_state.pop("login_ts", None)
-                if hasattr(st, "rerun"):
-                    st.rerun()
-                else:
-                    st.experimental_rerun()
+            else:
+                st.experimental_rerun()
 
     if "module" not in st.session_state:
         st.session_state["module"] = DASHBOARD_SECTION_LABEL

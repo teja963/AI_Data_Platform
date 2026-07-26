@@ -151,9 +151,13 @@ def render_result_panel(execution):
             st.code(execution["stdout"], language="text", wrap_lines=True)
 
 
-def render_question_content(question, show_solution_note=True):
-    with st.container(height=780, border=False):
-        question_tab, solution_tab, comments_tab = st.tabs(["Question", "Solution", "Comments"])
+def render_question_content(question, show_solution_note=True, submission_track=None):
+    with st.container(height=840, border=False):
+        tab_labels = ["Question", "Solution", "Comments"]
+        if submission_track:
+            tab_labels.append("Submissions")
+        tabs = st.tabs(tab_labels)
+        question_tab, solution_tab, comments_tab = tabs[:3]
 
         with question_tab:
             st.subheader(question["title"])
@@ -230,6 +234,10 @@ def render_question_content(question, show_solution_note=True):
                 placeholder="Write your approach, mistakes, edge cases, complexity, or notes for revision...",
             )
 
+        if submission_track:
+            with tabs[3]:
+                render_submission_summary(submission_track, question["progress_key"])
+
 
 def render_submission_summary(track, question_key):
     username = st.session_state.get("user")
@@ -242,15 +250,14 @@ def render_submission_summary(track, question_key):
 
     recent = get_recent_submissions(username, track, question_key)
     if recent:
-        with st.popover("Recent Submissions"):
-            for index, submission in enumerate(recent, start=1):
-                submitted_at = submission.get("submitted_at")
-                status = submission.get("status", "Submitted")
-                runtime_ms = submission.get("runtime_ms", 0)
-                with st.expander(f"{index}. {status} | {runtime_ms} ms | {submitted_at}", expanded=False):
-                    if submission.get("summary"):
-                        st.caption(submission["summary"])
-                    st.code(submission.get("code", ""), language="python")
+        for index, submission in enumerate(recent, start=1):
+            submitted_at = submission.get("submitted_at")
+            status = submission.get("status", "Submitted")
+            runtime_ms = submission.get("runtime_ms", 0)
+            with st.expander(f"{index}. {status} | {runtime_ms} ms | {submitted_at}", expanded=False):
+                if submission.get("summary"):
+                    st.caption(submission["summary"])
+                st.code(submission.get("code", ""), language="python")
 
 
 def mark_question_solved(question_key):
@@ -357,11 +364,11 @@ def render_practice_workspace(questions):
     left_col, right_col = st.columns([1, 1], gap="medium")
 
     with left_col:
-        render_question_content(question)
+        render_question_content(question, submission_track="python")
 
     with right_col:
-        with st.container(height=780, border=False):
-            control_cols = st.columns([1.7, 0.7, 0.8, 2.8])
+        with st.container(height=840, border=False):
+            control_cols = st.columns([1.7, 0.35, 0.35, 0.35, 0.35, 3.85])
             with control_cols[0]:
                 st.selectbox(
                     "Language",
@@ -370,29 +377,27 @@ def render_practice_workspace(questions):
                     label_visibility="collapsed",
                 )
             with control_cols[1]:
-                run = st.button("Run", key=f"{selected_question_key}_run")
+                run = st.button("▶", key=f"{selected_question_key}_run", help="Run")
             with control_cols[2]:
-                submit = st.button("Submit", key=f"{selected_question_key}_submit", type="primary")
+                submit = st.button("✓", key=f"{selected_question_key}_submit", type="primary", help="Submit")
             with control_cols[3]:
-                render_submission_summary("python", selected_question_key)
-
-            st.caption("Tab inserts indentation. The editor syncs live, so Run always uses the latest code on screen and drafts stay preserved.")
-            helper_col1, helper_col2, helper_col3, helper_spacer = st.columns([1.2, 1.1, 1, 3.7])
-            if helper_col1.button("Function Template", key=f"{selected_question_key}_starter"):
-                set_editor_draft(draft_key, starter)
-                st.rerun()
-            if helper_col2.button("Main Template", key=f"{selected_question_key}_script_starter"):
-                set_editor_draft(draft_key, question["script_starter"])
-                st.rerun()
-            if helper_col3.button("Clear Draft", key=f"{selected_question_key}_clear"):
-                clear_editor_draft(draft_key)
-                st.rerun()
+                if st.button("ƒ", key=f"{selected_question_key}_starter", help="Function template"):
+                    set_editor_draft(draft_key, starter)
+                    st.rerun()
+            with control_cols[4]:
+                if st.button("⌫", key=f"{selected_question_key}_clear", help="Clear draft"):
+                    clear_editor_draft(draft_key)
+                    st.rerun()
+            with control_cols[5]:
+                if st.button("⟲", key=f"{selected_question_key}_script_starter", help="Main template"):
+                    set_editor_draft(draft_key, question["script_starter"])
+                    st.rerun()
 
             code = render_code_editor(
                 draft_key=draft_key,
                 language="python",
                 starter=starter,
-                height=560,
+                height=700,
                 placeholder=starter,
             )
 
@@ -703,10 +708,10 @@ def render_active_interview():
     left_col, right_col = st.columns([2, 3])
 
     with left_col:
-        render_question_content(question, show_solution_note=False)
+        render_question_content(question, show_solution_note=False, submission_track="python")
 
     with right_col:
-        control_cols = st.columns([1.7, 0.7, 0.8, 0.9, 2.9])
+        control_cols = st.columns([1.7, 0.35, 0.35, 0.35, 3.9])
         with control_cols[0]:
             st.selectbox(
                 "Language",
@@ -715,18 +720,18 @@ def render_active_interview():
                 label_visibility="collapsed",
             )
         with control_cols[1]:
-            run = st.button("Run", key=f"run_{question_key}", disabled=is_locked)
+            run = st.button("▶", key=f"run_{question_key}", disabled=is_locked, help="Run")
         with control_cols[2]:
-            submit = st.button("Submit", key=f"submit_{question_key}", disabled=is_locked, type="primary")
+            submit = st.button("✓", key=f"submit_{question_key}", disabled=is_locked, type="primary", help="Submit")
         with control_cols[3]:
-            skip = st.button("Skip", key=f"skip_{question_key}", disabled=is_locked)
+            skip = st.button("⏭", key=f"skip_{question_key}", disabled=is_locked, help="Skip")
         with control_cols[4]:
-            st.caption("Tab inserts indentation. Drafts stay preserved.")
+            st.caption("Drafts stay preserved.")
         code = render_code_editor(
             draft_key=draft_key,
             language="python",
             starter=question["starter_code"],
-            height=520,
+            height=700,
             placeholder=question["starter_code"],
             disabled=is_locked,
         )
@@ -797,8 +802,6 @@ def render_active_interview():
         stored_result = st.session_state.get(result_key)
         if stored_result and not (run or submit):
             render_result_panel(stored_result.get("execution", stored_result))
-
-        render_submission_summary("python", question_key)
 
         if skip:
             interview_state["results"][question_key] = {
