@@ -29,7 +29,7 @@ def _normalized_identity(value):
 def can_view_architecture(username, role="user", full_name=None):
     if role == "admin":
         return True
-    allowed_identities = {"harika", "harikapriya"}
+    allowed_identities = {"harika", "harikapriya", "haripriya"}
     return bool(
         {
             _normalized_identity(username),
