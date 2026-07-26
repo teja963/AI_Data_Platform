@@ -1,7 +1,9 @@
 import base64
 import html
 from pathlib import Path
-from urllib.parse import quote
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urlparse
+from urllib.request import Request, urlopen
 import zlib
 
 import streamlit as st
@@ -9,7 +11,7 @@ import streamlit.components.v1 as components
 
 from core.access import user_can_view_architecture
 from core.architecture import (
-    add_architecture_diagram,
+    add_github_architecture_diagram,
     delete_architecture_diagram,
     get_architecture_diagrams,
 )
@@ -39,6 +41,42 @@ def _drawio_viewer_url(file_data, title):
         "https://viewer.diagrams.net/"
         f"?highlight=0000ff&layers=1&nav=1&title={safe_title}#R{payload}"
     )
+
+
+def _normalize_github_drawio_url(source_url):
+    parsed = urlparse((source_url or "").strip())
+    host = parsed.netloc.lower()
+    path_parts = [part for part in parsed.path.split("/") if part]
+
+    if host == "raw.githubusercontent.com":
+        raw_url = parsed._replace(query="", fragment="").geturl()
+    elif host in {"github.com", "www.github.com"} and len(path_parts) >= 5 and path_parts[2] == "blob":
+        owner, repository, _, branch, *file_parts = path_parts
+        raw_path = "/".join([owner, repository, branch, *file_parts])
+        raw_url = f"https://raw.githubusercontent.com/{raw_path}"
+    else:
+        raise ValueError("Use a GitHub file link or raw.githubusercontent.com link.")
+
+    if Path(urlparse(raw_url).path).suffix.lower() not in DRAWIO_EXTENSIONS:
+        raise ValueError("The GitHub link must point to a .drawio or .dio file.")
+    return raw_url
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _fetch_github_drawio(raw_url):
+    headers = {"User-Agent": "AI-Data-Engineering-Architecture-Viewer"}
+    github_token = st.secrets.get("GITHUB_TOKEN")
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    request = Request(raw_url, headers=headers)
+    with urlopen(request, timeout=15) as response:
+        file_data = response.read()
+    if not file_data.strip():
+        raise ValueError("The GitHub Draw.io file is empty.")
+    xml = file_data.decode("utf-8")
+    if "<mxfile" not in xml and "<mxGraphModel" not in xml:
+        raise ValueError("The linked file is not valid Draw.io XML.")
+    return file_data
 
 
 def _render_image_viewer(diagram):
@@ -83,32 +121,36 @@ def _render_image_viewer(diagram):
 
 
 def _render_admin_upload():
-    with st.expander("Admin Upload Architecture Diagram", expanded=False):
-        with st.form("architecture_upload_form", clear_on_submit=True):
+    with st.expander("Add GitHub Draw.io Diagram", expanded=False):
+        with st.form("architecture_github_form", clear_on_submit=True):
             title = st.text_input("Diagram Title")
             description = st.text_area("Description / Notes", height=90)
-            upload = st.file_uploader(
-                "Upload diagram file",
-                accept_multiple_files=False,
-                help="Supports Draw.io files and any image or document format.",
+            source_url = st.text_input(
+                "GitHub Draw.io URL",
+                placeholder="https://github.com/owner/repository/blob/main/diagrams/example.drawio",
+                help="Paste the GitHub file link. The viewer reloads the latest file content from GitHub.",
             )
-            submitted = st.form_submit_button("Upload Diagram", width="stretch")
+            submitted = st.form_submit_button("Add Diagram", width="stretch")
 
         if submitted:
-            if not title.strip() or upload is None:
-                st.warning("Please provide a title and upload a file.")
+            if not title.strip() or not source_url.strip():
+                st.warning("Please provide a title and GitHub Draw.io URL.")
                 return
 
-            add_architecture_diagram(
-                username=st.session_state.get("user"),
-                title=title.strip(),
-                description=description.strip(),
-                file_name=upload.name,
-                content_type=upload.type,
-                file_data=upload.getvalue(),
-            )
-            st.success("Architecture diagram uploaded.")
-            st.rerun()
+            try:
+                raw_url = _normalize_github_drawio_url(source_url)
+                _fetch_github_drawio(raw_url)
+                add_github_architecture_diagram(
+                    username=st.session_state.get("user"),
+                    title=title.strip(),
+                    description=description.strip(),
+                    file_name=Path(urlparse(raw_url).path).name,
+                    source_url=raw_url,
+                )
+                st.success("GitHub Draw.io diagram linked.")
+                st.rerun()
+            except (ValueError, UnicodeDecodeError, HTTPError, URLError, TimeoutError) as error:
+                st.error(f"Could not link this GitHub Draw.io file: {error}")
 
 
 def render_architecture():
@@ -143,13 +185,20 @@ def render_architecture():
 
             if _is_drawio_file(diagram.file_name):
                 try:
+                    file_data = (
+                        _fetch_github_drawio(diagram.source_url)
+                        if diagram.source_url
+                        else diagram.file_data
+                    )
                     components.iframe(
-                        _drawio_viewer_url(diagram.file_data, diagram.title or diagram.file_name),
+                        _drawio_viewer_url(file_data, diagram.title or diagram.file_name),
                         height=800,
                         scrolling=True,
                     )
-                except (UnicodeDecodeError, zlib.error):
-                    st.error("This Draw.io file could not be displayed.")
+                    if diagram.source_url:
+                        st.caption("Read-only source: GitHub · synchronized within 60 seconds")
+                except (ValueError, UnicodeDecodeError, HTTPError, URLError, TimeoutError, zlib.error) as error:
+                    st.error(f"This GitHub Draw.io file could not be displayed: {error}")
             elif _is_image_file(diagram.file_name, diagram.content_type):
                 _render_image_viewer(diagram)
             else:

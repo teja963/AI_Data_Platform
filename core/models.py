@@ -171,6 +171,7 @@ class ArchitectureDiagram(Base):
     file_name = Column(String)
     content_type = Column(String, nullable=True)
     file_data = Column(LargeBinary)
+    source_url = Column(String, nullable=True)
     uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
