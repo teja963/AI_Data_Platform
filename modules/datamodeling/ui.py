@@ -20,35 +20,22 @@ def render_datamodeling():
         "Interview Mode"
     ]
 
-    # =====================================================
-    # 🔥 STEP 1: READ FROM URL
-    # =====================================================
-    query_params = st.query_params
-
-    selected = query_params.get("dm_tab", "Fundamentals")
-
+    selected = st.query_params.get("dm_tab", "Fundamentals")
     if selected not in tab_labels:
         selected = "Fundamentals"
+    if st.session_state.get("dm_selected_tab") not in tab_labels:
+        st.session_state["dm_selected_tab"] = selected
 
-    # =====================================================
-    # 🔥 STEP 2: TAB-LIKE UI (REPLACES st.tabs)
-    # =====================================================
     selected_tab = st.radio(
         "Data Modelling Topic",
         tab_labels,
-        index=tab_labels.index(selected),
         horizontal=True,
         label_visibility="collapsed",
+        key="dm_selected_tab",
     )
+    if st.query_params.get("dm_tab") != selected_tab:
+        st.query_params["dm_tab"] = selected_tab
 
-    # =====================================================
-    # 🔥 STEP 3: UPDATE URL (CRITICAL)
-    # =====================================================
-    st.query_params["dm_tab"] = selected_tab
-
-    # =====================================================
-    # 🔥 STEP 4: RENDER CONTENT (NOW WORKS PERFECTLY)
-    # =====================================================
     if selected_tab == "Fundamentals":
         show_fundamentals()
 

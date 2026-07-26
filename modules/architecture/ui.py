@@ -1,7 +1,13 @@
+import base64
+import html
 from pathlib import Path
+from urllib.parse import quote
+import zlib
 
 import streamlit as st
+import streamlit.components.v1 as components
 
+from core.access import user_can_view_architecture
 from core.architecture import (
     add_architecture_diagram,
     delete_architecture_diagram,
@@ -10,11 +16,70 @@ from core.architecture import (
 
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg"}
+DRAWIO_EXTENSIONS = {".drawio", ".dio"}
 
 
 def _is_image_file(file_name, content_type):
     suffix = Path(file_name or "").suffix.lower()
     return (content_type or "").startswith("image/") or suffix in IMAGE_EXTENSIONS
+
+
+def _is_drawio_file(file_name):
+    return Path(file_name or "").suffix.lower() in DRAWIO_EXTENSIONS
+
+
+def _drawio_viewer_url(file_data, title):
+    xml = file_data.decode("utf-8")
+    uri_encoded_xml = quote(xml, safe="~()*!.'-")
+    compressor = zlib.compressobj(level=9, wbits=-15)
+    compressed = compressor.compress(uri_encoded_xml.encode("utf-8")) + compressor.flush()
+    payload = quote(base64.b64encode(compressed).decode("ascii"), safe="")
+    safe_title = quote(title or "Architecture Diagram", safe="")
+    return (
+        "https://viewer.diagrams.net/"
+        f"?highlight=0000ff&layers=1&nav=1&title={safe_title}#R{payload}"
+    )
+
+
+def _render_image_viewer(diagram):
+    mime = diagram.content_type or "image/png"
+    encoded = base64.b64encode(diagram.file_data).decode("ascii")
+    safe_title = html.escape(diagram.title or diagram.file_name)
+    components.html(
+        f"""
+        <style>
+          html, body {{ margin: 0; height: 100%; overflow: hidden; background: #f6f7f9; }}
+          #viewer {{ position: relative; height: 780px; width: 100%; overflow: auto; }}
+          #diagram {{ display: block; width: 100%; height: auto; max-width: none; transform-origin: top left; }}
+          #tools {{
+            position: sticky; top: 10px; left: 10px; z-index: 5; display: inline-flex;
+            gap: 6px; padding: 6px; border-radius: 8px; background: rgba(20,20,20,.78);
+          }}
+          button {{
+            border: 0; background: transparent; color: white; font-size: 22px;
+            width: 34px; height: 34px; cursor: pointer;
+          }}
+        </style>
+        <div id="viewer" title="{safe_title}">
+          <div id="tools">
+            <button onclick="zoomBy(0.2)" title="Zoom in">+</button>
+            <button onclick="zoomBy(-0.2)" title="Zoom out">−</button>
+            <button onclick="resetZoom()" title="Reset zoom">↺</button>
+            <button onclick="document.getElementById('viewer').requestFullscreen()" title="Full screen">⛶</button>
+          </div>
+          <img id="diagram" draggable="false" alt="{safe_title}" src="data:{mime};base64,{encoded}" />
+        </div>
+        <script>
+          let scale = 1;
+          const image = document.getElementById("diagram");
+          function applyZoom() {{ image.style.transform = `scale(${{scale}})`; }}
+          function zoomBy(delta) {{ scale = Math.min(4, Math.max(0.25, scale + delta)); applyZoom(); }}
+          function resetZoom() {{ scale = 1; applyZoom(); }}
+        </script>
+        """,
+        height=800,
+        scrolling=False,
+    )
 
 
 def _render_admin_upload():
@@ -47,10 +112,16 @@ def _render_admin_upload():
 
 
 def render_architecture():
-    st.title("Architecture Diagrams")
-    st.caption("Admin can upload Draw.io files, images, or other diagram assets. All users can view and download them.")
+    username = st.session_state.get("user")
+    role = st.session_state.get("role", "user")
+    if not user_can_view_architecture(username, role):
+        st.error("Architecture diagrams are restricted to the administrator and Harika Priya.")
+        return
 
-    is_admin = st.session_state.get("role") == "admin"
+    st.title("Architecture Diagrams")
+    st.caption("Read-only architecture viewer. Use zoom, navigation, and full-screen controls to inspect diagrams.")
+
+    is_admin = role == "admin"
     if is_admin:
         _render_admin_upload()
 
@@ -70,22 +141,21 @@ def render_architecture():
             if diagram.description:
                 st.write(diagram.description)
 
-            if _is_image_file(diagram.file_name, diagram.content_type):
-                st.image(diagram.file_data, caption=diagram.file_name, width="stretch")
+            if _is_drawio_file(diagram.file_name):
+                try:
+                    components.iframe(
+                        _drawio_viewer_url(diagram.file_data, diagram.title or diagram.file_name),
+                        height=800,
+                        scrolling=True,
+                    )
+                except (UnicodeDecodeError, zlib.error):
+                    st.error("This Draw.io file could not be displayed.")
+            elif _is_image_file(diagram.file_name, diagram.content_type):
+                _render_image_viewer(diagram)
             else:
-                st.info("Preview is not available for this file type. Download it to open in the correct tool.")
+                st.info("Read-only preview is not available for this file type.")
 
-            col1, col2 = st.columns([3, 1])
-            col1.download_button(
-                "Download Diagram",
-                data=diagram.file_data,
-                file_name=diagram.file_name,
-                mime=diagram.content_type or "application/octet-stream",
-                key=f"download_arch_{diagram.id}",
-                width="stretch",
-            )
-
-            if is_admin and col2.button("Delete", key=f"delete_arch_{diagram.id}", width="stretch"):
+            if is_admin and st.button("Delete", key=f"delete_arch_{diagram.id}"):
                 delete_architecture_diagram(diagram.id)
                 st.success("Diagram deleted.")
                 st.rerun()

@@ -156,6 +156,31 @@ st.markdown(
         padding: 0.2rem 0.55rem;
         border-radius: 0.35rem;
     }
+    div[class*="st-key-code_action_"] button {
+        min-width: 2.5rem !important;
+        min-height: 2.5rem !important;
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: 50% !important;
+        background: transparent !important;
+        color: inherit !important;
+        box-shadow: none !important;
+        font-size: 1.75rem !important;
+        font-weight: 700 !important;
+        line-height: 1 !important;
+    }
+    div[class*="st-key-code_action_"] button:hover {
+        background: transparent !important;
+        border: 0 !important;
+        box-shadow: none !important;
+        transform: scale(1.12);
+    }
+    div[class*="st-key-code_action_"] button:focus,
+    div[class*="st-key-code_action_"] button:active {
+        border: 0 !important;
+        box-shadow: none !important;
+        outline: none !important;
+    }
     [data-theme='dark'] .stApp { background-color: #0e1117; }
 
     /* Theme-Aware Container Defaults (Light Mode) */

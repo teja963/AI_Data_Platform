@@ -421,15 +421,15 @@ def render_practice_workspace(questions):
                 )
             st.query_params["editor_mode"] = editor_mode
             with control_cols[1]:
-                run = st.button("▶", key=f"practice_run_{question_key}_{editor_mode}", help="Run")
+                run = st.button("▶", key=f"code_action_sql_run_{question_key}_{editor_mode}", help="Run")
             with control_cols[2]:
-                submit = st.button("✓", key=f"practice_submit_{question_key}_{editor_mode}", type="primary", help="Submit")
+                submit = st.button("✓", key=f"code_action_sql_submit_{question_key}_{editor_mode}", help="Submit")
             with control_cols[3]:
-                if st.button("↺", key=f"practice_starter_{question_key}_{editor_mode}", help="Load starter"):
+                if st.button("↺", key=f"code_action_sql_starter_{question_key}_{editor_mode}", help="Load starter"):
                     set_editor_draft(f"sql_practice::{question_key}::{editor_mode.lower()}", build_editor_starter(question, editor_mode))
                     st.rerun()
             with control_cols[4]:
-                if st.button("⌫", key=f"practice_clear_{question_key}_{editor_mode}", help="Clear draft"):
+                if st.button("⌫", key=f"code_action_sql_clear_{question_key}_{editor_mode}", help="Clear draft"):
                     clear_editor_draft(f"sql_practice::{question_key}::{editor_mode.lower()}")
                     st.rerun()
 
@@ -792,11 +792,11 @@ def render_active_interview():
                 label_visibility="collapsed",
             )
         with control_cols[1]:
-            run = st.button("▶", key=f"run_{question_key}", disabled=is_locked, help="Run")
+            run = st.button("▶", key=f"code_action_sql_interview_run_{question_key}", disabled=is_locked, help="Run")
         with control_cols[2]:
-            submit = st.button("✓", key=f"submit_{question_key}", disabled=is_locked, type="primary", help="Submit")
+            submit = st.button("✓", key=f"code_action_sql_interview_submit_{question_key}", disabled=is_locked, help="Submit")
         with control_cols[3]:
-            skip = st.button("⏭", key=f"skip_{question_key}", disabled=is_locked, help="Skip")
+            skip = st.button("⏭", key=f"code_action_sql_interview_skip_{question_key}", disabled=is_locked, help="Skip")
         with control_cols[4]:
             st.caption("Scoring uses correctness, time, and submit attempts.")
 
@@ -810,10 +810,10 @@ def render_active_interview():
         starter_template = build_editor_starter(current_question, interview_state["editor_mode"])
 
         helper_col1, helper_col2, helper_spacer = st.columns([0.35, 0.35, 5.3])
-        if helper_col1.button("↺", key=f"interview_starter_{question_key}", disabled=is_locked, help="Load starter"):
+        if helper_col1.button("↺", key=f"code_action_sql_interview_starter_{question_key}", disabled=is_locked, help="Load starter"):
             set_editor_draft(draft_key, starter_template)
             st.rerun()
-        if helper_col2.button("⌫", key=f"interview_clear_{question_key}", disabled=is_locked, help="Clear draft"):
+        if helper_col2.button("⌫", key=f"code_action_sql_interview_clear_{question_key}", disabled=is_locked, help="Clear draft"):
             clear_editor_draft(draft_key)
             st.rerun()
 
