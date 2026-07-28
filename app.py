@@ -60,10 +60,10 @@ def _utc_now():
     return datetime.now(timezone.utc)
 
 
-def _auth_token_for(user):
-    username_part = base64.urlsafe_b64encode(user.username.encode("utf-8")).decode("ascii").rstrip("=")
+def _auth_token_for(username, password_hash):
+    username_part = base64.urlsafe_b64encode(username.encode("utf-8")).decode("ascii").rstrip("=")
     signature = hmac.new(
-        user.password.encode("utf-8"),
+        password_hash.encode("utf-8"),
         username_part.encode("ascii"),
         hashlib.sha256,
     ).hexdigest()
@@ -83,7 +83,7 @@ def _username_from_token(token):
         user = session.query(User).filter_by(username=username).first()
         if not user:
             return None
-        expected_signature = _auth_token_for(user).split(".", 1)[1]
+        expected_signature = _auth_token_for(user.username, user.password).split(".", 1)[1]
         if not hmac.compare_digest(supplied_signature, expected_signature):
             return None
         return user.username, user.role
@@ -93,10 +93,19 @@ def _username_from_token(token):
         session.close()
 
 
-def _persist_login(user):
+def _persist_login(username):
+    session = SessionLocal()
+    try:
+        database_user = session.query(User).filter_by(username=username).first()
+        if not database_user:
+            return
+        token = _auth_token_for(database_user.username, database_user.password)
+    finally:
+        session.close()
+
     cookie_controller.set(
         AUTH_COOKIE_NAME,
-        _auth_token_for(user),
+        token,
         expires=_utc_now() + timedelta(days=3650),
         max_age=315360000,
         secure=True,
@@ -509,7 +518,7 @@ elif not st.session_state.get("user") and not st.session_state.get("pending_admi
                     st.session_state["role"] = user.role
                     st.session_state["user"] = user.username
                     st.session_state["login_ts"] = _utc_now()
-                    _persist_login(user)
+                    _persist_login(user.username)
                     st.rerun()
             else:
                 st.error("Invalid credentials")
@@ -548,7 +557,7 @@ if st.session_state.get("pending_admin"):
                     st.session_state["role"] = u.role
                     st.session_state["login_ts"] = _utc_now()
                     st.session_state.pop("pending_admin")
-                    _persist_login(u)
+                    _persist_login(u.username)
                     record_login(u.id, u.username)
                 finally:
                     session.close()
