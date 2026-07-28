@@ -105,14 +105,29 @@ def _persist_login(user):
 
 
 def _clear_persistent_login():
-    if cookie_controller.get(AUTH_COOKIE_NAME):
-        cookie_controller.remove(AUTH_COOKIE_NAME, secure=True, same_site="strict")
+    if _browser_auth_cookie():
+        cookie_controller.set(
+            AUTH_COOKIE_NAME,
+            "",
+            expires=_utc_now() - timedelta(days=1),
+            max_age=0,
+            secure=True,
+            same_site="strict",
+        )
+
+
+def _browser_auth_cookie():
+    try:
+        request_cookie = st.context.cookies.get(AUTH_COOKIE_NAME)
+    except (AttributeError, RuntimeError):
+        request_cookie = None
+    return request_cookie or cookie_controller.get(AUTH_COOKIE_NAME)
 
 
 def _restore_persistent_login():
     if st.session_state.get("user"):
         return
-    restored_user = _username_from_token(cookie_controller.get(AUTH_COOKIE_NAME))
+    restored_user = _username_from_token(_browser_auth_cookie())
     if not restored_user:
         return
     username, role = restored_user
