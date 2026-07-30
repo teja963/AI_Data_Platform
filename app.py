@@ -30,6 +30,8 @@ from core.constants import (
     SPARK_SECTION_LABEL,
     DATA_MODELING_SECTION_LABEL,
     ARCHITECTURE_SECTION_LABEL,
+    DEVOPS_SECTION_LABEL,
+    CLOUD_SECTION_LABEL,
     PROJECTS_SECTION_LABEL,
     ADMIN_SECTION_LABEL,
     SECTION_ORDER,
@@ -518,7 +520,6 @@ elif not st.session_state.get("user") and not st.session_state.get("pending_admi
                     st.session_state["role"] = user.role
                     st.session_state["user"] = user.username
                     st.session_state["login_ts"] = _utc_now()
-                    _persist_login(user.username)
                     st.rerun()
             else:
                 st.error("Invalid credentials")
@@ -557,7 +558,6 @@ if st.session_state.get("pending_admin"):
                     st.session_state["role"] = u.role
                     st.session_state["login_ts"] = _utc_now()
                     st.session_state.pop("pending_admin")
-                    _persist_login(u.username)
                     record_login(u.id, u.username)
                 finally:
                     session.close()
@@ -571,6 +571,10 @@ if st.session_state.get("pending_admin"):
 
 # --- Main Application Logic (Only reached if st.session_state["user"] is set) ---
 if st.session_state.get("user"):
+    if st.session_state.get("persistent_cookie_user") != st.session_state["user"]:
+        _persist_login(st.session_state["user"])
+        st.session_state["persistent_cookie_user"] = st.session_state["user"]
+
     # --- Main App (Only reached if authenticated)
     with st.sidebar:
         st.caption(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
@@ -578,9 +582,11 @@ if st.session_state.get("user"):
         if st.button("↪", key="sidebar_logout", help="Logout"):
             flush_section_activity(st.session_state.get("user"))
             _clear_persistent_login()
+            st.session_state.pop("persistent_cookie_user", None)
             st.session_state["user"] = None
             st.session_state["role"] = "user"
             st.session_state.pop("login_ts", None)
+            time.sleep(0.75)
             if hasattr(st, "rerun"):
                 st.rerun()
             else:
@@ -693,6 +699,8 @@ if st.session_state.get("user"):
         SPARK_SECTION_LABEL: lambda: __import__("modules.spark.ui", fromlist=["render_spark"]).render_spark(),
         DATA_MODELING_SECTION_LABEL: lambda: __import__("modules.datamodeling.ui", fromlist=["render_datamodeling"]).render_datamodeling(),
         ARCHITECTURE_SECTION_LABEL: lambda: __import__("modules.architecture.ui", fromlist=["render_architecture"]).render_architecture(),
+        DEVOPS_SECTION_LABEL: lambda: __import__("modules.devops.ui", fromlist=["render_devops"]).render_devops(),
+        CLOUD_SECTION_LABEL: lambda: __import__("modules.cloud.ui", fromlist=["render_cloud"]).render_cloud(),
         PROJECTS_SECTION_LABEL: lambda: __import__("modules.projects.ui", fromlist=["render_projects"]).render_projects(),
         ADMIN_SECTION_LABEL: lambda: __import__("modules.admin.ui", fromlist=["render_admin"]).render_admin(),
     }

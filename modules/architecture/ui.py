@@ -120,15 +120,20 @@ def _render_image_viewer(diagram):
     )
 
 
-def _render_admin_upload():
+def _render_admin_upload(collection, key_prefix):
     with st.expander("Add GitHub Draw.io Diagram", expanded=False):
-        with st.form("architecture_github_form", clear_on_submit=True):
-            title = st.text_input("Diagram Title")
-            description = st.text_area("Description / Notes", height=90)
+        with st.form(f"{key_prefix}_github_form", clear_on_submit=True):
+            title = st.text_input("Diagram Title", key=f"{key_prefix}_title")
+            description = st.text_area(
+                "Description / Notes",
+                height=90,
+                key=f"{key_prefix}_description",
+            )
             source_url = st.text_input(
                 "GitHub Draw.io URL",
                 placeholder="https://github.com/owner/repository/blob/main/diagrams/example.drawio",
                 help="Paste the GitHub file link. The viewer reloads the latest file content from GitHub.",
+                key=f"{key_prefix}_source_url",
             )
             submitted = st.form_submit_button("Add Diagram", width="stretch")
 
@@ -146,6 +151,7 @@ def _render_admin_upload():
                     description=description.strip(),
                     file_name=Path(urlparse(raw_url).path).name,
                     source_url=raw_url,
+                    collection=collection,
                 )
                 st.success("GitHub Draw.io diagram linked.")
                 st.rerun()
@@ -153,28 +159,38 @@ def _render_admin_upload():
                 st.error(f"Could not link this GitHub Draw.io file: {error}")
 
 
-def render_architecture():
-    username = st.session_state.get("user")
+def render_diagram_collection(
+    title,
+    collection,
+    description,
+    key_prefix,
+    access_checked=False,
+):
     role = st.session_state.get("role", "user")
-    if not user_can_view_architecture(username, role):
+    if not access_checked and not user_can_view_architecture(
+        st.session_state.get("user"),
+        role,
+    ):
         st.error("Architecture diagrams are restricted to the administrator and Harika Priya.")
         return
 
-    st.title("Architecture Diagrams")
-    st.caption("Read-only architecture viewer. Use zoom, navigation, and full-screen controls to inspect diagrams.")
+    if title:
+        st.header(title)
+    if description:
+        st.caption(description)
 
     is_admin = role == "admin"
     if is_admin:
-        _render_admin_upload()
+        _render_admin_upload(collection, key_prefix)
 
     try:
-        diagrams = get_architecture_diagrams()
+        diagrams = get_architecture_diagrams(collection=collection)
     except Exception as error:
         st.error(f"Architecture diagrams are unavailable right now: {error}")
         return
 
     if not diagrams:
-        st.info("No architecture diagrams uploaded yet.")
+        st.info("No diagrams linked in this collection yet.")
         return
 
     for diagram in diagrams:
@@ -204,7 +220,17 @@ def render_architecture():
             else:
                 st.info("Read-only preview is not available for this file type.")
 
-            if is_admin and st.button("Delete", key=f"delete_arch_{diagram.id}"):
+            if is_admin and st.button("Delete", key=f"{key_prefix}_delete_{diagram.id}"):
                 delete_architecture_diagram(diagram.id)
                 st.success("Diagram deleted.")
                 st.rerun()
+
+
+def render_architecture():
+    st.title("Architecture Diagrams")
+    render_diagram_collection(
+        title=None,
+        collection="architecture",
+        description="Read-only architecture viewer. Use zoom, navigation, and full-screen controls to inspect diagrams.",
+        key_prefix="architecture",
+    )

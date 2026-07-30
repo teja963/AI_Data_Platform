@@ -3,6 +3,8 @@ from functools import lru_cache
 from core.constants import (
     ADMIN_SECTION_LABEL,
     ARCHITECTURE_SECTION_LABEL,
+    CLOUD_SECTION_LABEL,
+    DEVOPS_SECTION_LABEL,
     PROJECTS_SECTION_LABEL,
     SECTION_ORDER,
 )
@@ -18,7 +20,13 @@ def ensure_access_schema():
 def default_user_sections(is_admin=False):
     if is_admin:
         return list(SECTION_ORDER)
-    hidden_by_default = {ADMIN_SECTION_LABEL, ARCHITECTURE_SECTION_LABEL, PROJECTS_SECTION_LABEL}
+    hidden_by_default = {
+        ADMIN_SECTION_LABEL,
+        ARCHITECTURE_SECTION_LABEL,
+        CLOUD_SECTION_LABEL,
+        DEVOPS_SECTION_LABEL,
+        PROJECTS_SECTION_LABEL,
+    }
     return [section for section in SECTION_ORDER if section not in hidden_by_default]
 
 
@@ -62,19 +70,24 @@ def get_allowed_sections(username, role="user"):
         if not user:
             return default_user_sections(is_admin=False)
 
-        architecture_allowed = can_view_architecture(user.username, role, user.full_name)
+        restricted_sections_allowed = can_view_architecture(user.username, role, user.full_name)
+        restricted_sections = {
+            ARCHITECTURE_SECTION_LABEL,
+            CLOUD_SECTION_LABEL,
+            DEVOPS_SECTION_LABEL,
+        }
         rows = session.query(UserSectionAccess).filter_by(user_id=user.id).all()
         if not rows:
             allowed = set(default_user_sections(is_admin=False))
-            if architecture_allowed:
-                allowed.add(ARCHITECTURE_SECTION_LABEL)
+            if restricted_sections_allowed:
+                allowed.update(restricted_sections)
             return [section for section in SECTION_ORDER if section in allowed]
 
         allowed = {row.section for row in rows if row.allowed}
-        if architecture_allowed:
-            allowed.add(ARCHITECTURE_SECTION_LABEL)
+        if restricted_sections_allowed:
+            allowed.update(restricted_sections)
         else:
-            allowed.discard(ARCHITECTURE_SECTION_LABEL)
+            allowed.difference_update(restricted_sections)
         return [section for section in SECTION_ORDER if section in allowed]
     finally:
         session.close()
