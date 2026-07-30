@@ -411,7 +411,7 @@ def render_practice_workspace(questions):
 
     with col2:
         with st.container(height=840, border=False):
-            control_cols = st.columns([1.7, 0.35, 0.35, 0.35, 4.2])
+            control_cols = st.columns([1.7, 0.35, 0.35, 4.55])
             with control_cols[0]:
                 editor_mode = st.selectbox(
                     "Language",
@@ -421,14 +421,10 @@ def render_practice_workspace(questions):
                 )
             st.query_params["editor_mode"] = editor_mode
             with control_cols[1]:
-                run = st.button("▶", key=f"code_action_sql_run_{question_key}_{editor_mode}", help="Run")
-            with control_cols[2]:
-                submit = st.button("✓", key=f"code_action_sql_submit_{question_key}_{editor_mode}", help="Submit")
-            with control_cols[3]:
                 if st.button("↺", key=f"code_action_sql_starter_{question_key}_{editor_mode}", help="Load starter"):
                     set_editor_draft(f"sql_practice::{question_key}::{editor_mode.lower()}", build_editor_starter(question, editor_mode))
                     st.rerun()
-            with control_cols[4]:
+            with control_cols[2]:
                 if st.button("⌫", key=f"code_action_sql_clear_{question_key}_{editor_mode}", help="Clear draft"):
                     clear_editor_draft(f"sql_practice::{question_key}::{editor_mode.lower()}")
                     st.rerun()
@@ -446,13 +442,15 @@ def render_practice_workspace(questions):
             draft_key = f"sql_practice::{question_key}::{editor_mode.lower()}"
             starter_template = build_editor_starter(question, editor_mode)
 
-            query = render_code_editor(
+            query, editor_action = render_code_editor(
                 draft_key=draft_key,
                 language="sql" if editor_mode == "SQL" else "python",
                 starter=starter_template,
                 height=700,
                 placeholder=starter_template,
             )
+            run = editor_action == "run"
+            submit = editor_action == "submit"
 
             if run or submit:
                 if not query.strip():
@@ -783,7 +781,7 @@ def render_active_interview():
         render_question_content(current_question, submission_track=EDITOR_TRACKS[interview_state["editor_mode"]])
 
     with col2:
-        control_cols = st.columns([1.7, 0.35, 0.35, 0.35, 3.9])
+        control_cols = st.columns([1.7, 0.35, 4.6])
         with control_cols[0]:
             st.selectbox(
                 "Language",
@@ -792,12 +790,8 @@ def render_active_interview():
                 label_visibility="collapsed",
             )
         with control_cols[1]:
-            run = st.button("▶", key=f"code_action_sql_interview_run_{question_key}", disabled=is_locked, help="Run")
-        with control_cols[2]:
-            submit = st.button("✓", key=f"code_action_sql_interview_submit_{question_key}", disabled=is_locked, help="Submit")
-        with control_cols[3]:
             skip = st.button("⏭", key=f"code_action_sql_interview_skip_{question_key}", disabled=is_locked, help="Skip")
-        with control_cols[4]:
+        with control_cols[2]:
             st.caption("Scoring uses correctness, time, and submit attempts.")
 
         if interview_state["editor_mode"] == "PySpark":
@@ -817,7 +811,7 @@ def render_active_interview():
             clear_editor_draft(draft_key)
             st.rerun()
 
-        query = render_code_editor(
+        query, editor_action = render_code_editor(
             draft_key=draft_key,
             language="sql" if interview_state["editor_mode"] == "SQL" else "python",
             starter=starter_template,
@@ -825,6 +819,8 @@ def render_active_interview():
             placeholder=starter_template,
             disabled=is_locked,
         )
+        run = editor_action == "run"
+        submit = editor_action == "submit"
 
         if run or submit:
             if not query.strip():

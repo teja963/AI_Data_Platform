@@ -368,7 +368,7 @@ def render_practice_workspace(questions):
 
     with right_col:
         with st.container(height=840, border=False):
-            control_cols = st.columns([1.7, 0.35, 0.35, 0.35, 0.35, 3.85])
+            control_cols = st.columns([1.7, 0.35, 0.35, 0.35, 4.2])
             with control_cols[0]:
                 st.selectbox(
                     "Language",
@@ -377,29 +377,27 @@ def render_practice_workspace(questions):
                     label_visibility="collapsed",
                 )
             with control_cols[1]:
-                run = st.button("▶", key=f"code_action_python_run_{selected_question_key}", help="Run")
-            with control_cols[2]:
-                submit = st.button("✓", key=f"code_action_python_submit_{selected_question_key}", help="Submit")
-            with control_cols[3]:
                 if st.button("ƒ", key=f"code_action_python_starter_{selected_question_key}", help="Function template"):
                     set_editor_draft(draft_key, starter)
                     st.rerun()
-            with control_cols[4]:
+            with control_cols[2]:
                 if st.button("⌫", key=f"code_action_python_clear_{selected_question_key}", help="Clear draft"):
                     clear_editor_draft(draft_key)
                     st.rerun()
-            with control_cols[5]:
+            with control_cols[3]:
                 if st.button("⟲", key=f"code_action_python_script_{selected_question_key}", help="Main template"):
                     set_editor_draft(draft_key, question["script_starter"])
                     st.rerun()
 
-            code = render_code_editor(
+            code, editor_action = render_code_editor(
                 draft_key=draft_key,
                 language="python",
                 starter=starter,
                 height=700,
                 placeholder=starter,
             )
+            run = editor_action == "run"
+            submit = editor_action == "submit"
 
             if run or submit:
                 if not code.strip():
@@ -711,7 +709,7 @@ def render_active_interview():
         render_question_content(question, show_solution_note=False, submission_track="python")
 
     with right_col:
-        control_cols = st.columns([1.7, 0.35, 0.35, 0.35, 3.9])
+        control_cols = st.columns([1.7, 0.35, 4.6])
         with control_cols[0]:
             st.selectbox(
                 "Language",
@@ -720,14 +718,10 @@ def render_active_interview():
                 label_visibility="collapsed",
             )
         with control_cols[1]:
-            run = st.button("▶", key=f"code_action_python_interview_run_{question_key}", disabled=is_locked, help="Run")
-        with control_cols[2]:
-            submit = st.button("✓", key=f"code_action_python_interview_submit_{question_key}", disabled=is_locked, help="Submit")
-        with control_cols[3]:
             skip = st.button("⏭", key=f"code_action_python_interview_skip_{question_key}", disabled=is_locked, help="Skip")
-        with control_cols[4]:
+        with control_cols[2]:
             st.caption("Drafts stay preserved.")
-        code = render_code_editor(
+        code, editor_action = render_code_editor(
             draft_key=draft_key,
             language="python",
             starter=question["starter_code"],
@@ -735,6 +729,8 @@ def render_active_interview():
             placeholder=question["starter_code"],
             disabled=is_locked,
         )
+        run = editor_action == "run"
+        submit = editor_action == "submit"
 
         if run or submit:
             if not code.strip():
