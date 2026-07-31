@@ -40,9 +40,6 @@ from core.kubernetes_simulator import (
     set_node_status,
     update_namespace,
 )
-from core.terminal_component import terminal_component
-
-
 MANIFEST_EXAMPLE = """apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -1850,7 +1847,7 @@ def _render_reliable_terminal(username, state, terminal_id, title):
     context_key = f"k8s_terminal_context::{suffix}"
     buffer_key = f"k8s_terminal_buffer::{suffix}"
     commands_key = f"k8s_terminal_commands::{suffix}"
-    processed_key = f"k8s_terminal_processed::{suffix}"
+    input_key = f"k8s_terminal_input::{suffix}"
     st.session_state.setdefault(
         context_key,
         {
@@ -1863,32 +1860,84 @@ def _render_reliable_terminal(username, state, terminal_id, title):
     st.session_state.setdefault(buffer_key, [])
     st.session_state.setdefault(commands_key, [])
     context = st.session_state[context_key]
-    result = terminal_component(
-        key=f"k8s_terminal_component::{suffix}",
-        title=title,
-        prompt=_terminal_prompt(state, context),
-        transcript="\n".join(st.session_state[buffer_key][-100:]),
-        history=st.session_state[commands_key][-100:],
+    prompt = _terminal_prompt(state, context)
+    transcript = "\n".join(st.session_state[buffer_key][-100:])
+    shell_key = f"k8s_terminal_shell_{terminal_id}"
+    st.html(
+        f"""
+        <style>
+        div[class*="st-key-{shell_key}"] {{
+          height: min(72vh, 720px);
+          min-height: 560px;
+          padding: 0 !important;
+          overflow: hidden !important;
+          border: 1px solid #263445;
+          border-radius: 8px;
+          background: #05080c;
+        }}
+        div[class*="st-key-{shell_key}"] > div[data-testid="stVerticalBlock"] {{
+          height: 100%;
+          gap: 0 !important;
+        }}
+        div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] {{
+          margin: 0 12px 10px;
+        }}
+        div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] input {{
+          border: 0 !important;
+          background: transparent !important;
+          color: #f2f7fb !important;
+          caret-color: #65ff8d !important;
+          font: 14px/1.5 SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          box-shadow: none !important;
+        }}
+        div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] label {{
+          color: #6fe58d !important;
+          font: 600 13px/1.5 SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }}
+        </style>
+        """
     )
-    submitted = getattr(result, "submitted", None)
-    if not submitted or not isinstance(submitted, dict):
-        return
-    command = str(submitted.get("command", "")).strip()
-    nonce = submitted.get("nonce")
-    if not command or not nonce or nonce == st.session_state.get(processed_key):
-        return
-    st.session_state[processed_key] = nonce
-    current_prompt = _terminal_prompt(state, context)
-    new_state, output, clear_requested = _terminal_run(state, command, context)
-    if clear_requested:
-        st.session_state[buffer_key] = []
-    else:
-        st.session_state[buffer_key].append(
-            f"{current_prompt} {command}\n{output}".rstrip()
+    with st.container(key=shell_key, border=False):
+        st.html(
+            f"""
+            <div style="height:34px;display:flex;align-items:center;
+              justify-content:space-between;padding:0 10px;background:#111720;
+              border-bottom:1px solid #263445;font-family:SFMono-Regular,Menlo,
+              Monaco,Consolas,monospace">
+              <span style="display:flex;gap:6px">
+                <i style="width:10px;height:10px;border-radius:50%;background:#ff5f57"></i>
+                <i style="width:10px;height:10px;border-radius:50%;background:#febc2e"></i>
+                <i style="width:10px;height:10px;border-radius:50%;background:#28c840"></i>
+              </span>
+              <span style="color:#94a4b8;font-size:12px">{html.escape(title)}</span>
+              <span style="width:44px"></span>
+            </div>
+            <pre class="k8s-terminal-scrollback" style="height:calc(min(72vh,720px) - 134px);
+              min-height:426px;margin:0;padding:12px;overflow:auto;background:#05080c;
+              color:#d9f7df;white-space:pre-wrap;overflow-wrap:anywhere;
+              font:14px/1.5 SFMono-Regular,Menlo,Monaco,Consolas,monospace"
+              >{html.escape(transcript)}</pre>
+            """
         )
-    st.session_state[commands_key].append(command)
-    _store_state(username, new_state)
-    st.rerun(scope="fragment")
+        st.text_input(
+            prompt,
+            key=input_key,
+            placeholder="Type a kubectl, oc, or helm command and press Enter",
+            on_change=_submit_terminal_command,
+            args=(
+                username,
+                state,
+                input_key,
+                buffer_key,
+                commands_key,
+                context,
+            ),
+        )
+        st.html(
+            '<div style="padding:0 12px 8px;color:#7d8da3;font-size:11px">'
+            "Enter: execute · Backspace/Delete: edit · clear: clear this terminal"
+            "</div>"
+        )
 
 
 def _terminal_sessions_key(username):
