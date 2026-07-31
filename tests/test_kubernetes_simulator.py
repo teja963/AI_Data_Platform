@@ -6,6 +6,7 @@ from core.kubernetes_simulator import (
     create_namespace,
     delete_pod,
     execute_command,
+    normalize_cluster_state,
     set_node_status,
 )
 
@@ -153,6 +154,30 @@ spec:
                 cpu_request_m=250,
                 memory_request_mi=256,
             )
+
+    def test_initial_state_has_only_finite_builtin_namespaces(self):
+        self.assertEqual(
+            set(self.state["namespaces"]),
+            {"default", "kube-system", "kube-public", "kube-node-lease"},
+        )
+        for namespace in self.state["namespaces"].values():
+            self.assertGreater(namespace["cpu_quota_m"], 0)
+            self.assertGreater(namespace["memory_quota_mi"], 0)
+            self.assertGreater(namespace["storage_quota_gi"], 0)
+            self.assertGreater(namespace["pod_quota"], 0)
+
+    def test_old_lab_is_reset_during_version_migration(self):
+        self.state["simulator_version"] = 2
+        self.state["namespaces"]["old-team"] = {"name": "old-team"}
+        self.state["pods"]["old-team/old-pod"] = {
+            "name": "old-pod",
+            "namespace": "old-team",
+        }
+
+        migrated = normalize_cluster_state(self.state)
+
+        self.assertNotIn("old-team", migrated["namespaces"])
+        self.assertEqual(migrated["pods"], {})
 
 
 if __name__ == "__main__":

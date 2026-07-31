@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import yaml
 
 
-SIMULATOR_VERSION = 1
+SIMULATOR_VERSION = 3
 DEFAULT_NAMESPACE = "default"
 PROVIDER_REGIONS = {
     "AWS (EKS)": "us-east-1",
@@ -88,10 +88,71 @@ def _namespace_template(
     }
 
 
+def _system_namespaces(total_cpu_m, total_memory_mi, total_storage_gi):
+    def quota(fraction, minimum_cpu=100, minimum_memory=128, minimum_storage=1):
+        return {
+            "cpu_quota_m": max(minimum_cpu, int(total_cpu_m * fraction)),
+            "memory_quota_mi": max(minimum_memory, int(total_memory_mi * fraction)),
+            "storage_quota_gi": max(minimum_storage, int(total_storage_gi * fraction)),
+            "pod_quota": max(5, int(110 * fraction)),
+        }
+
+    return {
+        "default": _namespace_template(
+            "default",
+            owner="Platform Team",
+            environment="Shared",
+            **quota(0.40),
+        ),
+        "kube-system": _namespace_template(
+            "kube-system",
+            owner="Kubernetes",
+            environment="System",
+            default_cpu_m=100,
+            default_memory_mi=128,
+            labels={"kubernetes.io/metadata.name": "kube-system"},
+            **quota(0.10),
+        ),
+        "kube-public": _namespace_template(
+            "kube-public",
+            owner="Kubernetes",
+            environment="System",
+            default_cpu_m=50,
+            default_memory_mi=64,
+            **quota(0.05, 50, 64, 1),
+        ),
+        "kube-node-lease": _namespace_template(
+            "kube-node-lease",
+            owner="Kubernetes",
+            environment="System",
+            default_cpu_m=50,
+            default_memory_mi=64,
+            **quota(0.05, 50, 64, 1),
+        ),
+    }
+
+
 def normalize_cluster_state(state):
     """Add newly introduced simulator fields to previously saved labs."""
     if not state:
         return state
+    if int(state.get("simulator_version", 0)) < SIMULATOR_VERSION:
+        workers = [
+            node for node in state.get("nodes", [])
+            if node.get("role") == "worker"
+        ]
+        state["namespaces"] = _system_namespaces(
+            sum(node.get("cpu_capacity_m", 0) for node in workers),
+            sum(node.get("memory_capacity_mi", 0) for node in workers),
+            sum(node.get("storage_gi", 0) for node in workers),
+        )
+        state["deployments"] = {}
+        state["pods"] = {}
+        state["services"] = {}
+        state["helm_releases"] = {}
+        state["events"] = []
+        state["history"] = []
+        state["simulator_version"] = SIMULATOR_VERSION
     for name, namespace in state.setdefault("namespaces", {}).items():
         defaults = _namespace_template(name)
         for key, value in defaults.items():
@@ -127,17 +188,11 @@ def create_cluster(
             "created_at": _now(),
         },
         "nodes": [],
-        "namespaces": {
-            "default": _namespace_template("default"),
-            "kube-system": _namespace_template(
-                "kube-system",
-                owner="Kubernetes",
-                environment="System",
-                default_cpu_m=100,
-                default_memory_mi=128,
-                labels={"kubernetes.io/metadata.name": "kube-system"},
-            ),
-        },
+        "namespaces": _system_namespaces(
+            int(worker_count) * int(cpu_per_worker) * 1000,
+            int(worker_count) * int(memory_per_worker_mi),
+            int(worker_count) * int(storage_per_worker_gi),
+        ),
         "deployments": {},
         "pods": {},
         "services": {},
@@ -215,8 +270,8 @@ def node_rows(state):
                 "Role": node["role"],
                 "Status": node["status"],
                 "Scheduling": "Enabled" if node["schedulable"] else "Disabled",
-                "CPU": f"{usage['cpu_m']}m / {node['cpu_capacity_m']}m",
-                "Memory": f"{usage['memory_mi']}Mi / {node['memory_capacity_mi']}Mi",
+                "CPU": f"{usage['cpu_m'] / 1000:.2f} / {node['cpu_capacity_m'] / 1000:.2f} cores",
+                "Memory": f"{usage['memory_mi'] / 1024:.2f} / {node['memory_capacity_mi'] / 1024:.2f} GiB",
                 "Pods": usage["pods"],
             }
         )
@@ -237,8 +292,8 @@ def pod_rows(state, namespace=None):
                 "Restarts": pod.get("restarts", 0),
                 "Node": pod.get("node") or "<none>",
                 "Owner": pod.get("owner") or "<none>",
-                "CPU": f"{pod.get('cpu_request_m', 0)}m",
-                "Memory": f"{pod.get('memory_request_mi', 0)}Mi",
+                "CPU": f"{pod.get('cpu_request_m', 0) / 1000:.2f} cores",
+                "Memory": f"{pod.get('memory_request_mi', 0) / 1024:.2f} GiB",
             }
         )
     return sorted(rows, key=lambda item: (item["Namespace"], item["Name"]))
@@ -263,13 +318,8 @@ def deployment_rows(state, namespace=None):
                 "Kind": deployment.get("kind", "Deployment"),
                 "Ready": f"{ready}/{deployment['replicas']}",
                 "Image": deployment["image"],
-                "CPU/Pod": f"{deployment['cpu_request_m']}m",
-                "Memory/Pod": f"{deployment['memory_request_mi']}Mi",
-                "JVM Heap/Pod": (
-                    f"{deployment.get('heap_size_mi', 0)}Mi"
-                    if deployment.get("heap_size_mi")
-                    else "Not set"
-                ),
+                "CPU/Pod": f"{deployment['cpu_request_m'] / 1000:.2f} cores",
+                "Memory/Pod": f"{deployment['memory_request_mi'] / 1024:.2f} GiB",
             }
         )
     return sorted(rows, key=lambda item: (item["Namespace"], item["Name"]))
@@ -327,12 +377,12 @@ def namespace_rows(state):
                     f"{usage['pods']} / {namespace.get('pod_quota', 0) or '∞'}"
                 ),
                 "CPU": (
-                    f"{usage['cpu_m']}m / "
-                    f"{str(namespace.get('cpu_quota_m', 0)) + 'm' if namespace.get('cpu_quota_m') else '∞'}"
+                    f"{usage['cpu_m'] / 1000:.2f} / "
+                    f"{namespace.get('cpu_quota_m', 0) / 1000:.2f} cores"
                 ),
                 "Memory": (
-                    f"{usage['memory_mi']}Mi / "
-                    f"{str(namespace.get('memory_quota_mi', 0)) + 'Mi' if namespace.get('memory_quota_mi') else '∞'}"
+                    f"{usage['memory_mi'] / 1024:.2f} / "
+                    f"{namespace.get('memory_quota_mi', 0) / 1024:.2f} GiB"
                 ),
                 "Deployments": usage["deployments"],
                 "Services": usage["services"],
@@ -480,10 +530,10 @@ def create_namespace(
     name,
     owner="Platform Team",
     environment="Development",
-    cpu_quota_m=0,
-    memory_quota_mi=0,
-    storage_quota_gi=0,
-    pod_quota=0,
+    cpu_quota_m=1000,
+    memory_quota_mi=1024,
+    storage_quota_gi=10,
+    pod_quota=10,
     default_cpu_m=250,
     default_memory_mi=256,
     labels=None,
@@ -493,6 +543,13 @@ def create_namespace(
         raise ValueError("namespace name is required")
     if name in state["namespaces"]:
         raise ValueError(f'namespaces "{name}" already exists')
+    _validate_namespace_policy(
+        state,
+        cpu_quota_m,
+        memory_quota_mi,
+        storage_quota_gi,
+        pod_quota,
+    )
     state["namespaces"][name] = _namespace_template(
         name,
         owner,
@@ -507,6 +564,109 @@ def create_namespace(
     )
     _event(state, "NamespaceCreated", f"Created namespace {name}.", obj=f"namespace/{name}")
     return state["namespaces"][name]
+
+
+def _validate_namespace_policy(
+    state,
+    cpu_quota_m,
+    memory_quota_mi,
+    storage_quota_gi,
+    pod_quota,
+    excluding=None,
+):
+    values = {
+        "CPU quota": int(cpu_quota_m),
+        "memory quota": int(memory_quota_mi),
+        "storage quota": int(storage_quota_gi),
+        "pod limit": int(pod_quota),
+    }
+    for label, value in values.items():
+        if value <= 0:
+            raise ValueError(f"{label} must be greater than zero")
+    workers = [node for node in state["nodes"] if node["role"] == "worker"]
+    capacities = {
+        "cpu_quota_m": sum(node["cpu_capacity_m"] for node in workers),
+        "memory_quota_mi": sum(node["memory_capacity_mi"] for node in workers),
+        "storage_quota_gi": sum(node["storage_gi"] for node in workers),
+        "pod_quota": len(workers) * 110,
+    }
+    requested = {
+        "cpu_quota_m": int(cpu_quota_m),
+        "memory_quota_mi": int(memory_quota_mi),
+        "storage_quota_gi": int(storage_quota_gi),
+        "pod_quota": int(pod_quota),
+    }
+    labels = {
+        "cpu_quota_m": "CPU millicores",
+        "memory_quota_mi": "memory MiB",
+        "storage_quota_gi": "storage GiB",
+        "pod_quota": "pods",
+    }
+    for field, capacity in capacities.items():
+        allocated = sum(
+            int(namespace.get(field, 0))
+            for name, namespace in state["namespaces"].items()
+            if name != excluding
+        )
+        if allocated + requested[field] > capacity:
+            available = max(0, capacity - allocated)
+            raise ValueError(
+                f"namespace {labels[field]} allocation exceeds cluster capacity; "
+                f"{available} remains available"
+            )
+
+
+def update_namespace(
+    state,
+    name,
+    owner,
+    environment,
+    cpu_quota_m,
+    memory_quota_mi,
+    storage_quota_gi,
+    pod_quota,
+    default_cpu_m,
+    default_memory_mi,
+    labels=None,
+):
+    namespace = state["namespaces"].get(name)
+    if not namespace:
+        raise ValueError(f'namespaces "{name}" not found')
+    usage = namespace_usage(state, name)
+    if int(cpu_quota_m) < usage["cpu_m"]:
+        raise ValueError("CPU quota cannot be lower than current pod allocation")
+    if int(memory_quota_mi) < usage["memory_mi"]:
+        raise ValueError("memory quota cannot be lower than current pod allocation")
+    if int(pod_quota) < usage["pods"]:
+        raise ValueError("pod limit cannot be lower than the current pod count")
+    _validate_namespace_policy(
+        state,
+        cpu_quota_m,
+        memory_quota_mi,
+        storage_quota_gi,
+        pod_quota,
+        excluding=name,
+    )
+    namespace.update(
+        {
+            "owner": owner,
+            "environment": environment,
+            "cpu_quota_m": int(cpu_quota_m),
+            "memory_quota_mi": int(memory_quota_mi),
+            "storage_quota_gi": int(storage_quota_gi),
+            "pod_quota": int(pod_quota),
+            "default_cpu_m": int(default_cpu_m),
+            "default_memory_mi": int(default_memory_mi),
+            "labels": labels or {},
+        }
+    )
+    _event(
+        state,
+        "NamespaceUpdated",
+        f"Updated quotas and defaults for namespace {name}.",
+        obj=f"namespace/{name}",
+    )
+    return namespace
 
 
 def _validate_namespace_quota(
@@ -745,9 +905,20 @@ def _get_output(state, resource, namespace, all_namespaces=False):
             [[row["Namespace"], row["Name"], row["Type"], row["Cluster IP"], row["Port"]] for row in rows],
         )
     if resource in {"namespace", "namespaces", "ns"}:
+        rows = namespace_rows(state)
         return _format_table(
-            ["NAME", "STATUS"],
-            [[item["name"], item["status"]] for item in state["namespaces"].values()],
+            ["NAME", "STATUS", "PODS", "CPU", "MEMORY", "OWNER"],
+            [
+                [
+                    item["Namespace"],
+                    item["Status"],
+                    item["Pods"],
+                    item["CPU"],
+                    item["Memory"],
+                    item["Owner"],
+                ]
+                for item in rows
+            ],
         )
     if resource in {"event", "events", "ev"}:
         return _format_table(
@@ -775,6 +946,8 @@ def _describe(state, resource, name, namespace):
         item = state["services"].get(_key(namespace, name))
     elif resource in {"node", "nodes", "no"}:
         item = next((node for node in state["nodes"] if node["name"] == name), None)
+    elif resource in {"namespace", "namespaces", "ns"}:
+        item = state["namespaces"].get(name)
     else:
         item = None
     if not item:
@@ -1186,10 +1359,10 @@ def execute_command(state, command, manifest_text=""):
                         args[2],
                         owner=_flag(args, "--owner", "Platform Team"),
                         environment=_flag(args, "--environment", "Development"),
-                        cpu_quota_m=int(_flag(args, "--cpu-quota", 0)),
-                        memory_quota_mi=int(_flag(args, "--memory-quota", 0)),
-                        storage_quota_gi=int(_flag(args, "--storage-quota", 0)),
-                        pod_quota=int(_flag(args, "--pod-quota", 0)),
+                        cpu_quota_m=int(_flag(args, "--cpu-quota", 1000)),
+                        memory_quota_mi=int(_flag(args, "--memory-quota", 1024)),
+                        storage_quota_gi=int(_flag(args, "--storage-quota", 10)),
+                        pod_quota=int(_flag(args, "--pod-quota", 10)),
                         default_cpu_m=int(_flag(args, "--default-cpu", 250)),
                         default_memory_mi=int(_flag(args, "--default-memory", 256)),
                     )

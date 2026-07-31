@@ -31,6 +31,7 @@ from core.kubernetes_simulator import (
     restart_pod,
     service_rows,
     set_node_status,
+    update_namespace,
 )
 
 
@@ -86,9 +87,18 @@ def _loaded_key(username):
 def _load_state(username):
     key = _state_key(username)
     if not st.session_state.get(_loaded_key(username)):
-        st.session_state[key] = normalize_cluster_state(
-            load_kubernetes_lab(username)
+        loaded_state = load_kubernetes_lab(username)
+        previous_version = (
+            loaded_state.get("simulator_version", 0)
+            if loaded_state
+            else None
         )
+        st.session_state[key] = normalize_cluster_state(loaded_state)
+        if (
+            st.session_state[key]
+            and previous_version != st.session_state[key].get("simulator_version")
+        ):
+            save_kubernetes_lab(username, st.session_state[key])
         st.session_state[_loaded_key(username)] = True
     return st.session_state.get(key)
 
@@ -707,10 +717,10 @@ def _render_cluster_monitor(state):
             <div class="kmon-panel">
               <div class="kmon-title">{html.escape(namespace["name"])}</div>
               <div class="kmon-sub">{html.escape(namespace.get("owner", "Platform Team"))} · {html.escape(namespace.get("environment", "Shared"))}</div>
-              <div class="kmon-row"><span>Pods</span><b>{usage["running_pods"]} running · {usage["pending_pods"]} pending · {pod_quota or "∞"} max</b></div>
-              <div class="kmon-row"><span>CPU</span><b>{usage["cpu_m"]}m / {str(cpu_quota) + "m" if cpu_quota else "unlimited"}</b></div>
+              <div class="kmon-row"><span>Pods</span><b>{usage["running_pods"]} running · {usage["pending_pods"]} pending · {pod_quota} max</b></div>
+              <div class="kmon-row"><span>CPU</span><b>{usage["cpu_m"] / 1000:.2f} / {cpu_quota / 1000:.2f} cores</b></div>
               <div class="kmon-bar"><i style="width:{_percent(usage["cpu_m"], cpu_quota or total_cpu)}%"></i></div>
-              <div class="kmon-row"><span>Memory</span><b>{usage["memory_mi"]}Mi / {str(memory_quota) + "Mi" if memory_quota else "unlimited"}</b></div>
+              <div class="kmon-row"><span>Memory</span><b>{usage["memory_mi"] / 1024:.2f} / {memory_quota / 1024:.2f} GiB</b></div>
               <div class="kmon-bar memory"><i style="width:{_percent(usage["memory_mi"], memory_quota or total_memory)}%"></i></div>
               <div class="kmon-foot">{usage["deployments"]} deployments · {usage["services"]} services</div>
             </div>
@@ -787,14 +797,8 @@ def _parse_labels(value):
 
 
 def _render_resource_management(username, state):
-    namespace_tab, workload_tab, inspect_tab = st.tabs(
-        ["Namespaces", "Deployments & Services", "Inspect"]
-    )
+    namespace_tab, workload_tab = st.tabs(["Namespaces", "Deployments & Services"])
     with namespace_tab:
-        st.caption(
-            "A namespace is a cluster-level organizational and policy boundary. "
-            "Quotas are enforceable maximums; Kubernetes schedules its pods across available workers."
-        )
         with st.form("namespace_policy_form"):
             identity = st.columns(3)
             name = identity[0].text_input("Namespace name", placeholder="data-engineering")
@@ -804,13 +808,31 @@ def _render_resource_management(username, state):
                 ["Development", "Testing", "Staging", "Production", "Shared"],
             )
             quotas = st.columns(4)
-            cpu_cores = quotas[0].number_input("CPU quota (cores)", 0.0, 10000.0, 4.0, step=0.5)
-            memory_gi = quotas[1].number_input("Memory quota (Gi)", 0.0, 100000.0, 8.0, step=0.5)
-            storage_gi = quotas[2].number_input("Storage quota (Gi)", 0, 1000000, 50)
-            max_pods = quotas[3].number_input("Maximum pods", 0, 100000, 20)
+            cpu_cores = quotas[0].number_input(
+                "CPU quota (cores)", 0.1, 10000.0, 1.0, step=0.1
+            )
+            memory_gi = quotas[1].number_input(
+                "Memory quota (GiB)",
+                0.1,
+                100000.0,
+                2.0,
+                step=0.1,
+                help="1 GiB equals 1024 MiB.",
+            )
+            storage_gi = quotas[2].number_input("Storage quota (GiB)", 1, 1000000, 10)
+            max_pods = quotas[3].number_input("Maximum pods", 1, 100000, 10)
             defaults = st.columns(3)
-            default_cpu = defaults[0].number_input("Default CPU / pod (m)", 1, 128000, 250)
-            default_memory = defaults[1].number_input("Default memory / pod (Mi)", 1, 1048576, 256)
+            default_cpu_cores = defaults[0].number_input(
+                "Default CPU per pod (cores)", 0.01, 128.0, 0.25, step=0.05
+            )
+            default_memory_gi = defaults[1].number_input(
+                "Default memory per pod (GiB)",
+                0.01,
+                1024.0,
+                0.25,
+                step=0.05,
+                help="0.25 GiB equals 256 MiB.",
+            )
             labels_text = defaults[2].text_input(
                 "Labels",
                 value="team=data-platform",
@@ -828,8 +850,8 @@ def _render_resource_management(username, state):
                     int(memory_gi * 1024),
                     storage_gi,
                     max_pods,
-                    default_cpu,
-                    default_memory,
+                    int(default_cpu_cores * 1000),
+                    int(default_memory_gi * 1024),
                     _parse_labels(labels_text),
                 )
                 _store_state(username, state)
@@ -837,8 +859,110 @@ def _render_resource_management(username, state):
             except (ValueError, TypeError) as exc:
                 st.error(str(exc))
         st.dataframe(pd.DataFrame(namespace_rows(state)), width="stretch", hide_index=True)
+        for namespace_name, policy in state["namespaces"].items():
+            with st.expander(f"Adjust {namespace_name}"):
+                with st.form(f"edit_namespace_{namespace_name}"):
+                    identity = st.columns(2)
+                    edit_owner = identity[0].text_input(
+                        "Owner / team",
+                        value=policy.get("owner", "Platform Team"),
+                        key=f"owner_{namespace_name}",
+                    )
+                    environments = [
+                        "Development",
+                        "Testing",
+                        "Staging",
+                        "Production",
+                        "Shared",
+                        "System",
+                    ]
+                    current_environment = policy.get("environment", "Shared")
+                    edit_environment = identity[1].selectbox(
+                        "Environment",
+                        environments,
+                        index=(
+                            environments.index(current_environment)
+                            if current_environment in environments
+                            else environments.index("Shared")
+                        ),
+                        key=f"environment_{namespace_name}",
+                    )
+                    quotas = st.columns(4)
+                    edit_cpu = quotas[0].number_input(
+                        "CPU quota (cores)",
+                        min_value=0.1,
+                        value=policy["cpu_quota_m"] / 1000,
+                        step=0.1,
+                        key=f"cpu_quota_{namespace_name}",
+                    )
+                    edit_memory = quotas[1].number_input(
+                        "Memory quota (GiB)",
+                        min_value=0.1,
+                        value=policy["memory_quota_mi"] / 1024,
+                        step=0.1,
+                        key=f"memory_quota_{namespace_name}",
+                    )
+                    edit_storage = quotas[2].number_input(
+                        "Storage quota (GiB)",
+                        min_value=1,
+                        value=policy["storage_quota_gi"],
+                        key=f"storage_quota_{namespace_name}",
+                    )
+                    edit_pods = quotas[3].number_input(
+                        "Maximum pods",
+                        min_value=1,
+                        value=policy["pod_quota"],
+                        key=f"pod_quota_{namespace_name}",
+                    )
+                    defaults = st.columns(3)
+                    edit_default_cpu = defaults[0].number_input(
+                        "Default CPU per pod (cores)",
+                        min_value=0.01,
+                        value=policy["default_cpu_m"] / 1000,
+                        step=0.05,
+                        key=f"default_cpu_{namespace_name}",
+                    )
+                    edit_default_memory = defaults[1].number_input(
+                        "Default memory per pod (GiB)",
+                        min_value=0.01,
+                        value=policy["default_memory_mi"] / 1024,
+                        step=0.05,
+                        key=f"default_memory_{namespace_name}",
+                    )
+                    edit_labels = defaults[2].text_input(
+                        "Labels",
+                        value=",".join(
+                            f"{key}={value}"
+                            for key, value in policy.get("labels", {}).items()
+                        ),
+                        key=f"labels_{namespace_name}",
+                    )
+                    save_namespace = st.form_submit_button("Save Changes")
+                if save_namespace:
+                    try:
+                        update_namespace(
+                            state,
+                            namespace_name,
+                            edit_owner,
+                            edit_environment,
+                            int(edit_cpu * 1000),
+                            int(edit_memory * 1024),
+                            edit_storage,
+                            edit_pods,
+                            int(edit_default_cpu * 1000),
+                            int(edit_default_memory * 1024),
+                            _parse_labels(edit_labels),
+                        )
+                        _store_state(username, state)
+                        st.rerun()
+                    except (ValueError, TypeError) as exc:
+                        st.error(str(exc))
 
     with workload_tab:
+        st.caption(
+            "Deployment keeps the requested number of pods running. "
+            "Service gives those pods a stable network name and port."
+        )
         namespaces = sorted(state["namespaces"])
         with st.form("namespace_workload_form"):
             first = st.columns(4)
@@ -846,11 +970,14 @@ def _render_resource_management(username, state):
             workload_name = first[1].text_input("Workload name", value="data-api")
             image = first[2].text_input("Container image", value="example/data-api:1.0")
             kind = first[3].selectbox("Controller", ["Deployment", "StatefulSet"])
-            second = st.columns(4)
+            second = st.columns(3)
             replicas = second[0].number_input("Pods / replicas", 0, 5000, 3)
-            cpu = second[1].number_input("CPU / pod (m)", 1, 128000, 250)
-            memory = second[2].number_input("Memory / pod (Mi)", 1, 1048576, 256)
-            heap = second[3].number_input("JVM heap / pod (Mi)", 0, 1048576, 0)
+            cpu_cores = second[1].number_input(
+                "CPU per pod (cores)", 0.01, 128.0, 0.25, step=0.05
+            )
+            memory_gi = second[2].number_input(
+                "Memory per pod (GiB)", 0.01, 1024.0, 0.25, step=0.05
+            )
             create_workload_clicked = st.form_submit_button(
                 "Create Workload",
                 type="primary",
@@ -863,10 +990,9 @@ def _render_resource_management(username, state):
                     image,
                     replicas,
                     namespace,
-                    cpu,
-                    memory,
+                    int(cpu_cores * 1000),
+                    int(memory_gi * 1024),
                     kind,
-                    heap,
                 )
                 _store_state(username, state)
                 st.rerun()
@@ -905,23 +1031,6 @@ def _render_resource_management(username, state):
                     st.rerun()
                 except (ValueError, TypeError) as exc:
                     st.error(str(exc))
-
-    with inspect_tab:
-        namespaces_view, pods_view, deployments_view, services_view = st.tabs(
-            ["Namespaces", "Pods", "Deployments", "Services"]
-        )
-        resources = [
-            (namespaces_view, namespace_rows(state), "namespaces"),
-            (pods_view, pod_rows(state), "pods"),
-            (deployments_view, deployment_rows(state), "deployments"),
-            (services_view, service_rows(state), "services"),
-        ]
-        for tab, rows, label in resources:
-            with tab:
-                if rows:
-                    st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
-                else:
-                    st.info(f"No {label} found.")
 
 
 def _terminal_prompt(state):
@@ -1049,7 +1158,7 @@ def _terminal_history_script(history):
         (() => {{
           try {{
             const history = {history_json};
-            const root = window.parent.document.querySelector('[class*="st-key-unified_terminal_form"]');
+            const root = window.parent.document.querySelector('[class*="st-key-unified_terminal_shell"]');
             const input = root && root.querySelector('input');
             if (!input || input.dataset.k8sHistoryBound === '1') return;
             input.dataset.k8sHistoryBound = '1';
@@ -1080,63 +1189,72 @@ def _terminal_history_script(history):
     )
 
 
+def _submit_terminal_command(
+    username,
+    state,
+    input_key,
+    buffer_key,
+    commands_key,
+):
+    command = st.session_state.get(input_key, "").strip()
+    if not command:
+        return
+    current_prompt = _terminal_prompt(state)
+    new_state, output, clear_requested = _terminal_run(state, command)
+    if clear_requested:
+        st.session_state[buffer_key] = []
+    else:
+        st.session_state[buffer_key].append(
+            f"{current_prompt} {command}\n{output}".rstrip()
+        )
+    st.session_state[commands_key].append(command)
+    st.session_state[input_key] = ""
+    _store_state(username, new_state)
+
+
 def _render_unified_terminal(username, state):
     prompt = _terminal_prompt(state)
     buffer_key = f"k8s_terminal_buffer::{username}"
     commands_key = f"k8s_terminal_commands::{username}"
-    version_key = f"k8s_terminal_input_version::{username}"
+    input_key = f"k8s_terminal_input::{username}"
     st.session_state.setdefault(buffer_key, [])
     st.session_state.setdefault(commands_key, [])
-    st.session_state.setdefault(version_key, 0)
     transcript = "\n".join(st.session_state[buffer_key][-80:])
-    st.html(
-        f"""
-        <style>
-          .terminal-window {{height:470px;overflow:auto;background:#05080c;color:#d7e2ef;border:1px solid #263445;border-radius:8px 8px 0 0;padding:12px;font:13px/1.45 SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}}
-          .terminal-hint {{color:#8091a7;margin-bottom:8px}}
-        </style>
-        <div class="terminal-window"><span class="terminal-hint">Virtual Kubernetes terminal · kubectl · oc · helm · pod shell</span>
-{html.escape(transcript)}</div>
-        """
-    )
     st.markdown(
         """
         <style>
-        div[class*="st-key-unified_terminal_form"] {
-            background:#05080c; border:1px solid #263445; border-top:0;
-            border-radius:0 0 8px 8px; padding:.25rem .55rem .5rem;
+        div[class*="st-key-unified_terminal_shell"] {
+            background:#05080c; border:1px solid #263445;
+            border-radius:8px; padding:.35rem .55rem .55rem;
         }
-        div[class*="st-key-unified_terminal_form"] input {
+        div[class*="st-key-unified_terminal_shell"] input {
             background:#05080c !important; color:#d7e2ef !important;
             border:0 !important; font-family:SFMono-Regular,Consolas,monospace !important;
         }
-        div[class*="st-key-unified_terminal_form"] button {display:none !important;}
         </style>
         """,
         unsafe_allow_html=True,
     )
-    with st.form("unified_terminal_form", clear_on_submit=True):
-        command = st.text_input(
-            prompt,
-            key=f"k8s_terminal_input_{st.session_state[version_key]}",
-            placeholder=f"{prompt} enter command",
-            label_visibility="collapsed",
+    with st.container(key="unified_terminal_shell"):
+        st.html(
+            f"""
+            <style>
+              .terminal-window {{height:500px;overflow:auto;background:#05080c;color:#d7e2ef;padding:9px;font:13px/1.45 SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}}
+              .terminal-hint {{color:#8091a7}}
+            </style>
+            <div class="terminal-window"><span class="terminal-hint">kubectl · oc · helm</span>
+{html.escape(transcript)}</div>
+            """
         )
-        submitted = st.form_submit_button("Run")
+        st.text_input(
+            prompt,
+            key=input_key,
+            placeholder=f"{prompt} type a command and press Enter",
+            label_visibility="collapsed",
+            on_change=_submit_terminal_command,
+            args=(username, state, input_key, buffer_key, commands_key),
+        )
     _terminal_history_script(st.session_state[commands_key])
-    if submitted and command.strip():
-        current_prompt = prompt
-        new_state, output, clear_requested = _terminal_run(state, command)
-        if clear_requested:
-            st.session_state[buffer_key] = []
-        else:
-            st.session_state[buffer_key].append(
-                f"{current_prompt} {command}\n{output}".rstrip()
-            )
-        st.session_state[commands_key].append(command)
-        st.session_state[version_key] += 1
-        _store_state(username, new_state)
-        st.rerun()
 
 
 def _render_yaml_apply(username, state):
