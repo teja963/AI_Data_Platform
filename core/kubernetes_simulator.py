@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import yaml
 
 
-SIMULATOR_VERSION = 3
+SIMULATOR_VERSION = 4
 DEFAULT_NAMESPACE = "default"
 PROVIDER_REGIONS = {
     "AWS (EKS)": "us-east-1",
@@ -89,45 +89,35 @@ def _namespace_template(
 
 
 def _system_namespaces(total_cpu_m, total_memory_mi, total_storage_gi):
-    def quota(fraction, minimum_cpu=100, minimum_memory=128, minimum_storage=1):
-        return {
-            "cpu_quota_m": max(minimum_cpu, int(total_cpu_m * fraction)),
-            "memory_quota_mi": max(minimum_memory, int(total_memory_mi * fraction)),
-            "storage_quota_gi": max(minimum_storage, int(total_storage_gi * fraction)),
-            "pod_quota": max(5, int(110 * fraction)),
-        }
-
     return {
         "default": _namespace_template(
             "default",
             owner="Platform Team",
             environment="Shared",
-            **quota(0.40),
+            default_cpu_m=1000,
+            default_memory_mi=2048,
         ),
         "kube-system": _namespace_template(
             "kube-system",
             owner="Kubernetes",
             environment="System",
-            default_cpu_m=100,
-            default_memory_mi=128,
+            default_cpu_m=1000,
+            default_memory_mi=1024,
             labels={"kubernetes.io/metadata.name": "kube-system"},
-            **quota(0.10),
         ),
         "kube-public": _namespace_template(
             "kube-public",
             owner="Kubernetes",
             environment="System",
-            default_cpu_m=50,
-            default_memory_mi=64,
-            **quota(0.05, 50, 64, 1),
+            default_cpu_m=1000,
+            default_memory_mi=1024,
         ),
         "kube-node-lease": _namespace_template(
             "kube-node-lease",
             owner="Kubernetes",
             environment="System",
-            default_cpu_m=50,
-            default_memory_mi=64,
-            **quota(0.05, 50, 64, 1),
+            default_cpu_m=1000,
+            default_memory_mi=1024,
         ),
     }
 
@@ -336,7 +326,19 @@ def service_rows(state, namespace=None):
                 "Name": service["name"],
                 "Type": service["type"],
                 "Cluster IP": service["cluster_ip"],
-                "Port": f"{service['port']}:{service['target_port']}",
+                "Ports": ", ".join(
+                    f"{item['name']} {item['port']}:{item['target_port']}"
+                    for item in service.get(
+                        "ports",
+                        [
+                            {
+                                "name": "default",
+                                "port": service["port"],
+                                "target_port": service["target_port"],
+                            }
+                        ],
+                    )
+                ),
                 "Selector": service["selector"],
             }
         )
@@ -373,16 +375,12 @@ def namespace_rows(state):
                 "Owner": namespace.get("owner", "Platform Team"),
                 "Environment": namespace.get("environment", "Shared"),
                 "Status": namespace.get("status", "Active"),
-                "Pods": (
-                    f"{usage['pods']} / {namespace.get('pod_quota', 0) or '∞'}"
-                ),
-                "CPU": (
-                    f"{usage['cpu_m'] / 1000:.2f} / "
-                    f"{namespace.get('cpu_quota_m', 0) / 1000:.2f} cores"
-                ),
-                "Memory": (
-                    f"{usage['memory_mi'] / 1024:.2f} / "
-                    f"{namespace.get('memory_quota_mi', 0) / 1024:.2f} GiB"
+                "Pods": usage["pods"],
+                "CPU Allocated": f"{usage['cpu_m'] / 1000:.2f} cores",
+                "Memory Allocated": f"{usage['memory_mi'] / 1024:.2f} GiB",
+                "Default Pod": (
+                    f"{namespace.get('default_cpu_m', 1000) / 1000:.2f} CPU / "
+                    f"{namespace.get('default_memory_mi', 2048) / 1024:.2f} GiB"
                 ),
                 "Deployments": usage["deployments"],
                 "Services": usage["services"],
@@ -530,12 +528,12 @@ def create_namespace(
     name,
     owner="Platform Team",
     environment="Development",
-    cpu_quota_m=1000,
-    memory_quota_mi=1024,
-    storage_quota_gi=10,
-    pod_quota=10,
-    default_cpu_m=250,
-    default_memory_mi=256,
+    cpu_quota_m=0,
+    memory_quota_mi=0,
+    storage_quota_gi=0,
+    pod_quota=0,
+    default_cpu_m=1000,
+    default_memory_mi=2048,
     labels=None,
 ):
     name = name.strip().lower()
@@ -543,13 +541,6 @@ def create_namespace(
         raise ValueError("namespace name is required")
     if name in state["namespaces"]:
         raise ValueError(f'namespaces "{name}" already exists')
-    _validate_namespace_policy(
-        state,
-        cpu_quota_m,
-        memory_quota_mi,
-        storage_quota_gi,
-        pod_quota,
-    )
     state["namespaces"][name] = _namespace_template(
         name,
         owner,
@@ -632,21 +623,6 @@ def update_namespace(
     namespace = state["namespaces"].get(name)
     if not namespace:
         raise ValueError(f'namespaces "{name}" not found')
-    usage = namespace_usage(state, name)
-    if int(cpu_quota_m) < usage["cpu_m"]:
-        raise ValueError("CPU quota cannot be lower than current pod allocation")
-    if int(memory_quota_mi) < usage["memory_mi"]:
-        raise ValueError("memory quota cannot be lower than current pod allocation")
-    if int(pod_quota) < usage["pods"]:
-        raise ValueError("pod limit cannot be lower than the current pod count")
-    _validate_namespace_policy(
-        state,
-        cpu_quota_m,
-        memory_quota_mi,
-        storage_quota_gi,
-        pod_quota,
-        excluding=name,
-    )
     namespace.update(
         {
             "owner": owner,
@@ -761,24 +737,138 @@ def create_service(
     target_port,
     service_type="ClusterIP",
     namespace=DEFAULT_NAMESPACE,
+    ports=None,
 ):
     namespace = _namespace(state, namespace)
     key = _key(namespace, name)
     if key in state["services"]:
         raise ValueError(f'services "{name}" already exists')
     state["counters"]["service_ip"] += 1
+    normalized_ports = ports or [
+        {"name": "default", "port": int(port), "target_port": int(target_port)}
+    ]
+    normalized_ports = [
+        {
+            "name": item.get("name", f"port-{item['port']}"),
+            "port": int(item["port"]),
+            "target_port": int(item.get("target_port", item["port"])),
+        }
+        for item in normalized_ports
+    ]
     state["services"][key] = {
         "name": name,
         "namespace": namespace,
         "selector": selector,
         "port": int(port),
         "target_port": int(target_port),
+        "ports": normalized_ports,
         "type": service_type,
         "cluster_ip": f"10.96.0.{state['counters']['service_ip']}",
         "created_at": _now(),
     }
     _event(state, "ServiceCreated", f"Exposed {selector} through service {name}.", obj=f"service/{name}")
     return state["services"][key]
+
+
+def deploy_data_platform_blueprint(
+    state,
+    namespace,
+    postgres_replicas=2,
+    api_replicas=2,
+    flink_taskmanagers=3,
+    starrocks_compute_nodes=3,
+    superset_replicas=2,
+):
+    """Create a standard PostgreSQL, Flink, StarRocks, and Superset learning stack."""
+    working = clone_state(state)
+    workloads = [
+        ("postgresql", "postgres:latest", postgres_replicas, 2, 4, "StatefulSet"),
+        ("data-api", "example/data-api:1.0", api_replicas, 1, 2, "Deployment"),
+        ("flink-operator", "apache/flink-kubernetes-operator:latest", 1, 1, 2, "Deployment"),
+        ("flink-jobmanager", "apache/flink:latest", 1, 2, 4, "Deployment"),
+        ("flink-taskmanager", "apache/flink:latest", flink_taskmanagers, 2, 4, "Deployment"),
+        ("starrocks-fe", "starrocks/fe-ubuntu:latest", 3, 2, 4, "StatefulSet"),
+        ("starrocks-cn", "starrocks/cn-ubuntu:latest", starrocks_compute_nodes, 4, 8, "Deployment"),
+        ("superset", "apache/superset:latest", superset_replicas, 1, 2, "Deployment"),
+    ]
+    for name, image, replicas, cpu, memory, kind in workloads:
+        create_deployment(
+            working,
+            name,
+            image,
+            replicas,
+            namespace,
+            cpu * 1000,
+            memory * 1024,
+            kind,
+        )
+    services = [
+        ("postgresql", "postgresql", [{"name": "sql", "port": 5432, "target_port": 5432}]),
+        ("data-api", "data-api", [{"name": "http", "port": 8080, "target_port": 8080}]),
+        (
+            "flink-operator",
+            "flink-operator",
+            [
+                {"name": "metrics", "port": 8080, "target_port": 8080},
+                {"name": "webhook", "port": 9443, "target_port": 9443},
+            ],
+        ),
+        (
+            "flink-jobmanager",
+            "flink-jobmanager",
+            [
+                {"name": "rpc", "port": 6123, "target_port": 6123},
+                {"name": "blob", "port": 6124, "target_port": 6124},
+                {"name": "web-ui", "port": 8081, "target_port": 8081},
+            ],
+        ),
+        (
+            "flink-taskmanager",
+            "flink-taskmanager",
+            [{"name": "rpc", "port": 6122, "target_port": 6122}],
+        ),
+        (
+            "starrocks-fe",
+            "starrocks-fe",
+            [
+                {"name": "http", "port": 8030, "target_port": 8030},
+                {"name": "edit-log", "port": 9010, "target_port": 9010},
+                {"name": "rpc", "port": 9020, "target_port": 9020},
+                {"name": "mysql", "port": 9030, "target_port": 9030},
+            ],
+        ),
+        (
+            "starrocks-cn",
+            "starrocks-cn",
+            [
+                {"name": "http", "port": 8040, "target_port": 8040},
+                {"name": "heartbeat", "port": 9050, "target_port": 9050},
+                {"name": "thrift", "port": 9060, "target_port": 9060},
+                {"name": "brpc", "port": 8060, "target_port": 8060},
+                {"name": "starlet", "port": 9070, "target_port": 9070},
+            ],
+        ),
+        ("superset", "superset", [{"name": "web-ui", "port": 8088, "target_port": 8088}]),
+    ]
+    for name, selector, ports in services:
+        first = ports[0]
+        create_service(
+            working,
+            name,
+            selector,
+            first["port"],
+            first["target_port"],
+            "ClusterIP",
+            namespace,
+            ports=ports,
+        )
+    _event(
+        working,
+        "BlueprintDeployed",
+        f"Deployed the standard data platform blueprint in namespace {namespace}.",
+        obj=f"namespace/{namespace}",
+    )
+    return working
 
 
 def add_worker_node(state, cpu, memory, storage):
@@ -902,7 +992,7 @@ def _get_output(state, resource, namespace, all_namespaces=False):
         rows = service_rows(state, ns)
         return _format_table(
             ["NAMESPACE", "NAME", "TYPE", "CLUSTER-IP", "PORT"],
-            [[row["Namespace"], row["Name"], row["Type"], row["Cluster IP"], row["Port"]] for row in rows],
+            [[row["Namespace"], row["Name"], row["Type"], row["Cluster IP"], row["Ports"]] for row in rows],
         )
     if resource in {"namespace", "namespaces", "ns"}:
         rows = namespace_rows(state)
@@ -913,8 +1003,8 @@ def _get_output(state, resource, namespace, all_namespaces=False):
                     item["Namespace"],
                     item["Status"],
                     item["Pods"],
-                    item["CPU"],
-                    item["Memory"],
+                    item["CPU Allocated"],
+                    item["Memory Allocated"],
                     item["Owner"],
                 ]
                 for item in rows
@@ -1359,12 +1449,12 @@ def execute_command(state, command, manifest_text=""):
                         args[2],
                         owner=_flag(args, "--owner", "Platform Team"),
                         environment=_flag(args, "--environment", "Development"),
-                        cpu_quota_m=int(_flag(args, "--cpu-quota", 1000)),
-                        memory_quota_mi=int(_flag(args, "--memory-quota", 1024)),
-                        storage_quota_gi=int(_flag(args, "--storage-quota", 10)),
-                        pod_quota=int(_flag(args, "--pod-quota", 10)),
-                        default_cpu_m=int(_flag(args, "--default-cpu", 250)),
-                        default_memory_mi=int(_flag(args, "--default-memory", 256)),
+                        cpu_quota_m=0,
+                        memory_quota_mi=0,
+                        storage_quota_gi=0,
+                        pod_quota=0,
+                        default_cpu_m=int(_flag(args, "--default-cpu", 1000)),
+                        default_memory_mi=int(_flag(args, "--default-memory", 2048)),
                     )
                     output = f'namespace/{args[2]} created'
                 elif action == "create" and len(args) >= 3 and args[1] in {"deployment", "deploy"}:

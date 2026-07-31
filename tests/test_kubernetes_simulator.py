@@ -5,6 +5,7 @@ from core.kubernetes_simulator import (
     create_deployment,
     create_namespace,
     delete_pod,
+    deploy_data_platform_blueprint,
     execute_command,
     normalize_cluster_state,
     set_node_status,
@@ -127,44 +128,50 @@ spec:
         )
         self.assertIn("successfully rolled out", output)
 
-    def test_namespace_quota_limits_workloads(self):
-        create_namespace(
-            self.state,
-            "analytics",
-            cpu_quota_m=1000,
-            memory_quota_mi=1024,
-            pod_quota=2,
-        )
+    def test_namespace_allows_unlimited_workload_objects(self):
+        create_namespace(self.state, "analytics")
         create_deployment(
             self.state,
             "worker",
             "example/worker:1",
-            replicas=2,
+            replicas=20,
             namespace="analytics",
-            cpu_request_m=500,
-            memory_request_mi=512,
+            cpu_request_m=1000,
+            memory_request_mi=2048,
         )
-        with self.assertRaisesRegex(ValueError, "quota"):
-            create_deployment(
-                self.state,
-                "extra",
-                "example/extra:1",
-                replicas=1,
-                namespace="analytics",
-                cpu_request_m=250,
-                memory_request_mi=256,
-            )
+        self.assertEqual(len(self.state["pods"]), 20)
+        self.assertTrue(
+            any(pod["status"] == "Pending" for pod in self.state["pods"].values())
+        )
 
-    def test_initial_state_has_only_finite_builtin_namespaces(self):
+    def test_initial_state_has_only_unlimited_builtin_namespaces(self):
         self.assertEqual(
             set(self.state["namespaces"]),
             {"default", "kube-system", "kube-public", "kube-node-lease"},
         )
         for namespace in self.state["namespaces"].values():
-            self.assertGreater(namespace["cpu_quota_m"], 0)
-            self.assertGreater(namespace["memory_quota_mi"], 0)
-            self.assertGreater(namespace["storage_quota_gi"], 0)
-            self.assertGreater(namespace["pod_quota"], 0)
+            self.assertEqual(namespace["cpu_quota_m"], 0)
+            self.assertEqual(namespace["memory_quota_mi"], 0)
+            self.assertEqual(namespace["storage_quota_gi"], 0)
+            self.assertEqual(namespace["pod_quota"], 0)
+
+    def test_data_platform_blueprint_has_standard_components_and_ports(self):
+        create_namespace(self.state, "development")
+        state = deploy_data_platform_blueprint(
+            self.state,
+            "development",
+            starrocks_compute_nodes=3,
+        )
+        self.assertEqual(state["deployments"]["development/starrocks-fe"]["replicas"], 3)
+        self.assertEqual(state["deployments"]["development/starrocks-cn"]["replicas"], 3)
+        self.assertIn("development/postgresql", state["services"])
+        self.assertIn("development/flink-jobmanager", state["services"])
+        self.assertIn("development/superset", state["services"])
+        fe_ports = {
+            item["port"]
+            for item in state["services"]["development/starrocks-fe"]["ports"]
+        }
+        self.assertEqual(fe_ports, {8030, 9010, 9020, 9030})
 
     def test_old_lab_is_reset_during_version_migration(self):
         self.state["simulator_version"] = 2

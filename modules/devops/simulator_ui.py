@@ -20,6 +20,7 @@ from core.kubernetes_simulator import (
     create_service,
     delete_pod,
     deployment_rows,
+    deploy_data_platform_blueprint,
     execute_command,
     execute_pod_command,
     export_state,
@@ -691,7 +692,7 @@ def _render_lab_toolbar(username, state):
 def _percent(value, maximum):
     if not maximum:
         return 0
-    return min(100, round((value / maximum) * 100, 1))
+    return round((value / maximum) * 100, 1)
 
 
 def _render_cluster_monitor(state):
@@ -709,20 +710,17 @@ def _render_cluster_monitor(state):
     namespace_cards = []
     for namespace in state["namespaces"].values():
         usage = namespace_usage(state, namespace["name"])
-        cpu_quota = namespace.get("cpu_quota_m", 0)
-        memory_quota = namespace.get("memory_quota_mi", 0)
-        pod_quota = namespace.get("pod_quota", 0)
         namespace_cards.append(
             f"""
             <div class="kmon-panel">
               <div class="kmon-title">{html.escape(namespace["name"])}</div>
               <div class="kmon-sub">{html.escape(namespace.get("owner", "Platform Team"))} · {html.escape(namespace.get("environment", "Shared"))}</div>
-              <div class="kmon-row"><span>Pods</span><b>{usage["running_pods"]} running · {usage["pending_pods"]} pending · {pod_quota} max</b></div>
-              <div class="kmon-row"><span>CPU</span><b>{usage["cpu_m"] / 1000:.2f} / {cpu_quota / 1000:.2f} cores</b></div>
-              <div class="kmon-bar"><i style="width:{_percent(usage["cpu_m"], cpu_quota or total_cpu)}%"></i></div>
-              <div class="kmon-row"><span>Memory</span><b>{usage["memory_mi"] / 1024:.2f} / {memory_quota / 1024:.2f} GiB</b></div>
-              <div class="kmon-bar memory"><i style="width:{_percent(usage["memory_mi"], memory_quota or total_memory)}%"></i></div>
-              <div class="kmon-foot">{usage["deployments"]} deployments · {usage["services"]} services</div>
+              <div class="kmon-row"><span>Pods</span><b>{usage["running_pods"]} running · {usage["pending_pods"]} pending</b></div>
+              <div class="kmon-row"><span>CPU allocated</span><b>{usage["cpu_m"] / 1000:.2f} cores</b></div>
+              <div class="kmon-bar"><i style="width:{_percent(usage["cpu_m"], total_cpu)}%"></i></div>
+              <div class="kmon-row"><span>Memory allocated</span><b>{usage["memory_mi"] / 1024:.2f} GiB</b></div>
+              <div class="kmon-bar memory"><i style="width:{_percent(usage["memory_mi"], total_memory)}%"></i></div>
+              <div class="kmon-foot">{usage["deployments"]} deployments · {usage["services"]} services · default pod {namespace.get("default_cpu_m", 1000) / 1000:.0f} CPU / {namespace.get("default_memory_mi", 2048) / 1024:.0f} GiB</div>
             </div>
             """
         )
@@ -1033,11 +1031,290 @@ def _render_resource_management(username, state):
                     st.error(str(exc))
 
 
+RESOURCE_PROFILES = {
+    "Standard": (1, 2),
+    "Lightweight": (1, 1),
+    "Database": (2, 4),
+    "Streaming": (2, 4),
+    "Analytics / Compute": (4, 8),
+}
+
+
+def _profile_capacity(profile, custom_cpu, custom_memory):
+    if profile == "Custom":
+        return int(custom_cpu), int(custom_memory)
+    return RESOURCE_PROFILES[profile]
+
+
+def _render_resource_management_unlimited(username, state):
+    namespace_tab, workload_tab = st.tabs(["Namespaces", "Deployments & Services"])
+    with namespace_tab:
+        with st.form("simple_namespace_form"):
+            identity = st.columns(4)
+            name = identity[0].text_input("Namespace name", placeholder="development")
+            owner = identity[1].text_input("Owner / team", value="Data Platform")
+            environment = identity[2].selectbox(
+                "Environment",
+                ["Development", "Testing", "Staging", "Production", "Shared"],
+            )
+            profile = identity[3].selectbox(
+                "Default pod profile",
+                [*RESOURCE_PROFILES, "Custom"],
+            )
+            defaults = st.columns(3)
+            custom_cpu = defaults[0].number_input(
+                "Custom CPU per pod (cores)",
+                min_value=1,
+                value=1,
+            )
+            custom_memory = defaults[1].number_input(
+                "Custom memory per pod (GiB)",
+                min_value=1,
+                value=2,
+            )
+            labels_text = defaults[2].text_input(
+                "Labels",
+                value="team=data-platform",
+            )
+            create_namespace_clicked = st.form_submit_button(
+                "Create Namespace",
+                type="primary",
+            )
+        if create_namespace_clicked:
+            try:
+                default_cpu, default_memory = _profile_capacity(
+                    profile,
+                    custom_cpu,
+                    custom_memory,
+                )
+                create_namespace(
+                    state,
+                    name,
+                    owner,
+                    environment,
+                    default_cpu_m=default_cpu * 1000,
+                    default_memory_mi=default_memory * 1024,
+                    labels=_parse_labels(labels_text),
+                )
+                _store_state(username, state)
+                st.rerun()
+            except (ValueError, TypeError) as exc:
+                st.error(str(exc))
+        st.dataframe(
+            pd.DataFrame(namespace_rows(state)),
+            width="stretch",
+            hide_index=True,
+        )
+        for namespace_name, policy in state["namespaces"].items():
+            with st.expander(f"Adjust {namespace_name} defaults"):
+                with st.form(f"simple_edit_namespace_{namespace_name}"):
+                    fields = st.columns(5)
+                    edit_owner = fields[0].text_input(
+                        "Owner / team",
+                        value=policy.get("owner", "Platform Team"),
+                        key=f"simple_owner_{namespace_name}",
+                    )
+                    environments = [
+                        "Development",
+                        "Testing",
+                        "Staging",
+                        "Production",
+                        "Shared",
+                        "System",
+                    ]
+                    current_environment = policy.get("environment", "Shared")
+                    edit_environment = fields[1].selectbox(
+                        "Environment",
+                        environments,
+                        index=(
+                            environments.index(current_environment)
+                            if current_environment in environments
+                            else environments.index("Shared")
+                        ),
+                        key=f"simple_environment_{namespace_name}",
+                    )
+                    edit_cpu = fields[2].number_input(
+                        "Default CPU (cores)",
+                        min_value=1,
+                        value=max(1, round(policy.get("default_cpu_m", 1000) / 1000)),
+                        key=f"simple_cpu_{namespace_name}",
+                    )
+                    edit_memory = fields[3].number_input(
+                        "Default memory (GiB)",
+                        min_value=1,
+                        value=max(1, round(policy.get("default_memory_mi", 2048) / 1024)),
+                        key=f"simple_memory_{namespace_name}",
+                    )
+                    edit_labels = fields[4].text_input(
+                        "Labels",
+                        value=",".join(
+                            f"{key}={value}"
+                            for key, value in policy.get("labels", {}).items()
+                        ),
+                        key=f"simple_labels_{namespace_name}",
+                    )
+                    save_namespace = st.form_submit_button("Save Defaults")
+                if save_namespace:
+                    try:
+                        update_namespace(
+                            state,
+                            namespace_name,
+                            edit_owner,
+                            edit_environment,
+                            0,
+                            0,
+                            0,
+                            0,
+                            edit_cpu * 1000,
+                            edit_memory * 1024,
+                            _parse_labels(edit_labels),
+                        )
+                        _store_state(username, state)
+                        st.rerun()
+                    except (ValueError, TypeError) as exc:
+                        st.error(str(exc))
+
+    with workload_tab:
+        namespaces = sorted(state["namespaces"])
+        st.caption(
+            "Deployment keeps pod replicas running. Service gives those pods stable DNS and ports."
+        )
+        with st.form("standard_workload_form"):
+            first = st.columns(5)
+            namespace = first[0].selectbox("Namespace", namespaces)
+            workload_name = first[1].text_input("Workload name", value="data-api")
+            image = first[2].text_input("Container image", value="example/data-api:1.0")
+            kind = first[3].selectbox("Controller", ["Deployment", "StatefulSet"])
+            replicas = first[4].number_input("Pod replicas", 0, 100000, 2)
+            second = st.columns(3)
+            resource_profile = second[0].selectbox(
+                "Pod resource profile",
+                [*RESOURCE_PROFILES, "Custom"],
+            )
+            custom_cpu = second[1].number_input(
+                "Custom CPU per pod (cores)",
+                min_value=1,
+                value=1,
+            )
+            custom_memory = second[2].number_input(
+                "Custom memory per pod (GiB)",
+                min_value=1,
+                value=2,
+            )
+            create_workload = st.form_submit_button(
+                "Create Workload",
+                type="primary",
+            )
+        if create_workload:
+            try:
+                cpu, memory = _profile_capacity(
+                    resource_profile,
+                    custom_cpu,
+                    custom_memory,
+                )
+                create_deployment(
+                    state,
+                    workload_name,
+                    image,
+                    replicas,
+                    namespace,
+                    cpu * 1000,
+                    memory * 1024,
+                    kind,
+                )
+                _store_state(username, state)
+                st.rerun()
+            except (ValueError, TypeError) as exc:
+                st.error(str(exc))
+
+        deployments = list(state["deployments"].values())
+        if deployments:
+            with st.form("simple_service_form"):
+                fields = st.columns(5)
+                target = fields[0].selectbox(
+                    "Workload",
+                    deployments,
+                    format_func=lambda item: f"{item['namespace']}/{item['name']}",
+                )
+                service_name = fields[1].text_input("Service name", value="data-api")
+                service_port = fields[2].number_input("Service port", 1, 65535, 80)
+                container_port = fields[3].number_input("Container port", 1, 65535, 8080)
+                service_type = fields[4].selectbox(
+                    "Service type",
+                    ["ClusterIP", "NodePort", "LoadBalancer"],
+                )
+                create_service_clicked = st.form_submit_button("Create Service")
+            if create_service_clicked:
+                try:
+                    create_service(
+                        state,
+                        service_name,
+                        target["name"],
+                        service_port,
+                        container_port,
+                        service_type,
+                        target["namespace"],
+                    )
+                    _store_state(username, state)
+                    st.rerun()
+                except (ValueError, TypeError) as exc:
+                    st.error(str(exc))
+
+        with st.expander("Deploy standard data engineering platform"):
+            with st.form("data_platform_blueprint_form"):
+                blueprint = st.columns(5)
+                blueprint_namespace = blueprint[0].selectbox(
+                    "Namespace",
+                    namespaces,
+                    key="blueprint_namespace",
+                )
+                postgres_replicas = blueprint[1].number_input(
+                    "PostgreSQL pods",
+                    min_value=1,
+                    value=2,
+                )
+                flink_taskmanagers = blueprint[2].number_input(
+                    "Flink TaskManagers",
+                    min_value=1,
+                    value=3,
+                )
+                starrocks_compute = blueprint[3].number_input(
+                    "StarRocks compute nodes",
+                    min_value=3,
+                    max_value=10,
+                    value=3,
+                )
+                superset_replicas = blueprint[4].number_input(
+                    "Superset pods",
+                    min_value=1,
+                    value=2,
+                )
+                deploy_blueprint = st.form_submit_button(
+                    "Deploy PostgreSQL + Flink + StarRocks + Superset",
+                    type="primary",
+                )
+            if deploy_blueprint:
+                try:
+                    new_state = deploy_data_platform_blueprint(
+                        state,
+                        blueprint_namespace,
+                        postgres_replicas,
+                        2,
+                        flink_taskmanagers,
+                        starrocks_compute,
+                        superset_replicas,
+                    )
+                    _store_state(username, new_state)
+                    st.rerun()
+                except (ValueError, TypeError) as exc:
+                    st.error(str(exc))
+
+
 def _terminal_prompt(state):
     context = state["terminal_context"]
     if context["mode"] == "pod":
         return f"{context['namespace']}/{context['pod']}:{context.get('cwd', '/app')}$"
-    return f"{state['cluster']['name']}[{context['namespace']}]$"
+    return f"{state['cluster']['name']}:{context['namespace']}$"
 
 
 def _terminal_run(state, command):
@@ -1223,38 +1500,125 @@ def _render_unified_terminal(username, state):
     st.markdown(
         """
         <style>
-        div[class*="st-key-unified_terminal_shell"] {
-            background:#05080c; border:1px solid #263445;
-            border-radius:8px; padding:.35rem .55rem .55rem;
-        }
-        div[class*="st-key-unified_terminal_shell"] input {
-            background:#05080c !important; color:#d7e2ef !important;
-            border:0 !important; font-family:SFMono-Regular,Consolas,monospace !important;
-        }
+        div[class*="st-key-k8s_terminal_bridge"] {display:none !important;}
         </style>
         """,
         unsafe_allow_html=True,
     )
-    with st.container(key="unified_terminal_shell"):
-        st.html(
-            f"""
-            <style>
-              .terminal-window {{height:500px;overflow:auto;background:#05080c;color:#d7e2ef;padding:9px;font:13px/1.45 SFMono-Regular,Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere}}
-              .terminal-hint {{color:#8091a7}}
-            </style>
-            <div class="terminal-window"><span class="terminal-hint">kubectl · oc · helm</span>
-{html.escape(transcript)}</div>
-            """
-        )
+    with st.container(key="k8s_terminal_bridge"):
         st.text_input(
-            prompt,
+            "Terminal bridge",
             key=input_key,
-            placeholder=f"{prompt} type a command and press Enter",
             label_visibility="collapsed",
-            on_change=_submit_terminal_command,
+        )
+        st.button(
+            "Send terminal command",
+            key=f"k8s_terminal_send::{username}",
+            on_click=_submit_terminal_command,
             args=(username, state, input_key, buffer_key, commands_key),
         )
-    _terminal_history_script(st.session_state[commands_key])
+    prompt_json = json.dumps(prompt).replace("<", "\\u003c")
+    history_json = json.dumps(st.session_state[commands_key][-100:]).replace(
+        "<", "\\u003c"
+    )
+    st.iframe(
+        f"""
+        <!doctype html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            * {{box-sizing:border-box}}
+            html,body {{margin:0;width:100%;height:100%;background:#05080c;color:#d9f7df}}
+            body {{font:14px/1.5 SFMono-Regular,Menlo,Monaco,Consolas,monospace}}
+            #terminal {{height:100%;display:flex;flex-direction:column;border:1px solid #263445;border-radius:8px;overflow:hidden}}
+            #toolbar {{height:34px;display:flex;align-items:center;justify-content:space-between;padding:0 10px;background:#111720;border-bottom:1px solid #263445}}
+            #dots {{display:flex;gap:6px}} #dots i {{width:10px;height:10px;border-radius:50%;display:block}}
+            #dots i:nth-child(1){{background:#ff5f57}} #dots i:nth-child(2){{background:#febc2e}} #dots i:nth-child(3){{background:#28c840}}
+            #title {{color:#94a4b8;font-size:12px}}
+            #expand {{border:0;background:transparent;color:#b8c5d6;font-size:17px;cursor:pointer}}
+            #screen {{flex:1;overflow:auto;padding:12px;cursor:text}}
+            #scrollback {{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;color:#d9f7df}}
+            #prompt-row {{display:flex;align-items:center;gap:8px;min-height:25px}}
+            #prompt {{color:#6fe58d;white-space:nowrap;font-weight:600}}
+            #command {{flex:1;border:0;outline:0;background:transparent;color:#f2f7fb;font:inherit;caret-color:#65ff8d;padding:0}}
+            #status {{color:#7d8da3;font-size:11px;padding:0 12px 8px}}
+            :fullscreen #terminal {{border-radius:0;border:0}} :fullscreen body {{padding:0}}
+          </style>
+        </head>
+        <body>
+          <div id="terminal">
+            <div id="toolbar">
+              <span id="dots"><i></i><i></i><i></i></span>
+              <span id="title">Kubernetes Simulator Terminal</span>
+              <button id="expand" title="Fullscreen">⛶</button>
+            </div>
+            <div id="screen">
+              <pre id="scrollback">{html.escape(transcript)}</pre>
+              <div id="prompt-row">
+                <span id="prompt"></span>
+                <input id="command" autocomplete="off" autocapitalize="off" spellcheck="false" autofocus>
+              </div>
+            </div>
+            <div id="status">Enter: execute · ↑/↓: command history · kubectl exec -it POD -- sh: pod shell</div>
+          </div>
+          <script>
+            const promptText = {prompt_json};
+            const history = {history_json};
+            const prompt = document.getElementById("prompt");
+            const command = document.getElementById("command");
+            const screen = document.getElementById("screen");
+            prompt.textContent = promptText;
+            let historyIndex = history.length;
+            const setBridgeValue = (value) => {{
+              const root = window.parent.document.querySelector('[class*="st-key-k8s_terminal_bridge"]');
+              const bridge = root && root.querySelector('input');
+              const send = root && root.querySelector('button');
+              if (!bridge || !send) return false;
+              const setter = Object.getOwnPropertyDescriptor(
+                window.parent.HTMLInputElement.prototype, "value"
+              ).set;
+              setter.call(bridge, value);
+              bridge.dispatchEvent(new window.parent.Event("input", {{bubbles:true}}));
+              bridge.dispatchEvent(new window.parent.Event("change", {{bubbles:true}}));
+              setTimeout(() => send.click(), 80);
+              return true;
+            }};
+            command.addEventListener("keydown", (event) => {{
+              if (event.key === "Enter") {{
+                event.preventDefault();
+                const value = command.value.trim();
+                if (!value) return;
+                command.disabled = true;
+                if (!setBridgeValue(value)) {{
+                  command.disabled = false;
+                  document.getElementById("status").textContent = "Terminal bridge unavailable. Refresh once.";
+                }}
+              }} else if (event.key === "ArrowUp" && history.length) {{
+                event.preventDefault();
+                historyIndex = Math.max(0, historyIndex - 1);
+                command.value = history[historyIndex];
+                command.setSelectionRange(command.value.length, command.value.length);
+              }} else if (event.key === "ArrowDown" && history.length) {{
+                event.preventDefault();
+                historyIndex = Math.min(history.length, historyIndex + 1);
+                command.value = historyIndex === history.length ? "" : history[historyIndex];
+              }}
+            }});
+            document.getElementById("terminal").addEventListener("click", () => command.focus());
+            document.getElementById("expand").addEventListener("click", async () => {{
+              if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+              else await document.exitFullscreen();
+              command.focus();
+            }});
+            screen.scrollTop = screen.scrollHeight;
+            command.focus();
+          </script>
+        </body>
+        </html>
+        """,
+        height=640,
+    )
 
 
 def _render_yaml_apply(username, state):
@@ -1293,7 +1657,7 @@ def render_kubernetes_simulator():
     with tabs[0]:
         _render_cluster_monitor(state)
     with tabs[1]:
-        _render_resource_management(username, state)
+        _render_resource_management_unlimited(username, state)
     with tabs[2]:
         _render_unified_terminal(username, state)
     with tabs[3]:
