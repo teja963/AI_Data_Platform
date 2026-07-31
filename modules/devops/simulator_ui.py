@@ -40,6 +40,7 @@ from core.kubernetes_simulator import (
     set_node_status,
     update_namespace,
 )
+from core.terminal_component import terminal_component
 
 
 MANIFEST_EXAMPLE = """apiVersion: apps/v1
@@ -1844,6 +1845,52 @@ def _render_unified_terminal(username, state, terminal_id="main"):
     )
 
 
+def _render_reliable_terminal(username, state, terminal_id, title):
+    suffix = f"{username}::{terminal_id}"
+    context_key = f"k8s_terminal_context::{suffix}"
+    buffer_key = f"k8s_terminal_buffer::{suffix}"
+    commands_key = f"k8s_terminal_commands::{suffix}"
+    processed_key = f"k8s_terminal_processed::{suffix}"
+    st.session_state.setdefault(
+        context_key,
+        {
+            "mode": "cluster",
+            "namespace": "default",
+            "pod": None,
+            "cwd": "/app",
+        },
+    )
+    st.session_state.setdefault(buffer_key, [])
+    st.session_state.setdefault(commands_key, [])
+    context = st.session_state[context_key]
+    result = terminal_component(
+        key=f"k8s_terminal_component::{suffix}",
+        title=title,
+        prompt=_terminal_prompt(state, context),
+        transcript="\n".join(st.session_state[buffer_key][-100:]),
+        history=st.session_state[commands_key][-100:],
+    )
+    submitted = getattr(result, "submitted", None)
+    if not submitted or not isinstance(submitted, dict):
+        return
+    command = str(submitted.get("command", "")).strip()
+    nonce = submitted.get("nonce")
+    if not command or not nonce or nonce == st.session_state.get(processed_key):
+        return
+    st.session_state[processed_key] = nonce
+    current_prompt = _terminal_prompt(state, context)
+    new_state, output, clear_requested = _terminal_run(state, command, context)
+    if clear_requested:
+        st.session_state[buffer_key] = []
+    else:
+        st.session_state[buffer_key].append(
+            f"{current_prompt} {command}\n{output}".rstrip()
+        )
+    st.session_state[commands_key].append(command)
+    _store_state(username, new_state)
+    st.rerun(scope="fragment")
+
+
 def _terminal_sessions_key(username):
     return f"k8s_terminal_sessions::{username}"
 
@@ -1926,7 +1973,12 @@ def _render_multi_terminal_workspace(username):
             label_visibility="collapsed",
         )
     active_terminal = active_terminal or valid_ids[0]
-    _render_unified_terminal(username, state, active_terminal)
+    _render_reliable_terminal(
+        username,
+        state,
+        active_terminal,
+        title_by_id[active_terminal],
+    )
 
 
 def _render_yaml_apply(username, state):
