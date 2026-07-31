@@ -275,6 +275,37 @@ def _create_pod(
         "memory_request_mi": int(memory_request_mi),
         "heap_size_mi": int(heap_size_mi),
         "created_at": _now(),
+        "env": {
+            "HOSTNAME": pod_name,
+            "POD_NAME": pod_name,
+            "POD_NAMESPACE": namespace,
+            "NODE_NAME": node_name or "",
+            "APP_IMAGE": image,
+            "JAVA_TOOL_OPTIONS": f"-Xms{max(128, int(heap_size_mi) // 2)}m -Xmx{int(heap_size_mi)}m"
+            if int(heap_size_mi)
+            else "",
+        },
+        "filesystem": {
+            "/etc/hostname": pod_name,
+            "/etc/os-release": (
+                'NAME="Virtual Kubernetes Linux"\n'
+                'VERSION="1.0 (Simulator)"\n'
+                "ID=virtual-k8s\n"
+            ),
+            "/app/config/application.properties": (
+                f"app.image={image}\n"
+                f"kubernetes.namespace={namespace}\n"
+                f"kubernetes.pod={pod_name}\n"
+            ),
+            "/proc/meminfo": (
+                f"MemTotal:       {int(memory_request_mi) * 1024} kB\n"
+                f"MemAvailable:   {int(memory_request_mi * 0.72) * 1024} kB\n"
+            ),
+        },
+        "processes": [
+            {"pid": 1, "user": "app", "command": f"/entrypoint --image {image}"},
+            {"pid": 17, "user": "app", "command": "application-worker"},
+        ],
         "logs": [
             f"{_now()} Starting container from image {image}",
             f"{_now()} Application initialized successfully" if node_name else f"{_now()} Waiting for a schedulable node",
@@ -327,6 +358,7 @@ def _reconcile(state):
             if node_name:
                 pod["node"] = node_name
                 pod["status"] = "Running"
+                pod.setdefault("env", {})["NODE_NAME"] = node_name
                 pod["logs"].append(f"{_now()} Scheduled on {node_name}")
                 _event(state, "Scheduled", f"Assigned {pod['namespace']}/{pod['name']} to {node_name}.", obj=f"pod/{pod['name']}")
 
@@ -546,6 +578,14 @@ def _get_output(state, resource, namespace, all_namespaces=False):
             ["TYPE", "REASON", "OBJECT", "MESSAGE"],
             [[event["type"], event["reason"], event["object"], event["message"]] for event in state["events"][-20:]],
         )
+    if resource == "all":
+        return "\n\n".join(
+            [
+                "PODS\n" + _get_output(state, "pods", namespace, all_namespaces),
+                "DEPLOYMENTS\n" + _get_output(state, "deployments", namespace, all_namespaces),
+                "SERVICES\n" + _get_output(state, "services", namespace, all_namespaces),
+            ]
+        )
     raise ValueError(f'the server does not have a resource type "{resource}"')
 
 
@@ -689,6 +729,172 @@ def apply_manifest(state, manifest_text, default_namespace=DEFAULT_NAMESPACE):
     return "\n".join(outputs)
 
 
+def execute_pod_command(state, namespace, pod_name, command):
+    pod = state["pods"].get(_key(namespace, pod_name))
+    if not pod:
+        raise ValueError(f'pods "{pod_name}" not found')
+    if pod["status"] != "Running":
+        raise ValueError(f'unable to execute command: pod {pod_name} is {pod["status"]}')
+    command = (command or "").strip()
+    if not command:
+        raise ValueError("an in-pod command is required after --")
+    if any(value in command for value in (";", "&&", "||", "|", "`", "$(")):
+        raise ValueError("shell operators are disabled in the virtual pod shell")
+    tokens = shlex.split(command)
+    executable = tokens[0]
+    args = tokens[1:]
+    env = pod.setdefault("env", {})
+    filesystem = pod.setdefault("filesystem", {})
+
+    if executable in {"sh", "bash"}:
+        return (
+            f"Connected to virtual pod {namespace}/{pod_name}.\n"
+            "Use the Pod Shell panel for commands such as env, ls, cat, ps, df, free, "
+            "hostname, curl, and nslookup."
+        )
+    if executable == "pwd":
+        return "/app"
+    if executable == "whoami":
+        return "app"
+    if executable == "id":
+        return "uid=1000(app) gid=1000(app) groups=1000(app)"
+    if executable == "hostname":
+        return pod_name
+    if executable == "date":
+        return _now()
+    if executable == "uname":
+        return "Linux virtual-k8s 6.8.0-simulator #1 SMP x86_64 GNU/Linux"
+    if executable in {"env", "printenv"}:
+        if args:
+            variable = args[0]
+            if variable not in env:
+                raise ValueError(f"{variable}: environment variable not found")
+            return env[variable]
+        return "\n".join(f"{key}={value}" for key, value in sorted(env.items()))
+    if executable == "echo":
+        values = []
+        for value in args:
+            if value.startswith("$"):
+                values.append(env.get(value[1:], ""))
+            else:
+                values.append(value)
+        return " ".join(values)
+    if executable == "ls":
+        requested = next((arg for arg in args if not arg.startswith("-")), "/app")
+        requested = requested.rstrip("/") or "/"
+        entries = set()
+        for path in filesystem:
+            if requested == "/":
+                remainder = path.lstrip("/")
+            elif path == requested:
+                entries.add(requested.rsplit("/", 1)[-1])
+                continue
+            elif path.startswith(requested + "/"):
+                remainder = path[len(requested) + 1 :]
+            else:
+                continue
+            entries.add(remainder.split("/", 1)[0])
+        if not entries:
+            raise ValueError(f"ls: cannot access '{requested}': No such file or directory")
+        return "\n".join(sorted(entries))
+    if executable == "cat":
+        if not args:
+            raise ValueError("cat: missing file operand")
+        path = args[0]
+        if path not in filesystem:
+            raise ValueError(f"cat: {path}: No such file or directory")
+        return filesystem[path]
+    if executable == "ps":
+        return _format_table(
+            ["PID", "USER", "COMMAND"],
+            [[item["pid"], item["user"], item["command"]] for item in pod.get("processes", [])],
+        )
+    if executable == "df":
+        node = next((item for item in state["nodes"] if item["name"] == pod.get("node")), None)
+        storage = int(node["storage_gi"]) if node else 20
+        used = max(1, int(storage * 0.28))
+        return _format_table(
+            ["Filesystem", "Size", "Used", "Avail", "Use%", "Mounted on"],
+            [["virtual-overlay", f"{storage}G", f"{used}G", f"{storage - used}G", "28%", "/"]],
+        )
+    if executable == "free":
+        total = int(pod.get("memory_request_mi", 256))
+        used = max(1, int(total * 0.28))
+        return _format_table(
+            ["", "total", "used", "free", "available"],
+            [["Mem:", total, used, total - used, int(total * 0.72)]],
+        )
+    if executable == "top":
+        return (
+            f"top - virtual pod {pod_name}\n"
+            f"Tasks: {len(pod.get('processes', []))} total, 1 running\n"
+            f"CPU request: {pod.get('cpu_request_m', 0)}m  "
+            f"Memory request: {pod.get('memory_request_mi', 0)}Mi\n\n"
+            + _format_table(
+                ["PID", "USER", "%CPU", "%MEM", "COMMAND"],
+                [
+                    [item["pid"], item["user"], "3.2", "8.4", item["command"]]
+                    for item in pod.get("processes", [])
+                ],
+            )
+        )
+    if executable in {"curl", "wget"}:
+        if not args:
+            raise ValueError(f"{executable}: URL is required")
+        target = args[-1].replace("http://", "").replace("https://", "")
+        host = target.split("/", 1)[0].split(":", 1)[0]
+        service = next(
+            (
+                item
+                for item in state["services"].values()
+                if item["name"] == host
+                and item["namespace"] in {namespace, DEFAULT_NAMESPACE}
+            ),
+            None,
+        )
+        if not service:
+            raise ValueError(f"Could not resolve host: {host}")
+        endpoints = [
+            item
+            for item in state["pods"].values()
+            if item["namespace"] == service["namespace"]
+            and item.get("owner") == service["selector"]
+            and item["status"] == "Running"
+        ]
+        if not endpoints:
+            raise ValueError(f"connection to {host}:{service['port']} failed: no ready endpoints")
+        return (
+            "HTTP/1.1 200 OK\n"
+            "Content-Type: application/json\n\n"
+            + json.dumps(
+                {
+                    "service": host,
+                    "served_by": endpoints[0]["name"],
+                    "status": "ok",
+                },
+                indent=2,
+            )
+        )
+    if executable in {"nslookup", "getent"}:
+        host = args[-1] if args else ""
+        service = next(
+            (item for item in state["services"].values() if item["name"] == host),
+            None,
+        )
+        if not service:
+            raise ValueError(f"server can't find {host}: NXDOMAIN")
+        return f"Name: {host}.{service['namespace']}.svc.cluster.local\nAddress: {service['cluster_ip']}"
+    if executable == "java" and args == ["-version"]:
+        return (
+            'openjdk version "21.0.8" 2026-07-15\n'
+            "OpenJDK Runtime Environment (Virtual Kubernetes Simulator)"
+        )
+    raise ValueError(
+        f'pod command "{executable}" is not supported; try env, printenv, pwd, ls, cat, '
+        "ps, top, df, free, hostname, curl, nslookup, java -version, or echo"
+    )
+
+
 def _helm_command(state, tokens):
     if len(tokens) < 2:
         return "Helm simulator supports: install, upgrade, uninstall, list, status"
@@ -770,7 +976,34 @@ def execute_command(state, command, manifest_text=""):
                 action = args[0].lower()
                 namespace = _namespace_flag(args)
                 if action == "get" and len(args) >= 2:
-                    output = _get_output(working, args[1], namespace, "-A" in args or "--all-namespaces" in args)
+                    resource_name = next(
+                        (
+                            token
+                            for token in args[2:]
+                            if not token.startswith("-")
+                            and token
+                            not in {
+                                namespace,
+                                _flag(args, "-o"),
+                                _flag(args, "--output"),
+                            }
+                        ),
+                        None,
+                    )
+                    if resource_name and args[1] not in {"all", "events", "event"}:
+                        rendered = _describe(working, args[1], resource_name, namespace)
+                        output_format = _flag(args, "-o", _flag(args, "--output", ""))
+                        if output_format == "json":
+                            output = json.dumps(yaml.safe_load(rendered), indent=2)
+                        else:
+                            output = rendered
+                    else:
+                        output = _get_output(
+                            working,
+                            args[1],
+                            namespace,
+                            "-A" in args or "--all-namespaces" in args,
+                        )
                 elif action == "create" and len(args) >= 3 and args[1] in {"namespace", "ns"}:
                     create_namespace(working, args[2])
                     output = f'namespace/{args[2]} created'
@@ -821,6 +1054,33 @@ def execute_command(state, command, manifest_text=""):
                     if not pod:
                         raise ValueError(f'pods "{name}" not found')
                     output = "\n".join(pod["logs"])
+                elif action == "exec":
+                    if "--" not in args:
+                        raise ValueError("exec requires POD_NAME -- COMMAND")
+                    separator = args.index("--")
+                    pre_command = args[1:separator]
+                    pod_name = None
+                    skip_next = False
+                    for index, token in enumerate(pre_command):
+                        if skip_next:
+                            skip_next = False
+                            continue
+                        if token in {"-n", "--namespace", "-c", "--container"}:
+                            skip_next = True
+                            continue
+                        if token.startswith("-"):
+                            continue
+                        pod_name = token
+                        break
+                    if not pod_name:
+                        raise ValueError("pod name is required for exec")
+                    inside_command = " ".join(args[separator + 1 :])
+                    output = execute_pod_command(
+                        working,
+                        namespace,
+                        pod_name,
+                        inside_command,
+                    )
                 elif action == "apply" and _flag(args, "-f") in {"-", "manifest.yaml", "deployment.yaml"}:
                     output = apply_manifest(working, manifest_text, namespace)
                 elif action in {"cordon", "uncordon"} and len(args) >= 2:
@@ -852,6 +1112,107 @@ def execute_command(state, command, manifest_text=""):
                     deployment["generation"] += 1
                     _reconcile(working)
                     output = f'deployment.apps/{name} restarted'
+                elif action == "rollout" and len(args) >= 3 and args[1] in {"status", "history"}:
+                    _, name = _resource_name(args[2])
+                    deployment = working["deployments"].get(_key(namespace, name))
+                    if not deployment:
+                        raise ValueError(f'deployments.apps "{name}" not found')
+                    if args[1] == "history":
+                        output = (
+                            f"deployment.apps/{name}\n"
+                            f"REVISION  CHANGE-CAUSE\n{deployment['generation']}         <simulated>"
+                        )
+                    else:
+                        ready = sum(
+                            pod["status"] == "Running"
+                            for pod in working["pods"].values()
+                            if pod["namespace"] == namespace and pod.get("owner") == name
+                        )
+                        output = (
+                            f'deployment "{name}" successfully rolled out'
+                            if ready == deployment["replicas"]
+                            else f"Waiting for deployment: {ready} of {deployment['replicas']} replicas are ready"
+                        )
+                elif action == "set" and len(args) >= 4 and args[1] == "image":
+                    _, name = _resource_name(args[2])
+                    deployment = working["deployments"].get(_key(namespace, name))
+                    if not deployment:
+                        raise ValueError(f'deployments.apps "{name}" not found')
+                    image_assignment = args[3]
+                    if "=" not in image_assignment:
+                        raise ValueError("set image requires CONTAINER=IMAGE")
+                    deployment["image"] = image_assignment.split("=", 1)[1]
+                    deployment["generation"] += 1
+                    for pod_key, pod in list(working["pods"].items()):
+                        if pod["namespace"] == namespace and pod.get("owner") == name:
+                            working["pods"].pop(pod_key)
+                    _reconcile(working)
+                    output = f'deployment.apps/{name} image updated'
+                elif action in {"label", "annotate"} and len(args) >= 4:
+                    resource, name, assignment = args[1], args[2], args[3]
+                    if "=" not in assignment:
+                        raise ValueError(f"{action} requires KEY=VALUE")
+                    key_name, value = assignment.split("=", 1)
+                    if resource in {"node", "nodes"}:
+                        item = next((node for node in working["nodes"] if node["name"] == name), None)
+                    elif resource in {"pod", "pods"}:
+                        item = working["pods"].get(_key(namespace, name))
+                    elif resource in {"deployment", "deployments"}:
+                        item = working["deployments"].get(_key(namespace, name))
+                    else:
+                        item = None
+                    if not item:
+                        raise ValueError(f'{resource} "{name}" not found')
+                    item.setdefault("annotations" if action == "annotate" else "labels", {})[key_name] = value
+                    output = f'{resource}/{name} {action}d'
+                elif action == "config":
+                    subcommand = args[1] if len(args) > 1 else ""
+                    cluster_name = working["cluster"]["name"]
+                    if subcommand == "current-context":
+                        output = f"{cluster_name}-simulator"
+                    elif subcommand == "get-contexts":
+                        output = (
+                            "CURRENT  NAME                       CLUSTER\n"
+                            f"*        {cluster_name}-simulator  {cluster_name}"
+                        )
+                    elif subcommand == "view":
+                        output = yaml.safe_dump(
+                            {
+                                "current-context": f"{cluster_name}-simulator",
+                                "clusters": [{"name": cluster_name, "cluster": {"server": f"https://virtual-{cluster_name}.simulator.local"}}],
+                            },
+                            sort_keys=False,
+                        )
+                    else:
+                        raise ValueError(f'config subcommand "{subcommand}" is not supported')
+                elif action == "api-resources":
+                    output = _format_table(
+                        ["NAME", "SHORTNAMES", "APIVERSION", "NAMESPACED", "KIND"],
+                        [
+                            ["pods", "po", "v1", "true", "Pod"],
+                            ["services", "svc", "v1", "true", "Service"],
+                            ["namespaces", "ns", "v1", "false", "Namespace"],
+                            ["deployments", "deploy", "apps/v1", "true", "Deployment"],
+                            ["statefulsets", "sts", "apps/v1", "true", "StatefulSet"],
+                            ["nodes", "no", "v1", "false", "Node"],
+                        ],
+                    )
+                elif action == "explain" and len(args) >= 2:
+                    resource = args[1]
+                    output = (
+                        f"KIND: {resource.title()}\n"
+                        "DESCRIPTION:\n"
+                        f"  Virtual schema help for Kubernetes resource {resource}.\n"
+                        "FIELDS:\n"
+                        "  apiVersion <string>\n  kind <string>\n  metadata <Object>\n  spec <Object>"
+                    )
+                elif action == "auth" and len(args) >= 3 and args[1] == "can-i":
+                    output = "yes"
+                elif action == "port-forward" and len(args) >= 3:
+                    output = (
+                        f"Forwarding from 127.0.0.1:{args[2].split(':')[0]} "
+                        f"-> {args[2].split(':')[-1]} (simulated; no real socket opened)"
+                    )
                 elif action == "cluster-info":
                     cluster = working["cluster"]
                     output = (

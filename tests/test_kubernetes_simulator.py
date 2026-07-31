@@ -85,6 +85,46 @@ spec:
         self.assertIs(state, self.state)
         self.assertIn("disabled", output)
 
+    def test_virtual_pod_shell_inspects_container_state(self):
+        state, _ = execute_command(
+            self.state,
+            "kubectl create deployment api --image=example/api:1 --replicas=1 --heap-memory=512",
+        )
+        pod_name = next(iter(state["pods"].values()))["name"]
+
+        state, output = execute_command(
+            state,
+            f"kubectl exec {pod_name} -- printenv JAVA_TOOL_OPTIONS",
+        )
+        self.assertIn("-Xmx512m", output)
+
+        state, output = execute_command(
+            state,
+            f"kubectl exec {pod_name} -- cat /etc/os-release",
+        )
+        self.assertIn("Virtual Kubernetes Linux", output)
+
+    def test_common_inspection_and_rollout_commands(self):
+        state, _ = execute_command(
+            self.state,
+            "kubectl create deployment api --image=example/api:1",
+        )
+        state, output = execute_command(state, "kubectl get deployment api -o json")
+        self.assertIn('"image": "example/api:1"', output)
+
+        state, output = execute_command(
+            state,
+            "kubectl set image deployment/api api=example/api:2",
+        )
+        self.assertIn("image updated", output)
+        self.assertEqual(state["deployments"]["default/api"]["image"], "example/api:2")
+
+        state, output = execute_command(
+            state,
+            "kubectl rollout status deployment/api",
+        )
+        self.assertIn("successfully rolled out", output)
+
 
 if __name__ == "__main__":
     unittest.main()

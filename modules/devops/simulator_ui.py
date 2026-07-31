@@ -108,15 +108,17 @@ def _render_cluster_creator(username):
         "This creates an in-memory learning model only. It does not provision cloud resources, "
         "start containers, or execute commands on the server."
     )
-    profile = st.segmented_control(
-        "Cluster size",
-        list(CLUSTER_PRESETS),
-        default="Medium",
-        key="k8s_create_profile",
-    )
-    profile = profile or "Medium"
-    defaults = CLUSTER_PRESETS[profile]
     with st.form("virtual_cluster_create_form"):
+        profile = st.segmented_control(
+            "Cluster size",
+            [*CLUSTER_PRESETS, "Custom"],
+            default="Medium",
+            key="k8s_create_profile",
+            help=(
+                "Small: 2 × 2 CPU/4 GiB · Medium: 4 × 4 CPU/8 GiB · "
+                "Large: 8 × 8 CPU/16 GiB. Selection is applied only when you create the cluster."
+            ),
+        )
         identity_cols = st.columns(3)
         name = identity_cols[0].text_input("Cluster name", value="data-platform-lab")
         provider = identity_cols[1].selectbox("Provider model", list(PROVIDER_REGIONS))
@@ -126,28 +128,39 @@ def _render_cluster_creator(username):
             help="A simulated provider region used for learning and display.",
         )
         capacity_cols = st.columns(4)
-        workers = capacity_cols[0].number_input(
-            "Worker nodes", min_value=1, max_value=100, value=defaults["workers"]
+        custom_workers = capacity_cols[0].number_input(
+            "Custom worker nodes", min_value=1, max_value=100, value=4
         )
-        cpu = capacity_cols[1].number_input(
-            "CPU per worker", min_value=1, max_value=128, value=defaults["cpu"]
+        custom_cpu = capacity_cols[1].number_input(
+            "Custom CPU / worker", min_value=1, max_value=128, value=4
         )
-        memory = capacity_cols[2].number_input(
-            "Memory per worker (Mi)", min_value=512, max_value=1048576, value=defaults["memory"], step=512
+        custom_memory = capacity_cols[2].number_input(
+            "Custom memory / worker (Mi)", min_value=512, max_value=1048576, value=8192, step=512
         )
-        storage = capacity_cols[3].number_input(
-            "Storage per worker (Gi)", min_value=10, max_value=65536, value=defaults["storage"], step=10
+        custom_storage = capacity_cols[3].number_input(
+            "Custom storage / worker (Gi)", min_value=10, max_value=65536, value=80, step=10
         )
         create = st.form_submit_button("Create Virtual Cluster", type="primary")
     if create:
+        selected_profile = profile or "Medium"
+        capacity = (
+            {
+                "workers": custom_workers,
+                "cpu": custom_cpu,
+                "memory": custom_memory,
+                "storage": custom_storage,
+            }
+            if selected_profile == "Custom"
+            else CLUSTER_PRESETS[selected_profile]
+        )
         state = create_cluster(
             name,
             provider,
             region,
-            workers,
-            cpu,
-            memory,
-            storage,
+            capacity["workers"],
+            capacity["cpu"],
+            capacity["memory"],
+            capacity["storage"],
         )
         _store_state(username, state)
         st.rerun()
@@ -225,7 +238,7 @@ def _render_overview(username, state):
     metrics[4].metric("Services", len(state["services"]))
 
     st.markdown("#### Live Virtual Topology")
-    st.markdown(_topology_html(state), unsafe_allow_html=True)
+    st.html(_topology_html(state))
 
     st.markdown("#### Node Capacity")
     st.dataframe(pd.DataFrame(node_rows(state)), width="stretch", hide_index=True)
@@ -359,72 +372,186 @@ def _render_terminal(username, state):
         "Safe simulator terminal: commands are parsed against the virtual state. "
         "No host shell, cloud account, or real Kubernetes API is contacted."
     )
-    quick = st.selectbox("Quick command", QUICK_COMMANDS, key="sim_quick_command")
-    if st.button("Place in terminal", key="sim_place_quick"):
-        st.session_state["sim_terminal_command"] = quick
+    cluster_terminal, pod_shell, manifest_tab = st.tabs(
+        ["Cluster Terminal", "Pod Shell", "YAML Apply"]
+    )
+    with cluster_terminal:
+        with st.form("sim_terminal_form"):
+            quick = st.selectbox(
+                "Command template",
+                ["Custom command", *QUICK_COMMANDS],
+                key="sim_quick_command",
+            )
+            custom_command = st.text_input(
+                "Command",
+                value=st.session_state.get(
+                    "sim_terminal_command",
+                    "kubectl get nodes",
+                ),
+                placeholder="kubectl create deployment api --image=example/api:1.0 --replicas=3",
+            )
+            run = st.form_submit_button("Execute", type="primary")
+        if run:
+            command = custom_command if quick == "Custom command" else quick
+            new_state, output = execute_command(
+                state,
+                command,
+                st.session_state.get("sim_manifest", ""),
+            )
+            _store_state(username, new_state)
+            st.session_state["sim_terminal_command"] = command
+            st.session_state["sim_last_output"] = output
+            st.rerun()
 
-    with st.form("sim_terminal_form"):
-        command = st.text_input(
-            "Terminal",
-            value=st.session_state.get("sim_terminal_command", "kubectl get nodes"),
-            placeholder="kubectl create deployment api --image=example/api:1.0 --replicas=3",
-        )
-        run = st.form_submit_button("Run Simulated Command", type="primary")
-    if run:
-        new_state, output = execute_command(
-            state,
-            command,
-            st.session_state.get("sim_manifest", ""),
-        )
-        _store_state(username, new_state)
-        st.session_state["sim_terminal_command"] = command
-        st.session_state["sim_last_output"] = output
-        st.rerun()
+        if st.session_state.get("sim_last_output"):
+            st.markdown("##### Terminal Output")
+            st.code(st.session_state["sim_last_output"], language="text", wrap_lines=True)
 
-    if st.session_state.get("sim_last_output"):
-        st.code(st.session_state["sim_last_output"], language="text", wrap_lines=True)
-
-    with st.expander("YAML manifest editor", expanded=False):
-        st.text_area(
-            "Manifest",
-            value=MANIFEST_EXAMPLE,
-            height=360,
-            key="sim_manifest",
-        )
-        st.caption("Apply it with: `kubectl apply -f -`")
-
-    with st.expander("Supported command examples"):
-        st.code(
-            """kubectl get pods -A
+        with st.expander("Supported cluster command examples"):
+            st.code(
+                """kubectl get pods -A
+kubectl get pod POD_NAME -o yaml
+kubectl get all -A
 kubectl create namespace streaming
-kubectl create deployment kafka --image=bitnami/kafka:latest --replicas=3 -n default
-kubectl run debug --image=busybox:latest
+kubectl create deployment kafka --image=bitnami/kafka:latest --replicas=3
 kubectl expose deployment kafka --port=9092 --target-port=9092
 kubectl scale deployment/kafka --replicas=6
 kubectl describe pod POD_NAME
 kubectl logs POD_NAME
+kubectl exec -it POD_NAME -- env
 kubectl delete pod POD_NAME
 kubectl cordon NODE_NAME
 kubectl drain NODE_NAME
 kubectl uncordon NODE_NAME
 kubectl rollout restart deployment/kafka
+kubectl rollout status deployment/kafka
+kubectl set image deployment/kafka kafka=bitnami/kafka:latest
+kubectl label node NODE_NAME workload=streaming
 kubectl top nodes
+kubectl api-resources
+kubectl explain deployment
+kubectl config current-context
+kubectl auth can-i create pods
 kubectl apply -f -
 helm install airflow apache-airflow/airflow --replica-count=3
 helm upgrade airflow apache-airflow/airflow --replica-count=5
 helm list
 helm uninstall airflow
 oc new-app example/data-api:1.0 --name=data-api""",
-            language="bash",
-        )
+                language="bash",
+            )
 
-    history = state.get("history", [])
-    if history:
-        st.markdown("#### Command History")
-        for entry in reversed(history[-12:]):
-            status = "✓" if entry["success"] else "✗"
-            with st.expander(f"{status} {entry['command']}"):
-                st.code(entry["output"], language="text", wrap_lines=True)
+        history = state.get("history", [])
+        if history:
+            st.markdown("#### Command History")
+            for entry in reversed(history[-12:]):
+                status = "✓" if entry["success"] else "✗"
+                with st.expander(f"{status} {entry['command']}"):
+                    st.code(entry["output"], language="text", wrap_lines=True)
+
+    with pod_shell:
+        running_pods = [
+            pod for pod in state["pods"].values() if pod["status"] == "Running"
+        ]
+        if not running_pods:
+            st.info(
+                "Create a workload first. A running pod is required before you can inspect its virtual shell."
+            )
+        else:
+            services = list(state["services"].values())
+            shell_commands = [
+                "env",
+                "printenv JAVA_TOOL_OPTIONS",
+                "pwd",
+                "ls /",
+                "ls /app/config",
+                "cat /etc/os-release",
+                "cat /app/config/application.properties",
+                "cat /proc/meminfo",
+                "ps aux",
+                "top",
+                "df -h",
+                "free -m",
+                "hostname",
+                "java -version",
+            ]
+            if services:
+                shell_commands.extend(
+                    [
+                        f"nslookup {services[0]['name']}",
+                        f"curl http://{services[0]['name']}:{services[0]['port']}",
+                    ]
+                )
+            with st.form("virtual_pod_shell_form"):
+                pod = st.selectbox(
+                    "Running pod",
+                    running_pods,
+                    format_func=lambda item: f"{item['namespace']}/{item['name']}",
+                )
+                template = st.selectbox(
+                    "Inside-pod command",
+                    ["Custom command", *shell_commands],
+                )
+                custom_inside = st.text_input(
+                    "Custom inside-pod command",
+                    value="env",
+                    help="This is interpreted by the simulator and never sent to the host shell.",
+                )
+                execute_inside = st.form_submit_button(
+                    "Execute Inside Pod",
+                    type="primary",
+                )
+            if execute_inside:
+                inside_command = (
+                    custom_inside if template == "Custom command" else template
+                )
+                full_command = (
+                    f"kubectl exec -n {pod['namespace']} {pod['name']} -- "
+                    f"{inside_command}"
+                )
+                new_state, output = execute_command(state, full_command)
+                _store_state(username, new_state)
+                st.session_state["sim_pod_shell_prompt"] = (
+                    f"{pod['name']}:/app$ {inside_command}"
+                )
+                st.session_state["sim_pod_shell_output"] = output
+                st.rerun()
+            if st.session_state.get("sim_pod_shell_output"):
+                st.code(
+                    f"{st.session_state.get('sim_pod_shell_prompt', '')}\n"
+                    f"{st.session_state['sim_pod_shell_output']}",
+                    language="bash",
+                    wrap_lines=True,
+                )
+
+    with manifest_tab:
+        with st.form("sim_manifest_form"):
+            st.text_area(
+                "Manifest",
+                value=MANIFEST_EXAMPLE,
+                height=360,
+                key="sim_manifest",
+            )
+            st.caption("Equivalent terminal command: `kubectl apply -f -`")
+            apply_manifest_clicked = st.form_submit_button(
+                "Apply Manifest",
+                type="primary",
+            )
+        if apply_manifest_clicked:
+            new_state, output = execute_command(
+                state,
+                "kubectl apply -f -",
+                st.session_state.get("sim_manifest", ""),
+            )
+            _store_state(username, new_state)
+            st.session_state["sim_manifest_output"] = output
+            st.rerun()
+        if st.session_state.get("sim_manifest_output"):
+            st.code(
+                st.session_state["sim_manifest_output"],
+                language="text",
+                wrap_lines=True,
+            )
 
 
 def _render_failures(username, state):
