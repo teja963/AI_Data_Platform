@@ -3,6 +3,7 @@ import unittest
 from core.kubernetes_simulator import (
     create_cluster,
     create_deployment,
+    create_namespace,
     delete_pod,
     execute_command,
     set_node_status,
@@ -124,6 +125,34 @@ spec:
             "kubectl rollout status deployment/api",
         )
         self.assertIn("successfully rolled out", output)
+
+    def test_namespace_quota_limits_workloads(self):
+        create_namespace(
+            self.state,
+            "analytics",
+            cpu_quota_m=1000,
+            memory_quota_mi=1024,
+            pod_quota=2,
+        )
+        create_deployment(
+            self.state,
+            "worker",
+            "example/worker:1",
+            replicas=2,
+            namespace="analytics",
+            cpu_request_m=500,
+            memory_request_mi=512,
+        )
+        with self.assertRaisesRegex(ValueError, "quota"):
+            create_deployment(
+                self.state,
+                "extra",
+                "example/extra:1",
+                replicas=1,
+                namespace="analytics",
+                cpu_request_m=250,
+                memory_request_mi=256,
+            )
 
 
 if __name__ == "__main__":

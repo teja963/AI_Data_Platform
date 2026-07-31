@@ -60,6 +60,49 @@ def _node_template(name, role, cpu, memory, storage):
     }
 
 
+def _namespace_template(
+    name,
+    owner="Platform Team",
+    environment="Shared",
+    cpu_quota_m=0,
+    memory_quota_mi=0,
+    storage_quota_gi=0,
+    pod_quota=0,
+    default_cpu_m=250,
+    default_memory_mi=256,
+    labels=None,
+):
+    return {
+        "name": name,
+        "status": "Active",
+        "owner": owner,
+        "environment": environment,
+        "cpu_quota_m": int(cpu_quota_m),
+        "memory_quota_mi": int(memory_quota_mi),
+        "storage_quota_gi": int(storage_quota_gi),
+        "pod_quota": int(pod_quota),
+        "default_cpu_m": int(default_cpu_m),
+        "default_memory_mi": int(default_memory_mi),
+        "labels": labels or {},
+        "created_at": _now(),
+    }
+
+
+def normalize_cluster_state(state):
+    """Add newly introduced simulator fields to previously saved labs."""
+    if not state:
+        return state
+    for name, namespace in state.setdefault("namespaces", {}).items():
+        defaults = _namespace_template(name)
+        for key, value in defaults.items():
+            namespace.setdefault(key, value)
+    state.setdefault(
+        "terminal_context",
+        {"mode": "cluster", "namespace": DEFAULT_NAMESPACE, "pod": None, "cwd": "/app"},
+    )
+    return state
+
+
 def create_cluster(
     name,
     provider,
@@ -85,8 +128,15 @@ def create_cluster(
         },
         "nodes": [],
         "namespaces": {
-            "default": {"name": "default", "status": "Active", "created_at": _now()},
-            "kube-system": {"name": "kube-system", "status": "Active", "created_at": _now()},
+            "default": _namespace_template("default"),
+            "kube-system": _namespace_template(
+                "kube-system",
+                owner="Kubernetes",
+                environment="System",
+                default_cpu_m=100,
+                default_memory_mi=128,
+                labels={"kubernetes.io/metadata.name": "kube-system"},
+            ),
         },
         "deployments": {},
         "pods": {},
@@ -94,6 +144,12 @@ def create_cluster(
         "helm_releases": {},
         "events": [],
         "history": [],
+        "terminal_context": {
+            "mode": "cluster",
+            "namespace": DEFAULT_NAMESPACE,
+            "pod": None,
+            "cwd": "/app",
+        },
         "counters": {"pod": 0, "service_ip": 10},
     }
     for index in range(int(control_planes)):
@@ -237,6 +293,54 @@ def service_rows(state, namespace=None):
     return sorted(rows, key=lambda item: (item["Namespace"], item["Name"]))
 
 
+def namespace_usage(state, namespace):
+    pods = [
+        pod for pod in state["pods"].values()
+        if pod["namespace"] == namespace
+    ]
+    return {
+        "pods": len(pods),
+        "running_pods": sum(pod["status"] == "Running" for pod in pods),
+        "pending_pods": sum(pod["status"] == "Pending" for pod in pods),
+        "cpu_m": sum(int(pod.get("cpu_request_m", 0)) for pod in pods),
+        "memory_mi": sum(int(pod.get("memory_request_mi", 0)) for pod in pods),
+        "deployments": sum(
+            item["namespace"] == namespace for item in state["deployments"].values()
+        ),
+        "services": sum(
+            item["namespace"] == namespace for item in state["services"].values()
+        ),
+    }
+
+
+def namespace_rows(state):
+    rows = []
+    for namespace in state["namespaces"].values():
+        usage = namespace_usage(state, namespace["name"])
+        rows.append(
+            {
+                "Namespace": namespace["name"],
+                "Owner": namespace.get("owner", "Platform Team"),
+                "Environment": namespace.get("environment", "Shared"),
+                "Status": namespace.get("status", "Active"),
+                "Pods": (
+                    f"{usage['pods']} / {namespace.get('pod_quota', 0) or '∞'}"
+                ),
+                "CPU": (
+                    f"{usage['cpu_m']}m / "
+                    f"{str(namespace.get('cpu_quota_m', 0)) + 'm' if namespace.get('cpu_quota_m') else '∞'}"
+                ),
+                "Memory": (
+                    f"{usage['memory_mi']}Mi / "
+                    f"{str(namespace.get('memory_quota_mi', 0)) + 'Mi' if namespace.get('memory_quota_mi') else '∞'}"
+                ),
+                "Deployments": usage["deployments"],
+                "Services": usage["services"],
+            }
+        )
+    return sorted(rows, key=lambda item: item["Namespace"])
+
+
 def _choose_node(state, cpu_request_m, memory_request_mi):
     candidates = []
     for node in state["nodes"]:
@@ -261,6 +365,14 @@ def _create_pod(
     heap_size_mi=0,
 ):
     pod_name = name
+    if namespace in state["namespaces"]:
+        _validate_namespace_quota(
+            state,
+            namespace,
+            1,
+            int(cpu_request_m),
+            int(memory_request_mi),
+        )
     node_name = _choose_node(state, int(cpu_request_m), int(memory_request_mi))
     status = "Running" if node_name else "Pending"
     pod = {
@@ -363,15 +475,64 @@ def _reconcile(state):
                 _event(state, "Scheduled", f"Assigned {pod['namespace']}/{pod['name']} to {node_name}.", obj=f"pod/{pod['name']}")
 
 
-def create_namespace(state, name):
+def create_namespace(
+    state,
+    name,
+    owner="Platform Team",
+    environment="Development",
+    cpu_quota_m=0,
+    memory_quota_mi=0,
+    storage_quota_gi=0,
+    pod_quota=0,
+    default_cpu_m=250,
+    default_memory_mi=256,
+    labels=None,
+):
     name = name.strip().lower()
     if not name:
         raise ValueError("namespace name is required")
     if name in state["namespaces"]:
         raise ValueError(f'namespaces "{name}" already exists')
-    state["namespaces"][name] = {"name": name, "status": "Active", "created_at": _now()}
+    state["namespaces"][name] = _namespace_template(
+        name,
+        owner,
+        environment,
+        cpu_quota_m,
+        memory_quota_mi,
+        storage_quota_gi,
+        pod_quota,
+        default_cpu_m,
+        default_memory_mi,
+        labels,
+    )
     _event(state, "NamespaceCreated", f"Created namespace {name}.", obj=f"namespace/{name}")
     return state["namespaces"][name]
+
+
+def _validate_namespace_quota(
+    state,
+    namespace,
+    additional_pods,
+    additional_cpu_m,
+    additional_memory_mi,
+):
+    policy = state["namespaces"][namespace]
+    usage = namespace_usage(state, namespace)
+    checks = [
+        ("pods", usage["pods"] + additional_pods, policy.get("pod_quota", 0)),
+        ("CPU millicores", usage["cpu_m"] + additional_cpu_m, policy.get("cpu_quota_m", 0)),
+        (
+            "memory Mi",
+            usage["memory_mi"] + additional_memory_mi,
+            policy.get("memory_quota_mi", 0),
+        ),
+    ]
+    for resource, requested, quota in checks:
+        if quota and requested > quota:
+            raise ValueError(
+                f'exceeded namespace "{namespace}" {resource} quota: '
+                f"requested total {requested}, quota {quota}"
+            )
 
 
 def create_deployment(
@@ -389,6 +550,13 @@ def create_deployment(
     key = _key(namespace, name)
     if key in state["deployments"]:
         raise ValueError(f'{kind.lower()}s.apps "{name}" already exists')
+    _validate_namespace_quota(
+        state,
+        namespace,
+        max(0, int(replicas)),
+        max(0, int(replicas)) * max(1, int(cpu_request_m)),
+        max(0, int(replicas)) * max(1, int(memory_request_mi)),
+    )
     state["deployments"][key] = {
         "name": name,
         "namespace": namespace,
@@ -410,6 +578,14 @@ def scale_deployment(state, name, replicas, namespace=DEFAULT_NAMESPACE):
     deployment = state["deployments"].get(_key(namespace, name))
     if not deployment:
         raise ValueError(f'deployments.apps "{name}" not found')
+    replica_delta = max(0, int(replicas) - int(deployment["replicas"]))
+    _validate_namespace_quota(
+        state,
+        namespace,
+        replica_delta,
+        replica_delta * deployment["cpu_request_m"],
+        replica_delta * deployment["memory_request_mi"],
+    )
     deployment["replicas"] = max(0, int(replicas))
     deployment["generation"] += 1
     _event(state, "ScalingReplicaSet", f"Scaled {namespace}/{name} to {replicas} replicas.", obj=f"deployment/{name}")
@@ -1005,7 +1181,18 @@ def execute_command(state, command, manifest_text=""):
                             "-A" in args or "--all-namespaces" in args,
                         )
                 elif action == "create" and len(args) >= 3 and args[1] in {"namespace", "ns"}:
-                    create_namespace(working, args[2])
+                    create_namespace(
+                        working,
+                        args[2],
+                        owner=_flag(args, "--owner", "Platform Team"),
+                        environment=_flag(args, "--environment", "Development"),
+                        cpu_quota_m=int(_flag(args, "--cpu-quota", 0)),
+                        memory_quota_mi=int(_flag(args, "--memory-quota", 0)),
+                        storage_quota_gi=int(_flag(args, "--storage-quota", 0)),
+                        pod_quota=int(_flag(args, "--pod-quota", 0)),
+                        default_cpu_m=int(_flag(args, "--default-cpu", 250)),
+                        default_memory_mi=int(_flag(args, "--default-memory", 256)),
+                    )
                     output = f'namespace/{args[2]} created'
                 elif action == "create" and len(args) >= 3 and args[1] in {"deployment", "deploy"}:
                     name = args[2]
@@ -1014,12 +1201,28 @@ def execute_command(state, command, manifest_text=""):
                         raise ValueError("required flag(s) --image must be specified")
                     replicas = int(_flag(args, "--replicas", 1))
                     heap_size = int(_flag(args, "--heap-memory", 0))
+                    namespace_policy = working["namespaces"].get(
+                        namespace,
+                        working["namespaces"][DEFAULT_NAMESPACE],
+                    )
+                    cpu_request = int(
+                        _flag(args, "--cpu", namespace_policy.get("default_cpu_m", 250))
+                    )
+                    memory_request = int(
+                        _flag(
+                            args,
+                            "--memory",
+                            namespace_policy.get("default_memory_mi", 256),
+                        )
+                    )
                     create_deployment(
                         working,
                         name,
                         image,
                         replicas,
                         namespace,
+                        cpu_request,
+                        memory_request,
                         heap_size_mi=heap_size,
                     )
                     output = f'deployment.apps/{name} created'
@@ -1028,7 +1231,24 @@ def execute_command(state, command, manifest_text=""):
                     image = _flag(args, "--image")
                     if not image:
                         raise ValueError("required flag(s) --image must be specified")
-                    _create_pod(working, name, _namespace(working, namespace), image)
+                    target_namespace = _namespace(working, namespace)
+                    policy = working["namespaces"][target_namespace]
+                    _create_pod(
+                        working,
+                        name,
+                        target_namespace,
+                        image,
+                        cpu_request_m=int(
+                            _flag(args, "--cpu", policy.get("default_cpu_m", 250))
+                        ),
+                        memory_request_mi=int(
+                            _flag(
+                                args,
+                                "--memory",
+                                policy.get("default_memory_mi", 256),
+                            )
+                        ),
+                    )
                     output = f'pod/{name} created'
                 elif action == "expose" and len(args) >= 3:
                     _, name = _resource_name(args[2])
