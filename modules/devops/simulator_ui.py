@@ -1,6 +1,7 @@
 import html
 import json
 import shlex
+import uuid
 
 import pandas as pd
 import streamlit as st
@@ -9,6 +10,11 @@ from core.kubernetes_lab import (
     delete_kubernetes_lab,
     load_kubernetes_lab,
     save_kubernetes_lab,
+)
+from core.kubernetes_capacity import (
+    CAPACITY_PROFILES,
+    calculate_capacity,
+    profile_inputs,
 )
 from core.kubernetes_simulator import (
     CLUSTER_PRESETS,
@@ -781,6 +787,153 @@ def _render_cluster_monitor(state):
         )
 
 
+def _render_capacity_planner(username, state):
+    plan_key = f"k8s_capacity_plan::{username}"
+    with st.form("kubernetes_capacity_planner"):
+        first = st.columns(3)
+        profile = first[0].selectbox(
+            "Sizing profile",
+            [*CAPACITY_PROFILES, "Custom"],
+        )
+        provider_options = list(PROVIDER_REGIONS)
+        current_provider = state["cluster"].get("provider", provider_options[0])
+        provider = first[1].selectbox(
+            "Cloud / platform",
+            provider_options,
+            index=(
+                provider_options.index(current_provider)
+                if current_provider in provider_options
+                else 0
+            ),
+        )
+        volume_unit = first[2].selectbox("Custom ingestion unit", ["TB/day", "GB/day", "PB/day"])
+        load = st.columns(4)
+        custom_volume = load[0].number_input(
+            "Custom daily ingestion",
+            min_value=0.001,
+            value=10.0,
+            step=1.0,
+        )
+        peak_factor = load[1].number_input(
+            "Peak multiplier",
+            min_value=1.0,
+            value=3.0,
+            step=0.5,
+        )
+        retention_days = load[2].number_input(
+            "Retention days",
+            min_value=1,
+            value=30,
+        )
+        replication = load[3].number_input(
+            "Storage replication",
+            min_value=1,
+            value=3,
+        )
+        demand = st.columns(4)
+        concurrent_jobs = demand[0].number_input(
+            "Concurrent Flink jobs",
+            min_value=1,
+            value=10,
+        )
+        concurrent_users = demand[1].number_input(
+            "Concurrent dashboard/query users",
+            min_value=1,
+            value=50,
+        )
+        zones = demand[2].number_input(
+            "Availability zones",
+            min_value=1,
+            max_value=10,
+            value=3,
+        )
+        growth = demand[3].number_input(
+            "Growth headroom (%)",
+            min_value=0,
+            max_value=500,
+            value=30,
+        )
+        calculate = st.form_submit_button("Calculate Capacity", type="primary")
+    if calculate:
+        if profile == "Custom":
+            unit_multiplier = {"GB/day": 0.001, "TB/day": 1, "PB/day": 1000}
+            inputs = {
+                "daily_tb": custom_volume * unit_multiplier[volume_unit],
+                "peak_factor": peak_factor,
+                "retention_days": retention_days,
+                "replication": replication,
+                "concurrent_jobs": concurrent_jobs,
+                "concurrent_users": concurrent_users,
+                "zones": zones,
+                "growth_percent": growth,
+            }
+        else:
+            inputs = profile_inputs(profile)
+        st.session_state[plan_key] = calculate_capacity(provider=provider, **inputs)
+
+    if plan_key not in st.session_state:
+        st.session_state[plan_key] = calculate_capacity(
+            provider=state["cluster"].get("provider", "On-Premises"),
+            **profile_inputs("Development"),
+        )
+    plan = st.session_state[plan_key]
+    st.html(
+        f"""
+        <style>
+          .capacity-summary {{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:8px;background:#0b1017;padding:10px;border:1px solid #26364c;border-radius:8px;color:#e8edf5}}
+          .capacity-summary div {{background:#111a25;border:1px solid #26364c;border-radius:6px;padding:9px}}
+          .capacity-summary small {{display:block;color:#8fa1b8;font-size:.68rem;text-transform:uppercase}}
+          .capacity-summary strong {{font-size:1rem}}
+          @media(max-width:900px){{.capacity-summary{{grid-template-columns:repeat(2,1fr)}}}}
+        </style>
+        <div class="capacity-summary">
+          <div><small>Daily ingestion</small><strong>{plan["daily_tb"]:.2f} TB</strong></div>
+          <div><small>Average throughput</small><strong>{plan["average_mb_s"]:.1f} MB/s</strong></div>
+          <div><small>Designed peak</small><strong>{plan["peak_mb_s"]:.1f} MB/s</strong></div>
+          <div><small>Retained with replicas</small><strong>{plan["retained_tb"] / 1000:.2f} PB</strong></div>
+          <div><small>Workload allocation</small><strong>{plan["total_component_cpu"]} CPU / {plan["total_component_memory_gib"]} GiB</strong></div>
+        </div>
+        """
+    )
+    component_rows = [
+        {
+            "Component": item["component"],
+            "Controller": item["controller"],
+            "Replicas": item["replicas"],
+            "CPU each": f"{item['cpu_each']} cores",
+            "Memory each": f"{item['memory_each_gib']} GiB",
+            "Ports": item["ports"],
+            "Purpose": item["role"],
+        }
+        for item in plan["components"]
+    ]
+    st.markdown("#### Recommended workload sizing")
+    st.dataframe(pd.DataFrame(component_rows), width="stretch", hide_index=True)
+    node_rows_data = [
+        {
+            "Node pool": item["pool"],
+            "Provider example": item["node_type"],
+            "Nodes": item["nodes"],
+            "CPU / node": item["cpu"],
+            "Memory / node": f"{item['memory']} GiB",
+            "Storage / node": f"{item['storage']} GiB",
+        }
+        for item in plan["node_pools"]
+    ]
+    st.markdown("#### Recommended node pools")
+    st.dataframe(pd.DataFrame(node_rows_data), width="stretch", hide_index=True)
+    with st.expander("Calculation assumptions"):
+        for assumption in plan["assumptions"]:
+            st.markdown(f"- {assumption}")
+    with st.expander("Cloud cost model"):
+        st.write(plan["billing"])
+        st.caption(
+            "Kubernetes workloads are primarily billed by provisioned cluster resources. "
+            "Serverless warehouses and query services may instead charge by compute time, "
+            "capacity units or bytes scanned; those are separate services from the Kubernetes cluster."
+        )
+
+
 def _parse_labels(value):
     labels = {}
     for item in (value or "").split(","):
@@ -1032,11 +1185,11 @@ def _render_resource_management(username, state):
 
 
 RESOURCE_PROFILES = {
-    "Standard": (1, 2),
-    "Lightweight": (1, 1),
-    "Database": (2, 4),
-    "Streaming": (2, 4),
-    "Analytics / Compute": (4, 8),
+    "Standard — 1 CPU / 2 GiB": (1, 2),
+    "Lightweight — 1 CPU / 1 GiB": (1, 1),
+    "Database — 2 CPU / 4 GiB": (2, 4),
+    "Streaming — 2 CPU / 4 GiB": (2, 4),
+    "Analytics / Compute — 4 CPU / 8 GiB": (4, 8),
 }
 
 
@@ -1261,7 +1414,34 @@ def _render_resource_management_unlimited(username, state):
                     st.error(str(exc))
 
         with st.expander("Deploy standard data engineering platform"):
+            plan = st.session_state.get(
+                f"k8s_capacity_plan::{username}",
+                calculate_capacity(
+                    provider=state["cluster"].get("provider", "On-Premises"),
+                    **profile_inputs("Development"),
+                ),
+            )
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "Component": item["component"],
+                            "Replicas": item["replicas"],
+                            "CPU each": f"{item['cpu_each']} cores",
+                            "Memory each": f"{item['memory_each_gib']} GiB",
+                            "Ports": item["ports"],
+                        }
+                        for item in plan["components"]
+                    ]
+                ),
+                width="stretch",
+                hide_index=True,
+            )
             with st.form("data_platform_blueprint_form"):
+                use_plan = st.checkbox(
+                    "Use Capacity Planner recommendations",
+                    value=True,
+                )
                 blueprint = st.columns(5)
                 blueprint_namespace = blueprint[0].selectbox(
                     "Namespace",
@@ -1281,7 +1461,7 @@ def _render_resource_management_unlimited(username, state):
                 starrocks_compute = blueprint[3].number_input(
                     "StarRocks compute nodes",
                     min_value=3,
-                    max_value=10,
+                    max_value=1000,
                     value=3,
                 )
                 superset_replicas = blueprint[4].number_input(
@@ -1295,14 +1475,44 @@ def _render_resource_management_unlimited(username, state):
                 )
             if deploy_blueprint:
                 try:
+                    recommendations = {
+                        item["component"]: item for item in plan["components"]
+                    }
+                    if use_plan:
+                        postgres_replicas = recommendations["PostgreSQL"]["replicas"]
+                        api_replicas = recommendations["Data API"]["replicas"]
+                        flink_taskmanagers = recommendations["Flink TaskManager"]["replicas"]
+                        starrocks_compute = recommendations["StarRocks CN"]["replicas"]
+                        superset_replicas = recommendations["Superset"]["replicas"]
+                    resource_names = {
+                        "PostgreSQL": "postgresql",
+                        "Data API": "data-api",
+                        "Flink Operator": "flink-operator",
+                        "Flink JobManager": "flink-jobmanager",
+                        "Flink TaskManager": "flink-taskmanager",
+                        "StarRocks FE": "starrocks-fe",
+                        "StarRocks CN": "starrocks-cn",
+                        "Superset": "superset",
+                    }
+                    component_resources = {
+                        resource_names[name]: (
+                            item["cpu_each"],
+                            item["memory_each_gib"],
+                        )
+                        for name, item in recommendations.items()
+                    }
                     new_state = deploy_data_platform_blueprint(
                         state,
                         blueprint_namespace,
                         postgres_replicas,
-                        2,
+                        api_replicas if use_plan else 2,
                         flink_taskmanagers,
                         starrocks_compute,
                         superset_replicas,
+                        recommendations["Flink Operator"]["replicas"],
+                        recommendations["Flink JobManager"]["replicas"],
+                        recommendations["StarRocks FE"]["replicas"],
+                        component_resources,
                     )
                     _store_state(username, new_state)
                     st.rerun()
@@ -1310,15 +1520,15 @@ def _render_resource_management_unlimited(username, state):
                     st.error(str(exc))
 
 
-def _terminal_prompt(state):
-    context = state["terminal_context"]
+def _terminal_prompt(state, context=None):
+    context = context or state["terminal_context"]
     if context["mode"] == "pod":
         return f"{context['namespace']}/{context['pod']}:{context.get('cwd', '/app')}$"
     return f"{state['cluster']['name']}:{context['namespace']}$"
 
 
-def _terminal_run(state, command):
-    context = state["terminal_context"]
+def _terminal_run(state, command, context=None):
+    context = context or state["terminal_context"]
     command = command.strip()
     if command == "clear":
         return state, "", True
@@ -1472,12 +1682,13 @@ def _submit_terminal_command(
     input_key,
     buffer_key,
     commands_key,
+    context=None,
 ):
     command = st.session_state.get(input_key, "").strip()
     if not command:
         return
-    current_prompt = _terminal_prompt(state)
-    new_state, output, clear_requested = _terminal_run(state, command)
+    current_prompt = _terminal_prompt(state, context)
+    new_state, output, clear_requested = _terminal_run(state, command, context)
     if clear_requested:
         st.session_state[buffer_key] = []
     else:
@@ -1489,11 +1700,23 @@ def _submit_terminal_command(
     _store_state(username, new_state)
 
 
-def _render_unified_terminal(username, state):
-    prompt = _terminal_prompt(state)
-    buffer_key = f"k8s_terminal_buffer::{username}"
-    commands_key = f"k8s_terminal_commands::{username}"
-    input_key = f"k8s_terminal_input::{username}"
+def _render_unified_terminal(username, state, terminal_id="main"):
+    suffix = f"{username}::{terminal_id}"
+    context_key = f"k8s_terminal_context::{suffix}"
+    st.session_state.setdefault(
+        context_key,
+        {
+            "mode": "cluster",
+            "namespace": "default",
+            "pod": None,
+            "cwd": "/app",
+        },
+    )
+    context = st.session_state[context_key]
+    prompt = _terminal_prompt(state, context)
+    buffer_key = f"k8s_terminal_buffer::{suffix}"
+    commands_key = f"k8s_terminal_commands::{suffix}"
+    input_key = f"k8s_terminal_input::{suffix}"
     st.session_state.setdefault(buffer_key, [])
     st.session_state.setdefault(commands_key, [])
     transcript = "\n".join(st.session_state[buffer_key][-80:])
@@ -1513,9 +1736,9 @@ def _render_unified_terminal(username, state):
         )
         st.button(
             "Send terminal command",
-            key=f"k8s_terminal_send::{username}",
+            key=f"k8s_terminal_send::{suffix}",
             on_click=_submit_terminal_command,
-            args=(username, state, input_key, buffer_key, commands_key),
+            args=(username, state, input_key, buffer_key, commands_key, context),
         )
     prompt_json = json.dumps(prompt).replace("<", "\\u003c")
     history_json = json.dumps(st.session_state[commands_key][-100:]).replace(
@@ -1621,6 +1844,91 @@ def _render_unified_terminal(username, state):
     )
 
 
+def _terminal_sessions_key(username):
+    return f"k8s_terminal_sessions::{username}"
+
+
+def _active_terminal_key(username):
+    return f"k8s_active_terminal::{username}"
+
+
+def _ensure_terminal_sessions(username):
+    sessions_key = _terminal_sessions_key(username)
+    if not st.session_state.get(sessions_key):
+        terminal_id = uuid.uuid4().hex[:8]
+        st.session_state[sessions_key] = [
+            {"id": terminal_id, "title": "Terminal 1"}
+        ]
+        st.session_state[_active_terminal_key(username)] = terminal_id
+    return st.session_state[sessions_key]
+
+
+def _add_terminal(username):
+    sessions = _ensure_terminal_sessions(username)
+    terminal_id = uuid.uuid4().hex[:8]
+    sessions.append(
+        {"id": terminal_id, "title": f"Terminal {len(sessions) + 1}"}
+    )
+    st.session_state[_active_terminal_key(username)] = terminal_id
+
+
+def _close_terminal(username):
+    sessions = _ensure_terminal_sessions(username)
+    active_key = _active_terminal_key(username)
+    active = st.session_state.get(active_key)
+    if len(sessions) == 1:
+        return
+    st.session_state[_terminal_sessions_key(username)] = [
+        item for item in sessions if item["id"] != active
+    ]
+    st.session_state[active_key] = st.session_state[
+        _terminal_sessions_key(username)
+    ][-1]["id"]
+
+
+@st.fragment
+def _render_multi_terminal_workspace(username):
+    state = st.session_state.get(_state_key(username))
+    if not state:
+        st.info("Create the virtual cluster before opening terminals.")
+        return
+    sessions = _ensure_terminal_sessions(username)
+    controls = st.columns([5, 1, 1])
+    with controls[1]:
+        st.button(
+            "＋ Terminal",
+            key=f"add_terminal::{username}",
+            on_click=_add_terminal,
+            args=(username,),
+            width="stretch",
+        )
+    with controls[2]:
+        st.button(
+            "Close",
+            key=f"close_terminal::{username}",
+            on_click=_close_terminal,
+            args=(username,),
+            disabled=len(sessions) == 1,
+            width="stretch",
+        )
+    sessions = _ensure_terminal_sessions(username)
+    active_key = _active_terminal_key(username)
+    valid_ids = [item["id"] for item in sessions]
+    if st.session_state.get(active_key) not in valid_ids:
+        st.session_state[active_key] = valid_ids[0]
+    title_by_id = {item["id"]: item["title"] for item in sessions}
+    with controls[0]:
+        active_terminal = st.segmented_control(
+            "Open terminals",
+            valid_ids,
+            format_func=lambda terminal_id: title_by_id[terminal_id],
+            key=active_key,
+            label_visibility="collapsed",
+        )
+    active_terminal = active_terminal or valid_ids[0]
+    _render_unified_terminal(username, state, active_terminal)
+
+
 def _render_yaml_apply(username, state):
     with st.form("simulator_yaml_apply_form"):
         manifest = st.text_area(
@@ -1649,6 +1957,7 @@ def render_kubernetes_simulator():
     tabs = st.tabs(
         [
             "Cluster Monitor",
+            "Capacity Planning",
             "Namespaces & Resources",
             "Terminal",
             "YAML Apply",
@@ -1657,8 +1966,10 @@ def render_kubernetes_simulator():
     with tabs[0]:
         _render_cluster_monitor(state)
     with tabs[1]:
-        _render_resource_management_unlimited(username, state)
+        _render_capacity_planner(username, state)
     with tabs[2]:
-        _render_unified_terminal(username, state)
+        _render_resource_management_unlimited(username, state)
     with tabs[3]:
+        _render_multi_terminal_workspace(username)
+    with tabs[4]:
         _render_yaml_apply(username, state)

@@ -778,20 +778,26 @@ def deploy_data_platform_blueprint(
     flink_taskmanagers=3,
     starrocks_compute_nodes=3,
     superset_replicas=2,
+    flink_operator_replicas=1,
+    flink_jobmanagers=1,
+    starrocks_frontends=3,
+    component_resources=None,
 ):
     """Create a standard PostgreSQL, Flink, StarRocks, and Superset learning stack."""
     working = clone_state(state)
+    component_resources = component_resources or {}
     workloads = [
         ("postgresql", "postgres:latest", postgres_replicas, 2, 4, "StatefulSet"),
         ("data-api", "example/data-api:1.0", api_replicas, 1, 2, "Deployment"),
-        ("flink-operator", "apache/flink-kubernetes-operator:latest", 1, 1, 2, "Deployment"),
-        ("flink-jobmanager", "apache/flink:latest", 1, 2, 4, "Deployment"),
+        ("flink-operator", "apache/flink-kubernetes-operator:latest", flink_operator_replicas, 1, 2, "Deployment"),
+        ("flink-jobmanager", "apache/flink:latest", flink_jobmanagers, 2, 4, "Deployment"),
         ("flink-taskmanager", "apache/flink:latest", flink_taskmanagers, 2, 4, "Deployment"),
-        ("starrocks-fe", "starrocks/fe-ubuntu:latest", 3, 2, 4, "StatefulSet"),
+        ("starrocks-fe", "starrocks/fe-ubuntu:latest", starrocks_frontends, 2, 4, "StatefulSet"),
         ("starrocks-cn", "starrocks/cn-ubuntu:latest", starrocks_compute_nodes, 4, 8, "Deployment"),
         ("superset", "apache/superset:latest", superset_replicas, 1, 2, "Deployment"),
     ]
     for name, image, replicas, cpu, memory, kind in workloads:
+        cpu, memory = component_resources.get(name, (cpu, memory))
         create_deployment(
             working,
             name,
