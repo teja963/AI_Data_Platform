@@ -171,8 +171,8 @@ st.markdown(
         max-width: 100% !important;
         padding-top: 3.25rem !important;
         padding-bottom: 0.35rem !important;
-        padding-left: 0.6rem !important;
-        padding-right: 0.6rem !important;
+        padding-left: clamp(0.55rem, 1.2vw, 1.1rem) !important;
+        padding-right: clamp(0.55rem, 1.2vw, 1.1rem) !important;
     }
     [data-testid="stVerticalBlock"] {
         gap: 0.35rem !important;
@@ -206,12 +206,6 @@ st.markdown(
         border: 0 !important;
         box-shadow: none !important;
         outline: none !important;
-    }
-    .coding-panel-divider {
-        width: 1px;
-        height: 840px;
-        margin: 0 auto;
-        background: rgba(128, 128, 128, 0.55);
     }
     [data-theme='dark'] .stApp { background-color: #0e1117; }
 

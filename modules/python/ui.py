@@ -8,6 +8,7 @@ import streamlit as st
 
 from core.ai import ask_ai
 from core.activity import track_query_execution
+from core.coding_layout import coding_columns
 from core.editor import clear_editor_draft, render_code_editor, set_editor_draft
 from core.interview import (
     append_interview_run,
@@ -20,6 +21,7 @@ from core.interview import (
 )
 from core.loader import group_by_category, load_questions
 from core.progress import clear_progress, load_progress, save_progress
+from core.solution_notes import with_solution_comments
 from core.submissions import get_recent_submissions, get_submission_stats, record_submission
 from modules.python.engine import preview_python_question, run_python_question
 
@@ -222,7 +224,15 @@ def render_question_content(question, show_solution_note=True, submission_track=
                 st.markdown("- Includes pandas-style result validation")
             if show_solution_note:
                 st.caption("Submit expects only the function. Use the main-template button only for local scratch practice.")
-            st.code(question["solution"], language="python", wrap_lines=True)
+            st.code(
+                with_solution_comments(
+                    question["solution"],
+                    question.get("hint", ""),
+                    "python",
+                ),
+                language="python",
+                wrap_lines=True,
+            )
 
         with comments_tab:
             st.markdown("### Approach Notes")
@@ -361,13 +371,10 @@ def render_practice_workspace(questions):
     draft_key = f"python_practice::{selected_question_key}::blank_v1"
     starter = question["starter_code"]
 
-    left_col, divider_col, right_col = st.columns([1, 0.02, 1], gap="small")
+    left_col, right_col = coding_columns(key=f"python_practice_split_{selected_question_key}")
 
     with left_col:
         render_question_content(question, submission_track="python")
-
-    with divider_col:
-        st.markdown('<div class="coding-panel-divider"></div>', unsafe_allow_html=True)
 
     with right_col:
         with st.container(height=840, border=False):
@@ -706,13 +713,10 @@ def render_active_interview():
         finalize_interview("time_limit")
         st.rerun()
 
-    left_col, divider_col, right_col = st.columns([1, 0.02, 1], gap="small")
+    left_col, right_col = coding_columns(key=f"python_interview_split_{session_id}_{question_key}")
 
     with left_col:
         render_question_content(question, show_solution_note=False, submission_track="python")
-
-    with divider_col:
-        st.markdown('<div class="coding-panel-divider"></div>', unsafe_allow_html=True)
 
     with right_col.container(height=840, border=False):
         control_cols = st.columns([1.7, 0.35, 4.6])

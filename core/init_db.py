@@ -4,6 +4,7 @@ from core.activity import ensure_activity_schema
 from core.access import ensure_access_schema
 from core.architecture import ensure_architecture_schema
 from core.login_history import ensure_login_history_schema
+from core.kubernetes_lab import ensure_kubernetes_lab_schema
 from core.progress import _ensure_progress_schema
 from core.submissions import ensure_submission_schema
 from core.views import ensure_reporting_views
@@ -14,6 +15,7 @@ ensure_activity_schema()
 ensure_access_schema()
 ensure_architecture_schema()
 ensure_login_history_schema()
+ensure_kubernetes_lab_schema()
 ensure_submission_schema()
 ensure_reporting_views()
 print("✅ Tables created or updated")

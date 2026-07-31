@@ -86,6 +86,17 @@ class CodingSubmission(Base):
     submitted_at = Column(DateTime, default=datetime.utcnow)
 
 
+class VirtualKubernetesLab(Base):
+    __tablename__ = "virtual_kubernetes_labs"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    username = Column(String, unique=True, nullable=False)
+    state_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class InterviewRun(Base):
     __tablename__ = "interview_runs"
     id = Column(Integer, primary_key=True)

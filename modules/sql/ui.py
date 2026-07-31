@@ -6,6 +6,7 @@ import streamlit as st
 
 from core.activity import track_query_execution
 from core.ai import ask_ai
+from core.coding_layout import coding_columns
 from core.editor import clear_editor_draft, render_code_editor, set_editor_draft
 from core.interview import (
     append_interview_run,
@@ -18,6 +19,7 @@ from core.interview import (
 )
 from core.loader import group_by_category, load_questions
 from core.progress import clear_progress, load_progress, save_progress
+from core.solution_notes import with_solution_comments
 from core.submissions import get_recent_submissions, get_submission_stats, record_submission
 from modules.sql.engine import (
     create_db,
@@ -290,11 +292,26 @@ def render_question_content(question, show_expected_output=True, submission_trac
 
         with solution_tab:
             st.markdown("### Solution / Explanation")
+            explanation = question.get("explanation", "")
             solution_tabs = st.tabs(["SQL", "PySpark"])
             with solution_tabs[0]:
-                st.code(format_sql_vertical(question.get("sql_solution", "")), language="sql")
+                st.code(
+                    with_solution_comments(
+                        format_sql_vertical(question.get("sql_solution", "")),
+                        explanation,
+                        "sql",
+                    ),
+                    language="sql",
+                )
             with solution_tabs[1]:
-                st.code(question.get("pyspark_solution", ""), language="python")
+                st.code(
+                    with_solution_comments(
+                        question.get("pyspark_solution", ""),
+                        explanation,
+                        "python",
+                    ),
+                    language="python",
+                )
 
         with comments_tab:
             st.markdown("### Approach Notes")
@@ -404,13 +421,10 @@ def render_practice_workspace(questions):
     question = next(item for item in sub_qs if item["progress_key"] == selected_question_key)
     question_key = selected_question_key
 
-    col1, divider_col, col2 = st.columns([1, 0.02, 1], gap="small")
+    col1, col2 = coding_columns(key=f"sql_practice_split_{question_key}")
 
     with col1:
         render_question_content(question, submission_track=EDITOR_TRACKS[st.session_state.editor_mode])
-
-    with divider_col:
-        st.markdown('<div class="coding-panel-divider"></div>', unsafe_allow_html=True)
 
     with col2:
         with st.container(height=840, border=False):
@@ -783,13 +797,10 @@ def render_active_interview():
         ),
     )
 
-    col1, divider_col, col2 = st.columns([1, 0.02, 1], gap="small")
+    col1, col2 = coding_columns(key=f"sql_interview_split_{session_id}_{question_key}")
 
     with col1:
         render_question_content(current_question, submission_track=EDITOR_TRACKS[interview_state["editor_mode"]])
-
-    with divider_col:
-        st.markdown('<div class="coding-panel-divider"></div>', unsafe_allow_html=True)
 
     with col2.container(height=840, border=False):
         control_cols = st.columns([1.7, 0.35, 4.6])
