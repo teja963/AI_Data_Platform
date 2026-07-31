@@ -404,10 +404,13 @@ def render_practice_workspace(questions):
     question = next(item for item in sub_qs if item["progress_key"] == selected_question_key)
     question_key = selected_question_key
 
-    col1, col2 = st.columns([1, 1], gap="medium")
+    col1, divider_col, col2 = st.columns([1, 0.02, 1], gap="small")
 
     with col1:
         render_question_content(question, submission_track=EDITOR_TRACKS[st.session_state.editor_mode])
+
+    with divider_col:
+        st.markdown('<div class="coding-panel-divider"></div>', unsafe_allow_html=True)
 
     with col2:
         with st.container(height=840, border=False):
@@ -422,11 +425,16 @@ def render_practice_workspace(questions):
             st.query_params["editor_mode"] = editor_mode
             with control_cols[1]:
                 if st.button("↺", key=f"code_action_sql_starter_{question_key}_{editor_mode}", help="Load starter"):
-                    set_editor_draft(f"sql_practice::{question_key}::{editor_mode.lower()}", build_editor_starter(question, editor_mode))
+                    set_editor_draft(
+                        f"sql_practice::{question_key}::{editor_mode.lower()}::blank_v1",
+                        build_editor_starter(question, editor_mode),
+                    )
                     st.rerun()
             with control_cols[2]:
                 if st.button("⌫", key=f"code_action_sql_clear_{question_key}_{editor_mode}", help="Clear draft"):
-                    clear_editor_draft(f"sql_practice::{question_key}::{editor_mode.lower()}")
+                    clear_editor_draft(
+                        f"sql_practice::{question_key}::{editor_mode.lower()}::blank_v1"
+                    )
                     st.rerun()
 
             if editor_mode == "PySpark":
@@ -439,15 +447,15 @@ def render_practice_workspace(questions):
                 if pyspark_unavailable:
                     st.warning(pyspark_unavailable)
 
-            draft_key = f"sql_practice::{question_key}::{editor_mode.lower()}"
+            draft_key = f"sql_practice::{question_key}::{editor_mode.lower()}::blank_v1"
             starter_template = build_editor_starter(question, editor_mode)
 
             query, editor_action = render_code_editor(
                 draft_key=draft_key,
                 language="sql" if editor_mode == "SQL" else "python",
-                starter=starter_template,
+                starter="",
                 height=700,
-                placeholder=starter_template,
+                placeholder="",
             )
             run = editor_action == "run"
             submit = editor_action == "submit"
@@ -775,12 +783,15 @@ def render_active_interview():
         ),
     )
 
-    col1, col2 = st.columns([2, 3])
+    col1, divider_col, col2 = st.columns([1, 0.02, 1], gap="small")
 
     with col1:
         render_question_content(current_question, submission_track=EDITOR_TRACKS[interview_state["editor_mode"]])
 
-    with col2:
+    with divider_col:
+        st.markdown('<div class="coding-panel-divider"></div>', unsafe_allow_html=True)
+
+    with col2.container(height=840, border=False):
         control_cols = st.columns([1.7, 0.35, 4.6])
         with control_cols[0]:
             st.selectbox(
@@ -800,7 +811,10 @@ def render_active_interview():
                 "or the last DataFrame variable you create."
             )
 
-        draft_key = f"sql_interview::{session_id}::{question_key}::{interview_state['editor_mode'].lower()}"
+        draft_key = (
+            f"sql_interview::{session_id}::{question_key}::"
+            f"{interview_state['editor_mode'].lower()}::blank_v1"
+        )
         starter_template = build_editor_starter(current_question, interview_state["editor_mode"])
 
         helper_col1, helper_col2, helper_spacer = st.columns([0.35, 0.35, 5.3])
@@ -814,9 +828,9 @@ def render_active_interview():
         query, editor_action = render_code_editor(
             draft_key=draft_key,
             language="sql" if interview_state["editor_mode"] == "SQL" else "python",
-            starter=starter_template,
+            starter="",
             height=700,
-            placeholder=starter_template,
+            placeholder="",
             disabled=is_locked,
         )
         run = editor_action == "run"

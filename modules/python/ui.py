@@ -358,13 +358,16 @@ def render_practice_workspace(questions):
 
     question = next(item for item in category_questions if item["progress_key"] == selected_question_key)
     result_key = f"python_result_{selected_question_key}"
-    draft_key = f"python_practice::{selected_question_key}"
+    draft_key = f"python_practice::{selected_question_key}::blank_v1"
     starter = question["starter_code"]
 
-    left_col, right_col = st.columns([1, 1], gap="medium")
+    left_col, divider_col, right_col = st.columns([1, 0.02, 1], gap="small")
 
     with left_col:
         render_question_content(question, submission_track="python")
+
+    with divider_col:
+        st.markdown('<div class="coding-panel-divider"></div>', unsafe_allow_html=True)
 
     with right_col:
         with st.container(height=840, border=False):
@@ -392,9 +395,9 @@ def render_practice_workspace(questions):
             code, editor_action = render_code_editor(
                 draft_key=draft_key,
                 language="python",
-                starter=starter,
+                starter="",
                 height=700,
-                placeholder=starter,
+                placeholder="",
             )
             run = editor_action == "run"
             submit = editor_action == "submit"
@@ -684,7 +687,7 @@ def render_active_interview():
     question_key = question["progress_key"]
     session_id = interview_state["session_id"]
     result_key = f"python_interview_result_{session_id}_{question_key}"
-    draft_key = f"python_interview::{session_id}::{question_key}"
+    draft_key = f"python_interview::{session_id}::{question_key}::blank_v1"
 
     total_elapsed = int(time.time() - interview_state["started_at"])
     remaining_total = max(interview_state["total_duration_seconds"] - total_elapsed, 0)
@@ -703,12 +706,15 @@ def render_active_interview():
         finalize_interview("time_limit")
         st.rerun()
 
-    left_col, right_col = st.columns([2, 3])
+    left_col, divider_col, right_col = st.columns([1, 0.02, 1], gap="small")
 
     with left_col:
         render_question_content(question, show_solution_note=False, submission_track="python")
 
-    with right_col:
+    with divider_col:
+        st.markdown('<div class="coding-panel-divider"></div>', unsafe_allow_html=True)
+
+    with right_col.container(height=840, border=False):
         control_cols = st.columns([1.7, 0.35, 4.6])
         with control_cols[0]:
             st.selectbox(
@@ -724,9 +730,9 @@ def render_active_interview():
         code, editor_action = render_code_editor(
             draft_key=draft_key,
             language="python",
-            starter=question["starter_code"],
+            starter="",
             height=700,
-            placeholder=question["starter_code"],
+            placeholder="",
             disabled=is_locked,
         )
         run = editor_action == "run"

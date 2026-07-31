@@ -207,6 +207,12 @@ st.markdown(
         box-shadow: none !important;
         outline: none !important;
     }
+    .coding-panel-divider {
+        width: 1px;
+        height: 840px;
+        margin: 0 auto;
+        background: rgba(128, 128, 128, 0.55);
+    }
     [data-theme='dark'] .stApp { background-color: #0e1117; }
 
     /* Theme-Aware Container Defaults (Light Mode) */
