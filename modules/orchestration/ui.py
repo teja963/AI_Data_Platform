@@ -3,6 +3,7 @@ import streamlit as st
 
 from core.practical_learning import simulate_dag
 from core.practice_state import load_practice_state, save_practice_state
+from core.lazy_tabs import lazy_tab
 
 
 AIRFLOW_TEMPLATE = """from airflow import DAG
@@ -71,11 +72,13 @@ def render_orchestration():
                 st.session_state[key] = saved[key]
         st.session_state[marker] = True
     st.title("Orchestration")
-    airflow_tab, simulator_tab, frameworks_tab, interview_tab = st.tabs(
-        ["Airflow Fundamentals", "DAG Simulator", "Dagster & Prefect", "Troubleshoot & Interview"]
+    selected_view = lazy_tab(
+        ["Airflow Fundamentals", "DAG Simulator", "Dagster & Prefect", "Troubleshoot & Interview"],
+        "orchestration_active_view",
+        "Orchestration workspace",
     )
 
-    with airflow_tab:
+    if selected_view == "Airflow Fundamentals":
         st.subheader("Apache Airflow")
         st.write(
             "Airflow schedules and monitors workflows. The scheduler creates task instances, "
@@ -92,7 +95,7 @@ def render_orchestration():
         st.dataframe(pd.DataFrame(concepts), width="stretch", hide_index=True)
         st.code(AIRFLOW_TEMPLATE, language="python")
 
-    with simulator_tab:
+    elif selected_view == "DAG Simulator":
         exercise = st.selectbox("ETL exercise", list(EXERCISES))
         default_tasks, default_dependencies = EXERCISES[exercise]
         with st.form("orchestration_dag_form"):
@@ -190,7 +193,7 @@ def render_orchestration():
                 )
             st.code("\n".join(row["Log"] for row in rows), language="text")
 
-    with frameworks_tab:
+    elif selected_view == "Dagster & Prefect":
         comparison = [
             {
                 "Framework": "Airflow",
@@ -219,7 +222,7 @@ def render_orchestration():
         ]
         st.dataframe(pd.DataFrame(comparison), width="stretch", hide_index=True)
 
-    with interview_tab:
+    else:
         scenarios = {
             "Scheduler is healthy but tasks never start": "Inspect executor queues, worker capacity, pools, concurrency limits, and task dependencies.",
             "Backfill overloads the warehouse": "Use pools, max_active_runs, task concurrency, and staged date ranges.",

@@ -12,6 +12,7 @@ from core.aws_simulator import (
 )
 from core.practical_learning import AWS_SERVICES, run_aws_pipeline, run_aws_service
 from core.practice_state import load_practice_state, save_practice_state
+from core.lazy_tabs import lazy_tab
 
 
 def _service_label(service):
@@ -76,17 +77,19 @@ def render_aws_practical_lab():
         key="aws_practical_service",
     )
     spec = AWS_SERVICES[service]
-    learn_tab, cli_tab, run_tab, pipeline_tab, interview_tab = st.tabs(
+    selected = lazy_tab(
         [
             "Master the Service",
             "Guided AWS Shell",
             "Configuration Lab",
             "End-to-End Pipeline",
             "Interview & Failures",
-        ]
+        ],
+        "aws_active_lab_view",
+        "AWS lab view",
     )
 
-    with learn_tab:
+    if selected == "Master the Service":
         st.subheader(service)
         st.write(spec["purpose"])
         mastery_steps = [
@@ -118,7 +121,7 @@ def render_aws_practical_lab():
             "retry/DLQ strategy · CloudWatch logs/metrics · cost limits · tested recovery runbook"
         )
 
-    with cli_tab:
+    elif selected == "Guided AWS Shell":
         cli_state = st.session_state.get("aws_cli_state", new_aws_cli_state())
         mastery = service_mastery(service, cli_state)
         progress_columns = st.columns(4)
@@ -203,7 +206,7 @@ def render_aws_practical_lab():
         else:
             st.success(f"All guided {service} shell actions completed.")
 
-    with run_tab:
+    elif selected == "Configuration Lab":
         config_key = f"aws_config::{service}"
         if config_key not in st.session_state:
             st.session_state[config_key] = json.dumps(spec["config"], indent=2)
@@ -238,7 +241,7 @@ def render_aws_practical_lab():
             st.code("\n".join(result["logs"]), language="text")
             st.json(result["artifact"], expanded=False)
 
-    with pipeline_tab:
+    elif selected == "End-to-End Pipeline":
         stages = [
             "No failure",
             "S3 ObjectCreated",
@@ -268,7 +271,7 @@ def render_aws_practical_lab():
         else:
             st.success("The complete simulated AWS data pipeline succeeded.")
 
-    with interview_tab:
+    else:
         st.markdown("**Interview focus**")
         st.write(spec["interview"])
         st.markdown("**Failure to diagnose**")

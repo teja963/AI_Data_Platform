@@ -5,6 +5,7 @@ from core.db import Base, SessionLocal, engine
 from core.models import User, VirtualKubernetesLab
 
 LAB_FILE = Path(__file__).resolve().parents[1] / "data" / "kubernetes_labs.json"
+_KUBERNETES_SCHEMA_READY = False
 
 
 def _read_local_labs():
@@ -50,8 +51,12 @@ def _delete_local_lab(username):
 
 
 def ensure_kubernetes_lab_schema():
+    global _KUBERNETES_SCHEMA_READY
+    if _KUBERNETES_SCHEMA_READY:
+        return True
     try:
         Base.metadata.create_all(bind=engine, tables=[VirtualKubernetesLab.__table__])
+        _KUBERNETES_SCHEMA_READY = True
         return True
     except Exception:
         return False

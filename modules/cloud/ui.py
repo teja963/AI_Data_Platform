@@ -1,6 +1,7 @@
 import streamlit as st
 
 from core.access import user_can_view_architecture
+from core.lazy_tabs import lazy_tab
 from modules.architecture.ui import render_diagram_collection
 from modules.cloud.aws_lab import render_aws_practical_lab
 
@@ -13,13 +14,17 @@ def render_cloud():
         return
 
     st.title("Cloud Platform")
-    aws_tab, gcp_tab, azure_tab = st.tabs(["AWS", "GCP", "Azure"])
+    provider = lazy_tab(["AWS", "GCP", "Azure"], "cloud_active_provider", "Cloud provider")
 
-    with aws_tab:
-        practice_tab, diagrams_tab = st.tabs(["Practical Labs", "Architecture Diagrams"])
-        with practice_tab:
+    if provider == "AWS":
+        aws_view = lazy_tab(
+            ["Practical Labs", "Architecture Diagrams"],
+            "cloud_aws_active_view",
+            "AWS workspace",
+        )
+        if aws_view == "Practical Labs":
             render_aws_practical_lab()
-        with diagrams_tab:
+        else:
             render_diagram_collection(
                 title="AWS Architecture Diagrams",
                 collection="cloud_aws",
@@ -28,7 +33,7 @@ def render_cloud():
                 access_checked=True,
             )
 
-    with gcp_tab:
+    elif provider == "GCP":
         render_diagram_collection(
             title="GCP Architecture Diagrams",
             collection="cloud_gcp",
@@ -37,7 +42,7 @@ def render_cloud():
             access_checked=True,
         )
 
-    with azure_tab:
+    else:
         render_diagram_collection(
             title="Azure Architecture Diagrams",
             collection="cloud_azure",

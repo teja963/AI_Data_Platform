@@ -2,6 +2,7 @@ import json
 import os
 import random
 from datetime import datetime
+import streamlit as st
 
 INTERVIEW_HISTORY_FILE = "data/interview_history.json"
 
@@ -105,6 +106,7 @@ def summarize_interview(question_results):
     }
 
 
+@st.cache_data(ttl=30, show_spinner=False)
 def load_interview_history():
     if not os.path.exists(INTERVIEW_HISTORY_FILE):
         return []
@@ -120,6 +122,7 @@ def save_interview_history(runs):
 
     with open(INTERVIEW_HISTORY_FILE, "w") as file_obj:
         json.dump({"runs": runs[-50:]}, file_obj, indent=2)
+    load_interview_history.clear()
 
 
 def append_interview_run(run_data):

@@ -1,6 +1,8 @@
 import pandas as pd
 import streamlit as st
 
+from core.lazy_tabs import lazy_tab
+
 
 PROJECTS_CATALOG = {
     "Samsung R&D": [
@@ -788,19 +790,21 @@ def render_project(project):
     else:
         render_project_2_architecture(project)
 
-    tradeoff_tab, sizing_tab, story_tab, failure_tab, code_tab = st.tabs(
-        ["Trade-Offs", "Sizing", "Storyline", "Failure Simulator", "Code Walkthrough"]
+    selected = lazy_tab(
+        ["Trade-Offs", "Sizing", "Storyline", "Failure Simulator", "Code Walkthrough"],
+        f"project_active_view::{project['key']}",
+        "Project view",
     )
 
-    with tradeoff_tab:
+    if selected == "Trade-Offs":
         render_tradeoffs(project)
-    with sizing_tab:
+    elif selected == "Sizing":
         render_sizing(project)
-    with story_tab:
+    elif selected == "Storyline":
         render_storyline(project)
-    with failure_tab:
+    elif selected == "Failure Simulator":
         render_failure_simulator(project)
-    with code_tab:
+    else:
         render_code_walkthrough(project)
 
 

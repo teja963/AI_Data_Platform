@@ -1,3 +1,6 @@
+import streamlit as st
+from sqlalchemy import case, func
+
 from core.db import Base, SessionLocal, engine
 from core.models import CodingSubmission, User
 
@@ -38,13 +41,16 @@ def record_submission(username, track, question_key, question_title, correct, el
         )
         session.add(submission)
         session.commit()
+        _get_submission_stats_cached.clear()
+        _get_recent_submissions_cached.clear()
     except Exception:
         session.rollback()
     finally:
         session.close()
 
 
-def get_submission_stats(username, track, question_key=None):
+@st.cache_data(ttl=30, show_spinner=False)
+def _get_submission_stats_cached(username, track, question_key=None):
     if not ensure_submission_schema():
         return {
             "total": 0,
@@ -56,9 +62,15 @@ def get_submission_stats(username, track, question_key=None):
         query = session.query(CodingSubmission).filter_by(username=username, track=track)
         if question_key:
             query = query.filter_by(question_key=question_key)
-        rows = query.all()
-        total = len(rows)
-        accepted = sum(1 for row in rows if row.correct)
+        total, accepted = query.with_entities(
+            func.count(CodingSubmission.id),
+            func.coalesce(
+                func.sum(case((CodingSubmission.correct.is_(True), 1), else_=0)),
+                0,
+            ),
+        ).one()
+        total = int(total or 0)
+        accepted = int(accepted or 0)
         return {
             "total": total,
             "accepted": accepted,
@@ -68,7 +80,12 @@ def get_submission_stats(username, track, question_key=None):
         session.close()
 
 
-def get_recent_submissions(username, track, question_key=None, limit=10):
+def get_submission_stats(username, track, question_key=None):
+    return _get_submission_stats_cached(username, track, question_key)
+
+
+@st.cache_data(ttl=30, show_spinner=False)
+def _get_recent_submissions_cached(username, track, question_key=None, limit=10):
     if not ensure_submission_schema():
         return []
     session = SessionLocal()
@@ -90,3 +107,7 @@ def get_recent_submissions(username, track, question_key=None, limit=10):
         ]
     finally:
         session.close()
+
+
+def get_recent_submissions(username, track, question_key=None, limit=10):
+    return _get_recent_submissions_cached(username, track, question_key, limit)

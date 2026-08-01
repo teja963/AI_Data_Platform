@@ -7,6 +7,7 @@ from core.practical_learning import (
     new_lakehouse_state,
 )
 from core.practice_state import load_practice_state, save_practice_state
+from core.lazy_tabs import lazy_tab
 from modules.architecture.ui import render_diagram_collection
 
 
@@ -146,10 +147,14 @@ def _render_lakehouse_lab():
 
 def render_lakehouse():
     st.title("Lakehouse & Table Formats")
-    lab_tab, diagrams_tab = st.tabs(["Practical Lab", "Architecture Diagrams"])
-    with lab_tab:
+    selected = lazy_tab(
+        ["Practical Lab", "Architecture Diagrams"],
+        "lakehouse_active_workspace",
+        "Lakehouse workspace",
+    )
+    if selected == "Practical Lab":
         _render_lakehouse_lab()
-    with diagrams_tab:
+    else:
         render_diagram_collection(
             title="Lakehouse Architecture Diagrams",
             collection="lakehouse",

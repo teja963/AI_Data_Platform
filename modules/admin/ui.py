@@ -10,6 +10,7 @@ from core.activity import ensure_activity_schema
 from core.progress import _ensure_progress_schema
 from core.runtime import get_app_version, get_deploy_health
 from core.views import ensure_reporting_views
+from core.lazy_tabs import lazy_tab
 
 IST = timezone(timedelta(hours=5, minutes=30))
 
@@ -40,19 +41,23 @@ def render_admin():
 
     st.title("🛡️ Admin Dashboard")
 
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
-        "👥 User Management",
-        "📈 Login Activity",
-        "⏱️ Time Analytics",
-        "📚 Progress",
-        "🔍 SQL Console",
-        "🚀 Deploy Health",
-    ])
+    selected_view = lazy_tab(
+        [
+            "👥 User Management",
+            "📈 Login Activity",
+            "⏱️ Time Analytics",
+            "📚 Progress",
+            "🔍 SQL Console",
+            "🚀 Deploy Health",
+        ],
+        "admin_active_view",
+        "Admin workspace",
+    )
 
     # =========================
     # 👥 USER MANAGEMENT
     # =========================
-    with tab1:
+    if selected_view == "👥 User Management":
         st.subheader("👥 Manage Users")
 
         search = st.text_input("🔍 Search by Username or Email", "").lower()
@@ -193,7 +198,7 @@ def render_admin():
     # =========================
     # 📈 USER ACTIVITY
     # =========================
-    with tab2:
+    elif selected_view == "📈 Login Activity":
         st.subheader("📈 Login History - Last 30 Days")
         ensure_login_history_schema()
 
@@ -220,7 +225,7 @@ def render_admin():
     # =========================
     # ⏱️ TIME ANALYTICS
     # =========================
-    with tab3:
+    elif selected_view == "⏱️ Time Analytics":
         st.subheader("⏱️ Platform Time Analytics")
         try:
             ensure_activity_schema()
@@ -361,7 +366,7 @@ def render_admin():
     # =========================
     # 📚 PROGRESS
     # =========================
-    with tab4:
+    elif selected_view == "📚 Progress":
         st.subheader("📚 Coding Progress")
         try:
             _ensure_progress_schema()
@@ -394,7 +399,7 @@ def render_admin():
     # =========================
     # 🔍 SQL CONSOLE
     # =========================
-    with tab5:
+    elif selected_view == "🔍 SQL Console":
         st.subheader("🔍 SQL Explorer")
 
         query_input = st.text_area(
@@ -421,7 +426,7 @@ def render_admin():
             except Exception as e:
                 st.error(f"SQL Error: {e}")
 
-    with tab6:
+    else:
         st.subheader("🚀 Deploy Health")
         health = get_deploy_health()
 

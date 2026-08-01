@@ -20,6 +20,7 @@ from core.interview import (
     summarize_interview,
 )
 from core.loader import group_by_category, load_questions
+from core.lazy_tabs import lazy_tab
 from core.progress import clear_progress, load_progress, save_progress
 from core.solution_notes import with_solution_comments
 from core.submissions import get_recent_submissions, get_submission_stats, record_submission
@@ -158,10 +159,13 @@ def render_question_content(question, show_solution_note=True, submission_track=
         tab_labels = ["Question", "Solution", "Comments"]
         if submission_track:
             tab_labels.append("Submissions")
-        tabs = st.tabs(tab_labels)
-        question_tab, solution_tab, comments_tab = tabs[:3]
+        selected = lazy_tab(
+            tab_labels,
+            f"python_question_panel::{question['progress_key']}",
+            "Question panel",
+        )
 
-        with question_tab:
+        if selected == "Question":
             st.subheader(question["title"])
             meta = f"`{question['category']}`  |  `{question['difficulty']}`"
             st.caption(meta)
@@ -211,7 +215,7 @@ def render_question_content(question, show_solution_note=True, submission_track=
                             st.markdown("**Expected Output**")
                             render_wrapped_value(example["expected"])
 
-        with solution_tab:
+        elif selected == "Solution":
             st.markdown("### Solution / Explanation")
             st.markdown(f"- Base regression cases: `{len(question['tests'])}`")
             st.markdown(f"- Function name required: `{question['entry_point']}`")
@@ -234,7 +238,7 @@ def render_question_content(question, show_solution_note=True, submission_track=
                 wrap_lines=True,
             )
 
-        with comments_tab:
+        elif selected == "Comments":
             st.markdown("### Approach Notes")
             st.write(question.get("hint", "Use this tab to write your approach, edge cases, and revision notes for this question."))
             st.text_area(
@@ -244,9 +248,8 @@ def render_question_content(question, show_solution_note=True, submission_track=
                 placeholder="Write your approach, mistakes, edge cases, complexity, or notes for revision...",
             )
 
-        if submission_track:
-            with tabs[3]:
-                render_submission_summary(submission_track, question["progress_key"])
+        elif submission_track:
+            render_submission_summary(submission_track, question["progress_key"])
 
 
 def render_submission_summary(track, question_key):

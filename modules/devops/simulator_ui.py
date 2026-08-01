@@ -16,6 +16,7 @@ from core.kubernetes_capacity import (
     calculate_capacity,
     profile_inputs,
 )
+from core.lazy_tabs import lazy_tab
 from core.kubernetes_simulator import (
     CLUSTER_PRESETS,
     PROVIDER_REGIONS,
@@ -2282,22 +2283,24 @@ def render_kubernetes_simulator():
         _render_cluster_creator(username)
         return
 
-    tabs = st.tabs(
+    selected = lazy_tab(
         [
             "Cluster Monitor",
             "Capacity Planning",
             "Namespaces & Resources",
             "Terminal",
             "YAML Apply",
-        ]
+        ],
+        "kubernetes_active_workspace",
+        "Kubernetes workspace",
     )
-    with tabs[0]:
+    if selected == "Cluster Monitor":
         _render_cluster_monitor(state)
-    with tabs[1]:
+    elif selected == "Capacity Planning":
         _render_capacity_planner(username, state)
-    with tabs[2]:
+    elif selected == "Namespaces & Resources":
         _render_resource_management_unlimited(username, state)
-    with tabs[3]:
+    elif selected == "Terminal":
         _render_multi_terminal_workspace(username)
-    with tabs[4]:
+    else:
         _render_yaml_apply(username, state)

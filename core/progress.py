@@ -59,8 +59,14 @@ def _get_current_user_id(session):
     if not username:
         return None
 
+    cache_key = f"database_user_id::{username}"
+    if cache_key in st.session_state:
+        return st.session_state[cache_key]
     user = session.query(User).filter_by(username=username).first()
-    return user.id if user else None
+    user_id = user.id if user else None
+    if user_id is not None:
+        st.session_state[cache_key] = user_id
+    return user_id
 
 
 def _db_available():

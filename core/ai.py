@@ -2,10 +2,11 @@ from groq import Groq
 import streamlit as st
 
 
+@st.cache_resource(show_spinner=False)
 def get_client():
     try:
         return Groq(api_key=st.secrets["GROQ_API_KEY"])
-    except:
+    except Exception:
         return None
 
 

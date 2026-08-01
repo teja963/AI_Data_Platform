@@ -1,5 +1,7 @@
 import streamlit as st
 
+from core.lazy_tabs import lazy_tab
+
 
 SQL_CONCEPT_SECTIONS = [
     {
@@ -1714,9 +1716,13 @@ def render_reference_tab(title, sections, code_language, key_prefix, concept_lan
 def render_concepts():
     st.title("Syntax Concepts")
 
-    sql_tab, pyspark_tab, python_tab = st.tabs(["SQL Reference", "PySpark Reference", "Python Reference"])
+    selected = lazy_tab(
+        ["SQL Reference", "PySpark Reference", "Python Reference"],
+        "concepts_active_reference",
+        "Concept language",
+    )
 
-    with sql_tab:
+    if selected == "SQL Reference":
         render_reference_tab(
             title="SQL Reference",
             sections=SQL_CONCEPT_SECTIONS,
@@ -1724,7 +1730,7 @@ def render_concepts():
             key_prefix="sql_reference",
         )
 
-    with pyspark_tab:
+    elif selected == "PySpark Reference":
         render_reference_tab(
             title="PySpark Reference",
             sections=PYSPARK_CONCEPT_SECTIONS,
@@ -1733,7 +1739,7 @@ def render_concepts():
             concept_language="pyspark",
         )
 
-    with python_tab:
+    else:
         render_reference_tab(
             title="Python Reference",
             sections=PYTHON_CONCEPT_SECTIONS,

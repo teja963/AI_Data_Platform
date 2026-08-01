@@ -6,11 +6,16 @@ from core.models import PracticeLabState, User
 
 
 STATE_FILE = Path(__file__).resolve().parents[1] / "data" / "practice_lab_states.json"
+_PRACTICE_SCHEMA_READY = False
 
 
 def ensure_practice_state_schema():
+    global _PRACTICE_SCHEMA_READY
+    if _PRACTICE_SCHEMA_READY:
+        return True
     try:
         Base.metadata.create_all(bind=engine, tables=[PracticeLabState.__table__])
+        _PRACTICE_SCHEMA_READY = True
         return True
     except Exception:
         return False

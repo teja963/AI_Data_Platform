@@ -27,7 +27,16 @@ def get_architecture_diagrams(include_inactive=False, collection="architecture")
     ensure_architecture_schema()
     session = SessionLocal()
     try:
-        query = session.query(ArchitectureDiagram)
+        query = session.query(
+            ArchitectureDiagram.id,
+            ArchitectureDiagram.title,
+            ArchitectureDiagram.description,
+            ArchitectureDiagram.file_name,
+            ArchitectureDiagram.content_type,
+            ArchitectureDiagram.source_url,
+            ArchitectureDiagram.collection,
+            ArchitectureDiagram.created_at,
+        )
         if collection == "architecture":
             query = query.filter(
                 or_(
@@ -40,6 +49,19 @@ def get_architecture_diagrams(include_inactive=False, collection="architecture")
         if not include_inactive:
             query = query.filter(ArchitectureDiagram.is_active.is_(True))
         return query.order_by(ArchitectureDiagram.created_at.desc()).all()
+    finally:
+        session.close()
+
+
+def get_architecture_diagram(diagram_id):
+    ensure_architecture_schema()
+    session = SessionLocal()
+    try:
+        return (
+            session.query(ArchitectureDiagram)
+            .filter_by(id=diagram_id)
+            .first()
+        )
     finally:
         session.close()
 

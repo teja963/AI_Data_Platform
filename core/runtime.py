@@ -1,6 +1,7 @@
 import hashlib
 import os
 import json
+from functools import lru_cache
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import URLError
@@ -155,6 +156,7 @@ def get_latest_github_commit(repo, branch):
     return get_latest_github_commit_info(repo, branch).get("sha", "")
 
 
+@lru_cache(maxsize=1)
 def get_app_version():
     running_commit = get_running_commit()
     if running_commit:

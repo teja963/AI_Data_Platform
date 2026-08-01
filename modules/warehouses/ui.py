@@ -3,6 +3,7 @@ import streamlit as st
 
 from core.practical_learning import WAREHOUSE_ENGINES, execute_warehouse_query
 from core.practice_state import load_practice_state, save_practice_state
+from core.lazy_tabs import lazy_tab
 
 
 DEFAULT_QUERY = """SELECT
@@ -60,11 +61,13 @@ def render_warehouses():
         st.session_state[marker] = True
     st.title("Data Warehouses & Query Engines")
     engine = st.selectbox("Engine", list(WAREHOUSE_ENGINES))
-    overview_tab, sql_tab, design_tab, troubleshoot_tab = st.tabs(
-        ["Learn", "SQL Practice", "Physical Design", "Troubleshoot & Interview"]
+    selected_view = lazy_tab(
+        ["Learn", "SQL Practice", "Physical Design", "Troubleshoot & Interview"],
+        "warehouses_active_view",
+        "Warehouse workspace",
     )
 
-    with overview_tab:
+    if selected_view == "Learn":
         st.subheader(engine)
         st.write(WAREHOUSE_ENGINES[engine])
         comparison = [
@@ -76,7 +79,7 @@ def render_warehouses():
         ]
         st.dataframe(pd.DataFrame(comparison), width="stretch", hide_index=True)
 
-    with sql_tab:
+    elif selected_view == "SQL Practice":
         st.caption(
             f"The execution engine uses a safe local dataset while the design guidance follows {engine}."
         )
@@ -109,7 +112,7 @@ def render_warehouses():
                     "scan pruning, redistribution/shuffle, join strategy, spill, slots or WLM."
                 )
 
-    with design_tab:
+    elif selected_view == "Physical Design":
         design = ENGINE_DESIGN[engine]
         rows = [
             {"Decision": key.replace("_", " ").title(), "Recommendation": value}
@@ -127,7 +130,7 @@ def render_warehouses():
             "and retention for a dashboard plus ad-hoc analytics workload."
         )
 
-    with troubleshoot_tab:
+    else:
         scenarios = {
             "Large scan": "Verify partition filters, selected columns, file format, clustering, and stale statistics.",
             "Data skew": "Inspect key cardinality and worker distribution; salt or choose a better distribution key.",

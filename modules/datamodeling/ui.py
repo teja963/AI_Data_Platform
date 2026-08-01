@@ -3,6 +3,7 @@ import pandas as pd
 from core.components import render_ai_chat as render_shared_ai_chat
 import random
 from datetime import datetime
+from core.lazy_tabs import lazy_tab
 
 # =========================================================
 # 🔹 ENTRY POINT
@@ -1831,16 +1832,16 @@ def show_fundamentals():
     Products → products  
     """)
 
-    tab1, tab2, tab3 = st.tabs([
-        "Normalization",
-        "OLTP vs OLAP",
-        "ER Modeling"
-    ])
+    selected_view = lazy_tab(
+        ["Normalization", "OLTP vs OLAP", "ER Modeling"],
+        "dm_fundamentals_active_view",
+        "Fundamentals view",
+    )
 
     # =====================================================
     # 🔴 NORMALIZATION
     # =====================================================
-    with tab1:
+    if selected_view == "Normalization":
         render_title("Normalization (UNF → BCNF)")
 
         # ---------------- UNF → 1NF ----------------
@@ -1961,7 +1962,7 @@ def show_fundamentals():
     # =====================================================
     # 🟢 OLTP vs OLAP
     # =====================================================
-    with tab2:
+    elif selected_view == "OLTP vs OLAP":
         render_title("OLTP vs OLAP")
 
         render_df([
@@ -2000,7 +2001,7 @@ def show_fundamentals():
     # =====================================================
     # 🔵 ER MODELING
     # =====================================================
-    with tab3:
+    else:
         render_title("ER Modeling")
 
         # =====================================================
@@ -2148,16 +2149,16 @@ def show_dimensional_modeling():
 
     st.header("Dimensional Modeling")
 
-    tab1, tab2, tab3 = st.tabs([
-        "Core Concepts",
-        "Schemas & Dimensions",
-        "Dimensional Changes (SCD)"
-    ])
+    selected_view = lazy_tab(
+        ["Core Concepts", "Schemas & Dimensions", "Dimensional Changes (SCD)"],
+        "dm_dimensional_active_view",
+        "Dimensional modeling view",
+    )
 
     # =====================================================
     # 🔹 TAB 1
     # =====================================================
-    with tab1:
+    if selected_view == "Core Concepts":
 
         st.markdown("### 🔥 Fact vs Dimension")
 
@@ -2347,7 +2348,7 @@ def show_dimensional_modeling():
     # =====================================================
     # 🔹 TAB 2
     # =====================================================
-    with tab2:
+    elif selected_view == "Schemas & Dimensions":
 
         col1, col2 = st.columns(2)
 
@@ -2436,7 +2437,7 @@ def show_dimensional_modeling():
     # =====================================================
     # 🔹 TAB 3
     # =====================================================
-    with tab3:
+    else:
 
         st.subheader("Dimension Types")
 
@@ -2638,19 +2639,23 @@ def show_architecture():
         "lakehouse modeling, late arriving data handling, reconciliation, and data mesh."
     )
 
-    tab1, tab2, tab3 = st.tabs([
-        "Warehouse & Advanced Modeling",
-        "Lakehouse Data Modeling",
-        "Data Mesh Architecture",
-    ])
+    selected_view = lazy_tab(
+        [
+            "Warehouse & Advanced Modeling",
+            "Lakehouse Data Modeling",
+            "Data Mesh Architecture",
+        ],
+        "dm_architecture_active_view",
+        "Architecture view",
+    )
 
-    with tab1:
+    if selected_view == "Warehouse & Advanced Modeling":
         render_warehouse_architecture_workspace()
 
-    with tab2:
+    elif selected_view == "Lakehouse Data Modeling":
         render_lakehouse_architecture_workspace()
 
-    with tab3:
+    else:
         render_data_mesh_architecture_workspace()
 
     render_ai_chat(
@@ -2670,15 +2675,16 @@ def show_distributed_modeling():
         "streaming architecture patterns that support distributed analytics."
     )
 
-    tab1, tab2 = st.tabs([
-        "Execution & Partitioning",
-        "Architecture Patterns & Access",
-    ])
+    selected_view = lazy_tab(
+        ["Execution & Partitioning", "Architecture Patterns & Access"],
+        "dm_distributed_active_view",
+        "Distributed modeling view",
+    )
 
-    with tab1:
+    if selected_view == "Execution & Partitioning":
         render_distributed_cluster_workspace()
 
-    with tab2:
+    else:
         render_access_patterns_workspace()
 
     render_ai_chat(

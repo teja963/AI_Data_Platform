@@ -1,4 +1,5 @@
 from functools import lru_cache
+import streamlit as st
 
 from core.constants import (
     ADMIN_SECTION_LABEL,
@@ -50,6 +51,7 @@ def can_view_architecture(username, role="user", full_name=None):
     )
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def user_can_view_architecture(username, role="user"):
     if role == "admin":
         return True
@@ -61,6 +63,7 @@ def user_can_view_architecture(username, role="user"):
         session.close()
 
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_allowed_sections(username, role="user"):
     is_admin = role == "admin"
     if is_admin:
@@ -112,6 +115,8 @@ def set_allowed_sections(user_id, sections):
                 session.add(row)
             row.allowed = section in allowed
         session.commit()
+        get_allowed_sections.clear()
+        user_can_view_architecture.clear()
     except Exception:
         session.rollback()
         raise

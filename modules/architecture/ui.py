@@ -14,6 +14,7 @@ from core.access import user_can_view_architecture
 from core.architecture import (
     add_github_architecture_diagram,
     delete_architecture_diagram,
+    get_architecture_diagram,
     get_architecture_diagrams,
 )
 
@@ -261,36 +262,45 @@ def render_diagram_collection(
         st.info("No diagrams linked in this collection yet.")
         return
 
-    for diagram in diagrams:
-        with st.container(border=True):
-            st.subheader(diagram.title or diagram.file_name)
-            if diagram.description:
-                st.write(diagram.description)
+    diagram_by_id = {diagram.id: diagram for diagram in diagrams}
+    selected_id = st.selectbox(
+        "Diagram",
+        list(diagram_by_id),
+        format_func=lambda diagram_id: (
+            diagram_by_id[diagram_id].title or diagram_by_id[diagram_id].file_name
+        ),
+        key=f"{key_prefix}_selected_diagram",
+    )
+    diagram = diagram_by_id[selected_id]
+    with st.container(border=True):
+        st.subheader(diagram.title or diagram.file_name)
+        if diagram.description:
+            st.write(diagram.description)
 
-            if _is_drawio_file(diagram.file_name):
-                try:
-                    file_data = (
-                        _fetch_github_drawio(diagram.source_url)
-                        if diagram.source_url
-                        else diagram.file_data
-                    )
-                    _render_drawio_viewer(
-                        file_data,
-                        diagram.title or diagram.file_name,
-                    )
-                    if diagram.source_url:
-                        st.caption("Read-only source: GitHub · synchronized within 60 seconds")
-                except (ValueError, UnicodeDecodeError, HTTPError, URLError, TimeoutError, zlib.error) as error:
-                    st.error(f"This GitHub Draw.io file could not be displayed: {error}")
-            elif _is_image_file(diagram.file_name, diagram.content_type):
-                _render_image_viewer(diagram)
-            else:
-                st.info("Read-only preview is not available for this file type.")
+        if _is_drawio_file(diagram.file_name):
+            try:
+                file_data = (
+                    _fetch_github_drawio(diagram.source_url)
+                    if diagram.source_url
+                    else get_architecture_diagram(diagram.id).file_data
+                )
+                _render_drawio_viewer(
+                    file_data,
+                    diagram.title or diagram.file_name,
+                )
+                if diagram.source_url:
+                    st.caption("Read-only source: GitHub · synchronized within 60 seconds")
+            except (ValueError, UnicodeDecodeError, HTTPError, URLError, TimeoutError, zlib.error) as error:
+                st.error(f"This GitHub Draw.io file could not be displayed: {error}")
+        elif _is_image_file(diagram.file_name, diagram.content_type):
+            _render_image_viewer(get_architecture_diagram(diagram.id))
+        else:
+            st.info("Read-only preview is not available for this file type.")
 
-            if is_admin and st.button("Delete", key=f"{key_prefix}_delete_{diagram.id}"):
-                delete_architecture_diagram(diagram.id)
-                st.success("Diagram deleted.")
-                st.rerun()
+        if is_admin and st.button("Delete", key=f"{key_prefix}_delete_{diagram.id}"):
+            delete_architecture_diagram(diagram.id)
+            st.success("Diagram deleted.")
+            st.rerun()
 
 
 def render_architecture():

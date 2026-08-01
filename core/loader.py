@@ -33,14 +33,49 @@ def _load_question_file(file_path, module, category=None):
     return question
 
 
+def _load_local_questions(module):
+    nested_path = os.path.join("data", module)
+    legacy_path = os.path.join("data", f"{module}_questions")
+    questions = []
+    if os.path.isdir(nested_path):
+        for root, dirs, files in os.walk(nested_path):
+            dirs.sort()
+            for file_name in sorted(files):
+                if not file_name.endswith(".json"):
+                    continue
+                file_path = os.path.join(root, file_name)
+                relative_dir = os.path.relpath(root, nested_path)
+                category = (
+                    _format_category_name(os.path.basename(relative_dir))
+                    if relative_dir != "."
+                    else None
+                )
+                questions.append(_load_question_file(file_path, module, category))
+        return questions
+    if os.path.isdir(legacy_path):
+        for file_name in sorted(os.listdir(legacy_path)):
+            if file_name.endswith(".json"):
+                questions.append(
+                    _load_question_file(
+                        os.path.join(legacy_path, file_name),
+                        module,
+                    )
+                )
+        return questions
+    return []
+
+
 def load_questions(module):
     return _load_questions_cached(module, get_app_version())
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _load_questions_cached(module, app_version):
-    # Prefer DB-stored SQL/PySpark questions if present, otherwise fall back to local data.
-    # Python evaluator questions stay local because tests may contain pandas/numpy objects.
+    # Static question catalogs are local-first so normal coding navigation never waits on PostgreSQL.
+    local_questions = _load_local_questions(module)
+    if local_questions:
+        return local_questions
+    # PostgreSQL remains a fallback for deployments whose question catalog is DB-only.
     session = None
     if module != "python":
         try:
@@ -91,41 +126,7 @@ def _load_questions_cached(module, app_version):
             if session is not None:
                 session.close()
 
-    nested_path = os.path.join("data", module)
-    legacy_path = os.path.join("data", f"{module}_questions")
-
-    if os.path.isdir(nested_path):
-        questions = []
-
-        for root, dirs, files in os.walk(nested_path):
-            dirs.sort()
-
-            for file_name in sorted(files):
-                if not file_name.endswith(".json"):
-                    continue
-
-                file_path = os.path.join(root, file_name)
-                relative_dir = os.path.relpath(root, nested_path)
-                category = None
-
-                if relative_dir != ".":
-                    category = _format_category_name(os.path.basename(relative_dir))
-
-                questions.append(_load_question_file(file_path, module, category))
-
-        return questions
-
-    if not os.path.isdir(legacy_path):
-        return load_question_bank(module)
-
-    questions = []
-
-    for file_name in sorted(os.listdir(legacy_path)):
-        if file_name.endswith(".json"):
-            file_path = os.path.join(legacy_path, file_name)
-            questions.append(_load_question_file(file_path, module))
-
-    return questions or load_question_bank(module)
+    return load_question_bank(module)
 
 
 def load_question_bank(module):
@@ -144,6 +145,7 @@ def load_question_bank(module):
     return questions
 
 
+@st.cache_data(show_spinner=False)
 def group_by_category(questions):
     grouped = {}
 

@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 from core.ai import ask_ai   # ✅ IMPORT LLM INTERFACE
+from core.lazy_tabs import lazy_tab
 
 
 # ---------------- METRICS ----------------
@@ -444,14 +445,16 @@ GROUP BY customer_id, window_start;""",
 
 def render_spark():
     st.title("Spark / Flink")
-    spark_tab, flink_tab, compare_tab = st.tabs(
-        ["Spark Batch Simulator", "Flink Streaming Simulator", "Spark vs Flink"]
+    selected = lazy_tab(
+        ["Spark Batch Simulator", "Flink Streaming Simulator", "Spark vs Flink"],
+        "spark_flink_active_workspace",
+        "Processing engine workspace",
     )
-    with spark_tab:
+    if selected == "Spark Batch Simulator":
         _render_spark_simulator()
-    with flink_tab:
+    elif selected == "Flink Streaming Simulator":
         _render_flink_simulator()
-    with compare_tab:
+    else:
         st.dataframe(
             pd.DataFrame(
                 [

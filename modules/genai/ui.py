@@ -1,6 +1,8 @@
 import pandas as pd
 import streamlit as st
 
+from core.lazy_tabs import lazy_tab
+
 
 GENAI_STAGES = [
     {
@@ -435,17 +437,21 @@ def render_stage_detail(stage):
     else:
         render_cloud_selector()
 
-    theory_tab, practical_tab, interview_tab = st.tabs(["Theory", "Practical", "Interview"])
+    selected = lazy_tab(
+        ["Theory", "Practical", "Interview"],
+        f"genai_stage_detail::{stage['key']}",
+        "Stage content",
+    )
 
-    with theory_tab:
+    if selected == "Theory":
         for item in stage["theory"]:
             st.markdown(f"- {item}")
 
-    with practical_tab:
+    elif selected == "Practical":
         for item in stage["practical"]:
             st.markdown(f"- {item}")
 
-    with interview_tab:
+    else:
         for item in stage["interview"]:
             with st.container(border=True):
                 st.markdown(f"**Question**: {item['question']}")
@@ -479,10 +485,13 @@ def render_roadmap_tab():
 
 
 def render_stage_labs_tab():
-    stage_tabs = st.tabs([stage["title"] for stage in GENAI_STAGES])
-    for tab, stage in zip(stage_tabs, GENAI_STAGES):
-        with tab:
-            render_stage_detail(stage)
+    selected = lazy_tab(
+        [stage["title"] for stage in GENAI_STAGES],
+        "genai_active_stage",
+        "GenAI stage",
+    )
+    stage = next(stage for stage in GENAI_STAGES if stage["title"] == selected)
+    render_stage_detail(stage)
 
 
 def render_interview_tab():
@@ -518,13 +527,14 @@ def render_interview_tab():
 
 
 def render_genai():
-    roadmap_tab, stages_tab, interview_tab = st.tabs(["Roadmap", "Stage Labs", "Interview Prep"])
-
-    with roadmap_tab:
+    selected = lazy_tab(
+        ["Roadmap", "Stage Labs", "Interview Prep"],
+        "genai_active_workspace",
+        "GenAI workspace",
+    )
+    if selected == "Roadmap":
         render_roadmap_tab()
-
-    with stages_tab:
+    elif selected == "Stage Labs":
         render_stage_labs_tab()
-
-    with interview_tab:
+    else:
         render_interview_tab()

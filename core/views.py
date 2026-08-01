@@ -1,8 +1,13 @@
 from sqlalchemy import text
 
+_REPORTING_VIEWS_READY = False
+
 
 def ensure_reporting_views():
     """Create lightweight PostgreSQL views for static/admin reporting reads."""
+    global _REPORTING_VIEWS_READY
+    if _REPORTING_VIEWS_READY:
+        return True
     try:
         from core.db import engine
 
@@ -62,6 +67,8 @@ def ensure_reporting_views():
         with engine.begin() as connection:
             for statement in statements:
                 connection.execute(text(statement))
+        _REPORTING_VIEWS_READY = True
+        return True
     except Exception:
         # Views are an optimization/reporting layer; app runtime should not fail if creation is blocked.
-        return
+        return False

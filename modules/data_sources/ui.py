@@ -5,6 +5,7 @@ import streamlit as st
 
 from core.practical_learning import SOURCE_CATALOG, simulate_ingestion
 from core.practice_state import load_practice_state, save_practice_state
+from core.lazy_tabs import lazy_tab
 
 
 SAMPLE_RECORDS = """{"order_id": 1, "customer_id": 101, "amount": 120.5}
@@ -22,11 +23,13 @@ def render_data_sources():
             st.session_state["ingestion_result"] = saved["ingestion_result"]
         st.session_state[marker] = True
     st.title("Data Sources & Ingestion")
-    learn_tab, lab_tab, patterns_tab, interview_tab = st.tabs(
-        ["Source Catalog", "Ingestion Simulator", "Patterns", "Interview Practice"]
+    selected_view = lazy_tab(
+        ["Source Catalog", "Ingestion Simulator", "Patterns", "Interview Practice"],
+        "data_sources_active_view",
+        "Data source workspace",
     )
 
-    with learn_tab:
+    if selected_view == "Source Catalog":
         selected = st.selectbox("Source type", list(SOURCE_CATALOG))
         st.subheader(selected)
         st.write(SOURCE_CATALOG[selected])
@@ -70,7 +73,7 @@ def render_data_sources():
         for item in source_details[selected]:
             st.markdown(f"- {item}")
 
-    with lab_tab:
+    elif selected_view == "Ingestion Simulator":
         with st.form("ingestion_simulator_form"):
             controls = st.columns(3)
             source = controls[0].selectbox("Source", list(SOURCE_CATALOG))
@@ -124,7 +127,7 @@ def render_data_sources():
                 language="json",
             )
 
-    with patterns_tab:
+    elif selected_view == "Patterns":
         st.subheader("Choose the ingestion pattern")
         rows = [
             {
@@ -150,7 +153,7 @@ def render_data_sources():
         ]
         st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
-    with interview_tab:
+    else:
         questions = [
             "How do you guarantee that a restarted ingestion job does not duplicate data?",
             "When would you choose CDC instead of timestamp-based incremental extraction?",

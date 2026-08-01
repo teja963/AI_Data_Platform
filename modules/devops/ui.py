@@ -1,6 +1,7 @@
 import streamlit as st
 
 from core.access import user_can_view_architecture
+from core.lazy_tabs import lazy_tab
 from modules.architecture.ui import render_diagram_collection
 from modules.devops.simulator_ui import render_kubernetes_simulator
 
@@ -13,12 +14,14 @@ def render_devops():
         return
 
     st.title("DevOps")
-    simulator_tab, diagrams_tab = st.tabs(
-        ["Kubernetes Practice Lab", "Architecture Diagrams"]
+    selected = lazy_tab(
+        ["Kubernetes Practice Lab", "Architecture Diagrams"],
+        "devops_active_workspace",
+        "DevOps workspace",
     )
-    with simulator_tab:
+    if selected == "Kubernetes Practice Lab":
         render_kubernetes_simulator()
-    with diagrams_tab:
+    else:
         render_diagram_collection(
             title="DevOps Architecture Diagrams",
             collection="devops",
