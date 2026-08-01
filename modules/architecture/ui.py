@@ -39,7 +39,8 @@ def _drawio_viewer_url(file_data, title):
     safe_title = quote(title or "Architecture Diagram", safe="")
     return (
         "https://viewer.diagrams.net/"
-        f"?highlight=0000ff&layers=1&nav=1&title={safe_title}#R{payload}"
+        f"?highlight=0000ff&layers=1&nav=1&lightbox=1&border=8"
+        f"&title={safe_title}#R{payload}"
     )
 
 
@@ -88,7 +89,7 @@ def _render_image_viewer(diagram):
         <style>
           html, body {{ margin: 0; height: 100%; overflow: hidden; background: #f6f7f9; }}
           #viewer {{ position: relative; height: 780px; width: 100%; overflow: auto; }}
-          #diagram {{ display: block; width: 100%; height: auto; max-width: none; transform-origin: top left; }}
+          #diagram {{ display: block; width: auto; height: auto; max-width: none; transform-origin: top left; }}
           #tools {{
             position: sticky; top: 10px; left: 10px; z-index: 5; display: inline-flex;
             gap: 6px; padding: 6px; border-radius: 8px; background: rgba(20,20,20,.78);
@@ -109,10 +110,21 @@ def _render_image_viewer(diagram):
         </div>
         <script>
           let scale = 1;
+          const viewer = document.getElementById("viewer");
           const image = document.getElementById("diagram");
           function applyZoom() {{ image.style.transform = `scale(${{scale}})`; }}
           function zoomBy(delta) {{ scale = Math.min(4, Math.max(0.25, scale + delta)); applyZoom(); }}
-          function resetZoom() {{ scale = 1; applyZoom(); }}
+          function fitZoom() {{
+            if (!image.naturalWidth || !image.naturalHeight) return;
+            scale = Math.min(4, Math.max(0.1, Math.min(
+              viewer.clientWidth / image.naturalWidth,
+              viewer.clientHeight / image.naturalHeight
+            )));
+            applyZoom();
+          }}
+          function resetZoom() {{ fitZoom(); }}
+          image.addEventListener("load", fitZoom);
+          new ResizeObserver(fitZoom).observe(viewer);
         </script>
         """,
         height=800,
@@ -208,7 +220,7 @@ def render_diagram_collection(
                     )
                     components.iframe(
                         _drawio_viewer_url(file_data, diagram.title or diagram.file_name),
-                        height=800,
+                        height=860,
                         scrolling=True,
                     )
                     if diagram.source_url:

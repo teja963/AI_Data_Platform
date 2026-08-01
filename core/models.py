@@ -97,6 +97,21 @@ class VirtualKubernetesLab(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class PracticeLabState(Base):
+    __tablename__ = "practice_lab_states"
+    __table_args__ = (
+        UniqueConstraint("username", "lab_key", name="uq_practice_lab_user_key"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    username = Column(String, nullable=False)
+    lab_key = Column(String, nullable=False)
+    state_json = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class InterviewRun(Base):
     __tablename__ = "interview_runs"
     id = Column(Integer, primary_key=True)

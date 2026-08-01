@@ -97,7 +97,31 @@ _TERMINAL_INPUT_BEHAVIOR = st.components.v2.component(
       if (input.dataset.k8sTerminalBound === "1") return;
       input.dataset.k8sTerminalBound = "1";
       let index = data.history.length;
-      input.addEventListener("keydown", (event) => {
+      input.addEventListener("keydown", async (event) => {
+        const terminalClipboard = (event.ctrlKey || event.metaKey) && event.shiftKey;
+        if (terminalClipboard && event.key.toLowerCase() === "c") {
+          event.preventDefault();
+          const selected = input.value.slice(
+            input.selectionStart || 0,
+            input.selectionEnd || 0
+          );
+          await navigator.clipboard.writeText(selected || input.value);
+          return;
+        }
+        if (terminalClipboard && event.key.toLowerCase() === "v") {
+          event.preventDefault();
+          const pasted = await navigator.clipboard.readText();
+          const start = input.selectionStart || 0;
+          const end = input.selectionEnd || 0;
+          const value = input.value.slice(0, start) + pasted + input.value.slice(end);
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, "value"
+          ).set;
+          setter.call(input, value);
+          input.dispatchEvent(new Event("input", {bubbles: true}));
+          input.setSelectionRange(start + pasted.length, start + pasted.length);
+          return;
+        }
         if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
         if (!data.history.length) return;
         event.preventDefault();
@@ -1642,30 +1666,6 @@ def _render_resource_management_unlimited(username, state):
                     f"{len(result['unchanged'])} resources."
                 )
 
-        st.markdown("##### Current resources")
-        inspect_pods, inspect_deployments, inspect_services = st.tabs(
-            ["Pods", "Deployments", "Services"]
-        )
-        with inspect_pods:
-            st.dataframe(
-                pd.DataFrame(pod_rows(state)),
-                width="stretch",
-                hide_index=True,
-            )
-        with inspect_deployments:
-            st.dataframe(
-                pd.DataFrame(deployment_rows(state)),
-                width="stretch",
-                hide_index=True,
-            )
-        with inspect_services:
-            st.dataframe(
-                pd.DataFrame(service_rows(state)),
-                width="stretch",
-                hide_index=True,
-            )
-
-
 def _terminal_prompt(state, context=None):
     context = context or state["terminal_context"]
     if context["mode"] == "pod":
@@ -2036,7 +2036,7 @@ def _render_reliable_terminal(username, state, terminal_id, title):
         div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] {{
           display: flex;
           align-items: center;
-          gap: 0;
+          gap: 3px;
           margin: 0 12px 8px;
         }}
         div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] > div {{
@@ -2054,7 +2054,7 @@ def _render_reliable_terminal(username, state, terminal_id, title):
         div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] input {{
           border: 0 !important;
           background: transparent !important;
-          color: #67d8ff !important;
+          color: #ffffff !important;
           caret-color: #65ff8d !important;
           font: 14px/1.5 SFMono-Regular, Menlo, Monaco, Consolas, monospace;
           box-shadow: none !important;
@@ -2086,6 +2086,10 @@ def _render_reliable_terminal(username, state, terminal_id, title):
         div[class*="st-key-{shell_key}"] .term-command,
         div[class*="st-key-{shell_key}"] .term-header {{
           color: #67d8ff;
+        }}
+        div[class*="st-key-{shell_key}"] .term-command {{
+          color: #ffffff;
+          margin-left: 3px;
         }}
         div[class*="st-key-{shell_key}"] .term-warning {{
           color: #ffd166;

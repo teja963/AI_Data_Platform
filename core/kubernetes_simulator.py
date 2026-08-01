@@ -114,6 +114,47 @@ def _system_namespaces(total_cpu_m, total_memory_mi, total_storage_gi):
     }
 
 
+def _pod_display_name(namespace, workload, index=None):
+    prefix = f"{namespace}-"
+    base = workload if workload.startswith(prefix) else f"{prefix}{workload}"
+    return f"{base}-{index:02d}" if index is not None else base
+
+
+def _normalize_pod_names(state):
+    renamed = {}
+    for deployment in state.get("deployments", {}).values():
+        namespace = deployment["namespace"]
+        workload = deployment["name"]
+        owned = sorted(
+            (
+                pod
+                for pod in state.get("pods", {}).values()
+                if pod.get("owner") == workload
+                and pod.get("namespace") == namespace
+            ),
+            key=lambda pod: (pod.get("created_at", ""), pod["name"]),
+        )
+        for index, pod in enumerate(owned, start=1):
+            renamed[id(pod)] = _pod_display_name(namespace, workload, index)
+    for pod in state.get("pods", {}).values():
+        if not pod.get("owner"):
+            renamed[id(pod)] = _pod_display_name(
+                pod["namespace"],
+                pod["name"],
+            )
+    for old_key, pod in list(state.get("pods", {}).items()):
+        new_name = renamed.get(id(pod), pod["name"])
+        if new_name == pod["name"]:
+            continue
+        state["pods"].pop(old_key)
+        pod["name"] = new_name
+        pod.setdefault("env", {}).update(
+            {"HOSTNAME": new_name, "POD_NAME": new_name}
+        )
+        pod.setdefault("filesystem", {})["/etc/hostname"] = new_name
+        state["pods"][_key(pod["namespace"], new_name)] = pod
+
+
 def normalize_cluster_state(state):
     """Add newly introduced simulator fields to previously saved labs."""
     if not state:
@@ -139,6 +180,7 @@ def normalize_cluster_state(state):
         defaults = _namespace_template(name)
         for key, value in defaults.items():
             namespace.setdefault(key, value)
+    _normalize_pod_names(state)
     state.setdefault(
         "terminal_context",
         {"mode": "cluster", "namespace": DEFAULT_NAMESPACE, "pod": None, "cwd": "/app"},
@@ -385,11 +427,8 @@ def _choose_node(state, cpu_request_m, memory_request_mi):
         if node["role"] != "worker" or node["status"] != "Ready" or not node["schedulable"]:
             continue
         usage = _node_usage(state, node["name"])
-        free_cpu = node["cpu_capacity_m"] - usage["cpu_m"]
-        free_memory = node["memory_capacity_mi"] - usage["memory_mi"]
-        if free_cpu >= cpu_request_m and free_memory >= memory_request_mi:
-            candidates.append((usage["pods"], -free_memory, node["name"]))
-    return min(candidates)[2] if candidates else None
+        candidates.append((usage["pods"], node["name"]))
+    return min(candidates)[1] if candidates else None
 
 
 def _create_pod(
@@ -468,7 +507,7 @@ def _create_pod(
         _event(
             state,
             "FailedScheduling",
-            f"No node has enough free CPU and memory for {namespace}/{pod_name}.",
+            f"No ready schedulable worker is available for {namespace}/{pod_name}.",
             kind="Warning",
             obj=f"pod/{pod_name}",
         )
@@ -490,6 +529,7 @@ def create_pod(
         raise ValueError("pod name is required")
     if not image:
         raise ValueError("container image is required")
+    name = _pod_display_name(namespace, name)
     if _key(namespace, name) in state["pods"]:
         raise ValueError(f'pods "{name}" already exists')
     pod = _create_pod(
@@ -519,7 +559,17 @@ def _reconcile(state):
         ]
         while len(owned) < int(deployment["replicas"]):
             state["counters"]["pod"] += 1
-            pod_name = f"{deployment['name']}-{state['counters']['pod']:04d}-{_token()}"
+            index = 1
+            while _key(
+                namespace,
+                _pod_display_name(namespace, deployment["name"], index),
+            ) in state["pods"]:
+                index += 1
+            pod_name = _pod_display_name(
+                namespace,
+                deployment["name"],
+                index,
+            )
             pod = _create_pod(
                 state,
                 pod_name,
@@ -1064,8 +1114,17 @@ def _get_output(state, resource, namespace, all_namespaces=False):
     if resource in {"pod", "pods", "po"}:
         rows = pod_rows(state, ns)
         return _format_table(
-            ["NAMESPACE", "NAME", "READY", "STATUS", "RESTARTS", "NODE"],
-            [[row["Namespace"], row["Name"], row["Ready"], row["Status"], row["Restarts"], row["Node"]] for row in rows],
+            ["NAME", "READY", "STATUS", "RESTARTS", "NODE"],
+            [
+                [
+                    row["Name"],
+                    row["Ready"],
+                    row["Status"],
+                    row["Restarts"],
+                    row["Node"],
+                ]
+                for row in rows
+            ],
         )
     if resource in {"deployment", "deployments", "deploy"}:
         rows = deployment_rows(state, ns)
@@ -1343,16 +1402,25 @@ def execute_pod_command(state, namespace, pod_name, command):
     if executable == "free":
         total = int(pod.get("memory_request_mi", 256))
         used = max(1, int(total * 0.28))
+        to_gib = lambda value: f"{value / 1024:.2f} GiB"
         return _format_table(
             ["", "total", "used", "free", "available"],
-            [["Mem:", total, used, total - used, int(total * 0.72)]],
+            [
+                [
+                    "Mem:",
+                    to_gib(total),
+                    to_gib(used),
+                    to_gib(total - used),
+                    to_gib(int(total * 0.72)),
+                ]
+            ],
         )
     if executable == "top":
         return (
             f"top - virtual pod {pod_name}\n"
             f"Tasks: {len(pod.get('processes', []))} total, 1 running\n"
-            f"CPU request: {pod.get('cpu_request_m', 0)}m  "
-            f"Memory request: {pod.get('memory_request_mi', 0)}Mi\n\n"
+            f"CPU request: {pod.get('cpu_request_m', 0) / 1000:.2f} cores  "
+            f"Memory request: {pod.get('memory_request_mi', 0) / 1024:.2f} GiB\n\n"
             + _format_table(
                 ["PID", "USER", "%CPU", "%MEM", "COMMAND"],
                 [

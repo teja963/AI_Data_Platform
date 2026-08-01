@@ -15,6 +15,9 @@ from core.models import User, UserSectionAccess
 @lru_cache(maxsize=1)
 def ensure_access_schema():
     Base.metadata.create_all(bind=engine, tables=[UserSectionAccess.__table__])
+    from core.section_migrations import migrate_access_section_labels
+
+    migrate_access_section_labels()
 
 
 def default_user_sections(is_admin=False):

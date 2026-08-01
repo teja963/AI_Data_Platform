@@ -32,6 +32,10 @@ from core.constants import (
     ARCHITECTURE_SECTION_LABEL,
     DEVOPS_SECTION_LABEL,
     CLOUD_SECTION_LABEL,
+    DATA_SOURCES_SECTION_LABEL,
+    WAREHOUSES_SECTION_LABEL,
+    LAKEHOUSE_SECTION_LABEL,
+    ORCHESTRATION_SECTION_LABEL,
     PROJECTS_SECTION_LABEL,
     ADMIN_SECTION_LABEL,
     SECTION_ORDER,
@@ -181,6 +185,20 @@ st.markdown(
         min-height: 2rem;
         padding: 0.2rem 0.55rem;
         border-radius: 0.35rem;
+    }
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_logout"] {
+        position: sticky;
+        bottom: 0.4rem;
+        z-index: 20;
+        margin-top: max(2rem, 18vh);
+        padding-top: 0.55rem;
+        background: var(--background-color);
+        border-top: 1px solid rgba(128, 128, 128, 0.35);
+    }
+    [data-testid="stSidebar"] div[class*="st-key-sidebar_logout"] button {
+        width: 100% !important;
+        border-radius: 0 !important;
+        min-height: 2.5rem !important;
     }
     div[class*="st-key-code_action_"] button {
         min-width: 2.5rem !important;
@@ -367,6 +385,18 @@ def _render_section_navigation(visible_sections, selected_module):
     if selected_nav != st.session_state.get("module"):
         st.session_state["module"] = selected_nav
         _set_query_param_if_changed("module", selected_nav)
+
+
+def _render_sidebar_logout():
+    with st.sidebar:
+        if st.button("Logout", key="sidebar_logout", help="End this signed-in session"):
+            flush_section_activity(st.session_state.get("user"))
+            _clear_persistent_login()
+            st.session_state.pop("persistent_cookie_user", None)
+            st.session_state["user"] = None
+            st.session_state["role"] = "user"
+            st.session_state.pop("login_ts", None)
+            st.rerun()
 
 
 # --- Authentication Flow ---
@@ -579,18 +609,6 @@ if st.session_state.get("user"):
     with st.sidebar:
         st.caption(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
         st.caption(f"App version: `{APP_VERSION}`")
-        if st.button("↪", key="sidebar_logout", help="Logout"):
-            flush_section_activity(st.session_state.get("user"))
-            _clear_persistent_login()
-            st.session_state.pop("persistent_cookie_user", None)
-            st.session_state["user"] = None
-            st.session_state["role"] = "user"
-            st.session_state.pop("login_ts", None)
-            time.sleep(0.75)
-            if hasattr(st, "rerun"):
-                st.rerun()
-            else:
-                st.experimental_rerun()
 
     if "module" not in st.session_state:
         st.session_state["module"] = DASHBOARD_SECTION_LABEL
@@ -606,6 +624,7 @@ if st.session_state.get("user"):
         "SQL": CODING_SECTION_LABEL,
         "PySpark": SPARK_SECTION_LABEL,
         PYTHON_SECTION_LABEL: CODING_SECTION_LABEL,
+        "Cloud": CLOUD_SECTION_LABEL,
     }
 
     selected_module = legacy_module_map.get(selected_module, selected_module)
@@ -624,6 +643,7 @@ if st.session_state.get("user"):
         st.session_state["module"] = selected_module
 
     _render_section_navigation(visible_sections, selected_module)
+    _render_sidebar_logout()
     module = st.session_state.get("module", selected_module)
 
     st.session_state["module"] = module
@@ -698,6 +718,10 @@ if st.session_state.get("user"):
         GENAI_SECTION_LABEL: lambda: __import__("modules.genai.ui", fromlist=["render_genai"]).render_genai(),
         SPARK_SECTION_LABEL: lambda: __import__("modules.spark.ui", fromlist=["render_spark"]).render_spark(),
         DATA_MODELING_SECTION_LABEL: lambda: __import__("modules.datamodeling.ui", fromlist=["render_datamodeling"]).render_datamodeling(),
+        DATA_SOURCES_SECTION_LABEL: lambda: __import__("modules.data_sources.ui", fromlist=["render_data_sources"]).render_data_sources(),
+        ORCHESTRATION_SECTION_LABEL: lambda: __import__("modules.orchestration.ui", fromlist=["render_orchestration"]).render_orchestration(),
+        WAREHOUSES_SECTION_LABEL: lambda: __import__("modules.warehouses.ui", fromlist=["render_warehouses"]).render_warehouses(),
+        LAKEHOUSE_SECTION_LABEL: lambda: __import__("modules.lakehouse.ui", fromlist=["render_lakehouse"]).render_lakehouse(),
         ARCHITECTURE_SECTION_LABEL: lambda: __import__("modules.architecture.ui", fromlist=["render_architecture"]).render_architecture(),
         DEVOPS_SECTION_LABEL: lambda: __import__("modules.devops.ui", fromlist=["render_devops"]).render_devops(),
         CLOUD_SECTION_LABEL: lambda: __import__("modules.cloud.ui", fromlist=["render_cloud"]).render_cloud(),

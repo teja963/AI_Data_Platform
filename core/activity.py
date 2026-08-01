@@ -28,6 +28,9 @@ def ensure_activity_schema():
     }
     if not required_tables.issubset(tables):
         Base.metadata.create_all(bind=engine)
+    from core.section_migrations import migrate_activity_section_labels
+
+    migrate_activity_section_labels()
     _ACTIVITY_SCHEMA_READY = True
 
 

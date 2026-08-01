@@ -8,6 +8,7 @@ from core.kubernetes_simulator import (
     delete_pod,
     deploy_data_platform_blueprint,
     execute_command,
+    execute_pod_command,
     namespace_rows,
     normalize_cluster_state,
     set_node_status,
@@ -28,13 +29,14 @@ class KubernetesSimulatorTests(unittest.TestCase):
 
     def test_controller_reconciles_deleted_pod(self):
         create_deployment(self.state, "api", "example/api:1", replicas=3)
-        original_names = set(self.state["pods"])
         pod = next(iter(self.state["pods"].values()))
+        pod_key = f"{pod['namespace']}/{pod['name']}"
 
         delete_pod(self.state, pod["name"], pod["namespace"])
 
         self.assertEqual(len(self.state["pods"]), 3)
-        self.assertNotEqual(original_names, set(self.state["pods"]))
+        self.assertIn(pod_key, self.state["pods"])
+        self.assertIsNot(pod, self.state["pods"][pod_key])
 
     def test_node_failure_reschedules_managed_workload(self):
         create_deployment(self.state, "worker", "example/worker:1", replicas=4)
@@ -70,7 +72,63 @@ class KubernetesSimulatorTests(unittest.TestCase):
         )
 
         self.assertEqual(pod["namespace"], "sandbox")
-        self.assertIn("sandbox/utility", self.state["pods"])
+        self.assertEqual(pod["name"], "sandbox-utility")
+        self.assertIn("sandbox/sandbox-utility", self.state["pods"])
+
+    def test_pod_output_uses_namespace_names_and_concise_columns(self):
+        create_namespace(self.state, "development")
+        create_deployment(
+            self.state,
+            "starrocks-cn",
+            "starrocks/cn:latest",
+            replicas=3,
+            namespace="development",
+        )
+
+        _, output = execute_command(self.state, "oc get pods -A")
+        header = output.splitlines()[0]
+        self.assertEqual(header.split(), ["NAME", "READY", "STATUS", "RESTARTS", "NODE"])
+        self.assertIn("development-starrocks-cn-01", output)
+        self.assertIn("development-starrocks-cn-02", output)
+        self.assertIn("development-starrocks-cn-03", output)
+
+    def test_pod_scheduling_ignores_virtual_cpu_and_memory_limits(self):
+        pod = create_pod(
+            self.state,
+            "large",
+            "example/large:1",
+            cpu_request_m=1_000_000,
+            memory_request_mi=1_000_000,
+        )
+
+        self.assertEqual(pod["status"], "Running")
+        self.assertIsNotNone(pod["node"])
+
+    def test_pod_resource_commands_use_cores_and_gib(self):
+        pod = create_pod(
+            self.state,
+            "metrics",
+            "example/metrics:1",
+            cpu_request_m=500,
+            memory_request_mi=2048,
+        )
+        top_output = execute_pod_command(
+            self.state,
+            "default",
+            pod["name"],
+            "top",
+        )
+        free_output = execute_pod_command(
+            self.state,
+            "default",
+            pod["name"],
+            "free",
+        )
+
+        self.assertIn("0.50 cores", top_output)
+        self.assertIn("2.00 GiB", top_output)
+        self.assertIn("GiB", free_output)
+        self.assertNotIn("MiB", top_output)
 
     def test_manifest_and_helm_are_simulated(self):
         manifest = """
@@ -155,7 +213,7 @@ spec:
         )
         self.assertEqual(len(self.state["pods"]), 20)
         self.assertTrue(
-            any(pod["status"] == "Pending" for pod in self.state["pods"].values())
+            all(pod["status"] == "Running" for pod in self.state["pods"].values())
         )
 
     def test_initial_state_has_only_unlimited_builtin_namespaces(self):
