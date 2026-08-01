@@ -4,6 +4,7 @@ from core.kubernetes_simulator import (
     create_cluster,
     create_deployment,
     create_namespace,
+    create_pod,
     delete_pod,
     deploy_data_platform_blueprint,
     execute_command,
@@ -58,6 +59,18 @@ class KubernetesSimulatorTests(unittest.TestCase):
         state, output = execute_command(state, "kubectl scale deployment/kafka --replicas=5")
         self.assertIn("scaled", output)
         self.assertEqual(state["deployments"]["default/kafka"]["replicas"], 5)
+
+    def test_standalone_pod_can_be_created_in_any_namespace(self):
+        create_namespace(self.state, "sandbox")
+        pod = create_pod(
+            self.state,
+            "utility",
+            "alpine:latest",
+            namespace="sandbox",
+        )
+
+        self.assertEqual(pod["namespace"], "sandbox")
+        self.assertIn("sandbox/utility", self.state["pods"])
 
     def test_manifest_and_helm_are_simulated(self):
         manifest = """
@@ -195,11 +208,33 @@ spec:
         self.assertIn("development/postgresql", state["services"])
         self.assertIn("development/flink-jobmanager", state["services"])
         self.assertIn("development/superset", state["services"])
+        self.assertNotIn("development/data-api", state["deployments"])
         fe_ports = {
             item["port"]
             for item in state["services"]["development/starrocks-fe"]["ports"]
         }
         self.assertEqual(fe_ports, {8030, 9010, 9020, 9030})
+
+        state = deploy_data_platform_blueprint(
+            state,
+            "development",
+            starrocks_compute_nodes=4,
+        )
+        self.assertEqual(state["deployments"]["development/starrocks-cn"]["replicas"], 4)
+        self.assertTrue(state["last_blueprint_result"]["updated"])
+
+    def test_blueprint_can_deploy_selected_components_only(self):
+        create_namespace(self.state, "streaming")
+        state = deploy_data_platform_blueprint(
+            self.state,
+            "streaming",
+            components=["Flink"],
+        )
+
+        self.assertIn("streaming/flink-jobmanager", state["deployments"])
+        self.assertIn("streaming/flink-taskmanager", state["deployments"])
+        self.assertNotIn("streaming/postgresql", state["deployments"])
+        self.assertNotIn("streaming/starrocks-cn", state["deployments"])
 
     def test_old_lab_is_reset_during_version_migration(self):
         self.state["simulator_version"] = 2

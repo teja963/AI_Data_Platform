@@ -475,6 +475,40 @@ def _create_pod(
     return pod
 
 
+def create_pod(
+    state,
+    name,
+    image,
+    namespace=DEFAULT_NAMESPACE,
+    cpu_request_m=250,
+    memory_request_mi=256,
+):
+    namespace = _namespace(state, namespace)
+    name = (name or "").strip().lower()
+    image = (image or "").strip()
+    if not name:
+        raise ValueError("pod name is required")
+    if not image:
+        raise ValueError("container image is required")
+    if _key(namespace, name) in state["pods"]:
+        raise ValueError(f'pods "{name}" already exists')
+    pod = _create_pod(
+        state,
+        name,
+        namespace,
+        image,
+        cpu_request_m=int(cpu_request_m),
+        memory_request_mi=int(memory_request_mi),
+    )
+    _event(
+        state,
+        "PodCreated",
+        f"Created pod {namespace}/{name}.",
+        obj=f"pod/{name}",
+    )
+    return pod
+
+
 def _reconcile(state):
     for deployment in list(state["deployments"].values()):
         namespace = deployment["namespace"]
@@ -772,36 +806,62 @@ def deploy_data_platform_blueprint(
     flink_jobmanagers=1,
     starrocks_frontends=3,
     component_resources=None,
+    components=None,
 ):
-    """Create a standard PostgreSQL, Flink, StarRocks, and Superset learning stack."""
+    """Create or update selected data-platform components without duplicate failures."""
     working = clone_state(state)
     component_resources = component_resources or {}
+    selected = set(components or {"PostgreSQL", "Flink", "StarRocks", "Superset"})
     workloads = [
-        ("postgresql", "postgres:latest", postgres_replicas, 2, 4, "StatefulSet"),
-        ("data-api", "example/data-api:1.0", api_replicas, 1, 2, "Deployment"),
-        ("flink-operator", "apache/flink-kubernetes-operator:latest", flink_operator_replicas, 1, 2, "Deployment"),
-        ("flink-jobmanager", "apache/flink:latest", flink_jobmanagers, 2, 4, "Deployment"),
-        ("flink-taskmanager", "apache/flink:latest", flink_taskmanagers, 2, 4, "Deployment"),
-        ("starrocks-fe", "starrocks/fe-ubuntu:latest", starrocks_frontends, 2, 4, "StatefulSet"),
-        ("starrocks-cn", "starrocks/cn-ubuntu:latest", starrocks_compute_nodes, 4, 8, "Deployment"),
-        ("superset", "apache/superset:latest", superset_replicas, 1, 2, "Deployment"),
+        ("PostgreSQL", "postgresql", "postgres:latest", postgres_replicas, 2, 4, "StatefulSet"),
+        ("Flink", "flink-operator", "apache/flink-kubernetes-operator:latest", flink_operator_replicas, 1, 2, "Deployment"),
+        ("Flink", "flink-jobmanager", "apache/flink:latest", flink_jobmanagers, 2, 4, "Deployment"),
+        ("Flink", "flink-taskmanager", "apache/flink:latest", flink_taskmanagers, 2, 4, "Deployment"),
+        ("StarRocks", "starrocks-fe", "starrocks/fe-ubuntu:latest", starrocks_frontends, 2, 4, "StatefulSet"),
+        ("StarRocks", "starrocks-cn", "starrocks/cn-ubuntu:latest", starrocks_compute_nodes, 4, 8, "Deployment"),
+        ("Superset", "superset", "apache/superset:latest", superset_replicas, 1, 2, "Deployment"),
     ]
-    for name, image, replicas, cpu, memory, kind in workloads:
+    result = {"created": [], "updated": [], "unchanged": []}
+    for group, name, image, replicas, cpu, memory, kind in workloads:
+        if group not in selected:
+            continue
         cpu, memory = component_resources.get(name, (cpu, memory))
-        create_deployment(
-            working,
-            name,
-            image,
-            replicas,
-            namespace,
-            cpu * 1000,
-            memory * 1024,
-            kind,
-        )
+        key = _key(namespace, name)
+        desired = {
+            "image": image,
+            "replicas": int(replicas),
+            "cpu_request_m": int(cpu * 1000),
+            "memory_request_mi": int(memory * 1024),
+            "kind": kind,
+        }
+        existing = working["deployments"].get(key)
+        if existing:
+            changed = any(existing.get(field) != value for field, value in desired.items())
+            if changed:
+                existing.update(desired)
+                for pod_key, pod in list(working["pods"].items()):
+                    if pod["namespace"] == namespace and pod.get("owner") == name:
+                        working["pods"].pop(pod_key)
+                _reconcile(working)
+                result["updated"].append(f"{kind.lower()}/{name}")
+            else:
+                result["unchanged"].append(f"{kind.lower()}/{name}")
+        else:
+            create_deployment(
+                working,
+                name,
+                image,
+                replicas,
+                namespace,
+                cpu * 1000,
+                memory * 1024,
+                kind,
+            )
+            result["created"].append(f"{kind.lower()}/{name}")
     services = [
-        ("postgresql", "postgresql", [{"name": "sql", "port": 5432, "target_port": 5432}]),
-        ("data-api", "data-api", [{"name": "http", "port": 8080, "target_port": 8080}]),
+        ("PostgreSQL", "postgresql", "postgresql", [{"name": "sql", "port": 5432, "target_port": 5432}]),
         (
+            "Flink",
             "flink-operator",
             "flink-operator",
             [
@@ -810,6 +870,7 @@ def deploy_data_platform_blueprint(
             ],
         ),
         (
+            "Flink",
             "flink-jobmanager",
             "flink-jobmanager",
             [
@@ -819,11 +880,13 @@ def deploy_data_platform_blueprint(
             ],
         ),
         (
+            "Flink",
             "flink-taskmanager",
             "flink-taskmanager",
             [{"name": "rpc", "port": 6122, "target_port": 6122}],
         ),
         (
+            "StarRocks",
             "starrocks-fe",
             "starrocks-fe",
             [
@@ -834,6 +897,7 @@ def deploy_data_platform_blueprint(
             ],
         ),
         (
+            "StarRocks",
             "starrocks-cn",
             "starrocks-cn",
             [
@@ -844,24 +908,49 @@ def deploy_data_platform_blueprint(
                 {"name": "starlet", "port": 9070, "target_port": 9070},
             ],
         ),
-        ("superset", "superset", [{"name": "web-ui", "port": 8088, "target_port": 8088}]),
+        ("Superset", "superset", "superset", [{"name": "web-ui", "port": 8088, "target_port": 8088}]),
     ]
-    for name, selector, ports in services:
+    for group, name, selector, ports in services:
+        if group not in selected:
+            continue
         first = ports[0]
-        create_service(
-            working,
-            name,
-            selector,
-            first["port"],
-            first["target_port"],
-            "ClusterIP",
-            namespace,
-            ports=ports,
-        )
+        key = _key(namespace, name)
+        existing = working["services"].get(key)
+        if existing:
+            desired_ports = [
+                {
+                    "name": item.get("name", f"port-{index + 1}"),
+                    "port": int(item["port"]),
+                    "target_port": int(item["target_port"]),
+                }
+                for index, item in enumerate(ports)
+            ]
+            changed = (
+                existing.get("selector") != selector
+                or existing.get("ports") != desired_ports
+            )
+            if changed:
+                existing.update({"selector": selector, "ports": desired_ports})
+                result["updated"].append(f"service/{name}")
+            else:
+                result["unchanged"].append(f"service/{name}")
+        else:
+            create_service(
+                working,
+                name,
+                selector,
+                first["port"],
+                first["target_port"],
+                "ClusterIP",
+                namespace,
+                ports=ports,
+            )
+            result["created"].append(f"service/{name}")
+    working["last_blueprint_result"] = result
     _event(
         working,
         "BlueprintDeployed",
-        f"Deployed the standard data platform blueprint in namespace {namespace}.",
+        f"Applied selected data platform components in namespace {namespace}.",
         obj=f"namespace/{namespace}",
     )
     return working
@@ -1292,7 +1381,10 @@ def execute_pod_command(state, namespace, pod_name, command):
             item
             for item in state["pods"].values()
             if item["namespace"] == service["namespace"]
-            and item.get("owner") == service["selector"]
+            and (
+                item.get("owner") == service["selector"]
+                or item["name"] == service["selector"]
+            )
             and item["status"] == "Running"
         ]
         if not endpoints:

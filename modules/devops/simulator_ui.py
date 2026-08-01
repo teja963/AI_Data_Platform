@@ -23,6 +23,7 @@ from core.kubernetes_simulator import (
     create_cluster,
     create_deployment,
     create_namespace,
+    create_pod,
     create_service,
     delete_pod,
     deployment_rows,
@@ -888,6 +889,56 @@ def _render_capacity_planner(username, state):
             max_value=500,
             value=30,
         )
+        with st.expander("Workload behavior and sizing assumptions"):
+            behavior = st.columns(8)
+            event_size_kb = behavior[0].number_input(
+                "Average event size (KiB)",
+                min_value=0.1,
+                value=1.0,
+                step=0.1,
+            )
+            flink_state_hours = behavior[1].number_input(
+                "Flink state window (hours)",
+                min_value=0.0,
+                value=6.0,
+                step=1.0,
+            )
+            flink_state_ratio = behavior[2].number_input(
+                "State retained (%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=10.0,
+            )
+            flink_state_memory = behavior[3].number_input(
+                "State in memory (%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=10.0,
+            )
+            hot_data_percent = behavior[4].number_input(
+                "StarRocks hot data (%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=20.0,
+            )
+            compression_ratio = behavior[5].number_input(
+                "Compression ratio",
+                min_value=1.0,
+                value=3.0,
+                step=0.5,
+            )
+            starrocks_cache = behavior[6].number_input(
+                "Local cache coverage (%)",
+                min_value=0.0,
+                max_value=100.0,
+                value=5.0,
+            )
+            target_utilization = behavior[7].number_input(
+                "Target utilization (%)",
+                min_value=30.0,
+                max_value=85.0,
+                value=65.0,
+            )
         calculate = st.form_submit_button("Calculate Capacity", type="primary")
     if calculate:
         if profile == "Custom":
@@ -904,6 +955,18 @@ def _render_capacity_planner(username, state):
             }
         else:
             inputs = profile_inputs(profile)
+        inputs.update(
+            {
+                "event_size_kb": event_size_kb,
+                "flink_state_hours": flink_state_hours,
+                "flink_state_ratio_percent": flink_state_ratio,
+                "flink_state_memory_percent": flink_state_memory,
+                "hot_data_percent": hot_data_percent,
+                "compression_ratio": compression_ratio,
+                "starrocks_cache_percent": starrocks_cache,
+                "target_utilization_percent": target_utilization,
+            }
+        )
         st.session_state[plan_key] = calculate_capacity(provider=provider, **inputs)
 
     if plan_key not in st.session_state:
@@ -915,7 +978,7 @@ def _render_capacity_planner(username, state):
     st.html(
         f"""
         <style>
-          .capacity-summary {{display:grid;grid-template-columns:repeat(5,minmax(130px,1fr));gap:8px;background:#0b1017;padding:10px;border:1px solid #26364c;border-radius:8px;color:#e8edf5}}
+          .capacity-summary {{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:8px;background:#0b1017;padding:10px;border:1px solid #26364c;border-radius:8px;color:#e8edf5}}
           .capacity-summary div {{background:#111a25;border:1px solid #26364c;border-radius:6px;padding:9px}}
           .capacity-summary small {{display:block;color:#8fa1b8;font-size:.68rem;text-transform:uppercase}}
           .capacity-summary strong {{font-size:1rem}}
@@ -925,7 +988,10 @@ def _render_capacity_planner(username, state):
           <div><small>Daily ingestion</small><strong>{plan["daily_tb"]:.2f} TB</strong></div>
           <div><small>Average throughput</small><strong>{plan["average_mb_s"]:.1f} MB/s</strong></div>
           <div><small>Designed peak</small><strong>{plan["peak_mb_s"]:.1f} MB/s</strong></div>
+          <div><small>Peak events</small><strong>{plan["peak_events_per_second"]:,.0f}/s</strong></div>
           <div><small>Retained with replicas</small><strong>{plan["retained_tb"] / 1000:.2f} PB</strong></div>
+          <div><small>Estimated Flink state</small><strong>{plan["flink_state_gib"] / 1024:.2f} TiB</strong></div>
+          <div><small>StarRocks hot set</small><strong>{plan["starrocks_hot_gib"] / 1024:.2f} TiB</strong></div>
           <div><small>Workload allocation</small><strong>{plan["total_component_cpu"]} CPU / {plan["total_component_memory_gib"]} GiB</strong></div>
         </div>
         """
@@ -938,6 +1004,7 @@ def _render_capacity_planner(username, state):
             "CPU each": f"{item['cpu_each']} cores",
             "Memory each": f"{item['memory_each_gib']} GiB",
             "Ports": item["ports"],
+            "Sizing basis": item["basis"],
             "Purpose": item["role"],
         }
         for item in plan["components"]
@@ -1271,90 +1338,187 @@ def _render_resource_management_unlimited(username, state):
     with workload_tab:
         namespaces = sorted(state["namespaces"])
         st.caption(
-            "Deployment keeps pod replicas running. Service gives those pods stable DNS and ports."
+            "Pod runs one container. Deployment keeps replicated pods running. "
+            "Service gives a pod or deployment a stable network endpoint."
         )
-        with st.form("standard_workload_form"):
-            first = st.columns(5)
-            namespace = first[0].selectbox("Namespace", namespaces)
-            workload_name = first[1].text_input("Workload name", value="data-api")
-            image = first[2].text_input("Container image", value="example/data-api:1.0")
-            kind = first[3].selectbox("Controller", ["Deployment", "StatefulSet"])
-            replicas = first[4].number_input("Pod replicas", 0, 100000, 2)
-            second = st.columns(3)
-            resource_profile = second[0].selectbox(
-                "Pod resource profile",
-                [*RESOURCE_PROFILES, "Custom"],
-            )
-            custom_cpu = second[1].number_input(
-                "Custom CPU per pod (cores)",
-                min_value=1,
-                value=1,
-            )
-            custom_memory = second[2].number_input(
-                "Custom memory per pod (GiB)",
-                min_value=1,
-                value=2,
-            )
-            create_workload = st.form_submit_button(
-                "Create Workload",
-                type="primary",
-            )
-        if create_workload:
-            try:
-                cpu, memory = _profile_capacity(
-                    resource_profile,
-                    custom_cpu,
-                    custom_memory,
+        pod_tab, deployment_tab, service_tab, platform_tab = st.tabs(
+            ["Create Pod", "Create Deployment", "Create Service", "Data Platform"]
+        )
+        with pod_tab:
+            with st.form("simple_pod_form"):
+                fields = st.columns(3)
+                pod_namespace = fields[0].selectbox("Namespace", namespaces)
+                pod_name = fields[1].text_input(
+                    "Pod name",
+                    placeholder="postgresql-utility",
                 )
-                create_deployment(
-                    state,
-                    workload_name,
-                    image,
-                    replicas,
-                    namespace,
-                    cpu * 1000,
-                    memory * 1024,
-                    kind,
+                pod_image = fields[2].text_input(
+                    "Container image",
+                    placeholder="postgres:latest",
                 )
-                _store_state(username, state)
-                st.rerun()
-            except (ValueError, TypeError) as exc:
-                st.error(str(exc))
-
-        deployments = list(state["deployments"].values())
-        if deployments:
-            with st.form("simple_service_form"):
-                fields = st.columns(5)
-                target = fields[0].selectbox(
-                    "Workload",
-                    deployments,
-                    format_func=lambda item: f"{item['namespace']}/{item['name']}",
+                with st.expander("Advanced resources (optional)"):
+                    advanced = st.columns(2)
+                    pod_cpu = advanced[0].number_input(
+                        "CPU request (cores)",
+                        min_value=0.05,
+                        value=0.25,
+                        step=0.05,
+                    )
+                    pod_memory = advanced[1].number_input(
+                        "Memory request (GiB)",
+                        min_value=0.05,
+                        value=0.25,
+                        step=0.05,
+                    )
+                create_pod_clicked = st.form_submit_button(
+                    "Create Pod",
+                    type="primary",
                 )
-                service_name = fields[1].text_input("Service name", value="data-api")
-                service_port = fields[2].number_input("Service port", 1, 65535, 80)
-                container_port = fields[3].number_input("Container port", 1, 65535, 8080)
-                service_type = fields[4].selectbox(
-                    "Service type",
-                    ["ClusterIP", "NodePort", "LoadBalancer"],
-                )
-                create_service_clicked = st.form_submit_button("Create Service")
-            if create_service_clicked:
+            if create_pod_clicked:
                 try:
-                    create_service(
+                    create_pod(
                         state,
-                        service_name,
-                        target["name"],
-                        service_port,
-                        container_port,
-                        service_type,
-                        target["namespace"],
+                        pod_name,
+                        pod_image,
+                        pod_namespace,
+                        int(pod_cpu * 1000),
+                        int(pod_memory * 1024),
                     )
                     _store_state(username, state)
                     st.rerun()
                 except (ValueError, TypeError) as exc:
                     st.error(str(exc))
 
-        with st.expander("Deploy standard data engineering platform"):
+        with deployment_tab:
+            with st.form("simple_deployment_form"):
+                fields = st.columns(5)
+                deployment_namespace = fields[0].selectbox(
+                    "Namespace",
+                    namespaces,
+                    key="deployment_namespace",
+                )
+                deployment_name = fields[1].text_input(
+                    "Deployment name",
+                    placeholder="flink-worker",
+                )
+                deployment_image = fields[2].text_input(
+                    "Container image",
+                    placeholder="apache/flink:latest",
+                )
+                deployment_kind = fields[3].selectbox(
+                    "Controller",
+                    ["Deployment", "StatefulSet"],
+                )
+                deployment_replicas = fields[4].number_input(
+                    "Replicas",
+                    min_value=0,
+                    max_value=100000,
+                    value=1,
+                )
+                with st.expander("Advanced resources (optional)"):
+                    advanced = st.columns(2)
+                    deployment_cpu = advanced[0].number_input(
+                        "CPU per pod (cores)",
+                        min_value=0.05,
+                        value=0.5,
+                        step=0.05,
+                    )
+                    deployment_memory = advanced[1].number_input(
+                        "Memory per pod (GiB)",
+                        min_value=0.05,
+                        value=0.5,
+                        step=0.05,
+                    )
+                create_deployment_clicked = st.form_submit_button(
+                    "Create Deployment",
+                    type="primary",
+                )
+            if create_deployment_clicked:
+                try:
+                    create_deployment(
+                        state,
+                        deployment_name,
+                        deployment_image,
+                        deployment_replicas,
+                        deployment_namespace,
+                        int(deployment_cpu * 1000),
+                        int(deployment_memory * 1024),
+                        deployment_kind,
+                    )
+                    _store_state(username, state)
+                    st.rerun()
+                except (ValueError, TypeError) as exc:
+                    st.error(str(exc))
+
+        with service_tab:
+            targets = [
+                {
+                    "namespace": item["namespace"],
+                    "name": item["name"],
+                    "label": f"Deployment · {item['namespace']}/{item['name']}",
+                }
+                for item in state["deployments"].values()
+            ]
+            targets.extend(
+                {
+                    "namespace": item["namespace"],
+                    "name": item["name"],
+                    "label": f"Pod · {item['namespace']}/{item['name']}",
+                }
+                for item in state["pods"].values()
+                if not item.get("owner")
+            )
+            if not targets:
+                st.info("Create a pod or deployment before creating a service.")
+            else:
+                with st.form("simple_service_form"):
+                    fields = st.columns(5)
+                    target = fields[0].selectbox(
+                        "Target",
+                        targets,
+                        format_func=lambda item: item["label"],
+                    )
+                    service_name = fields[1].text_input(
+                        "Service name",
+                        placeholder="flink-web",
+                    )
+                    service_port = fields[2].number_input(
+                        "Service port",
+                        1,
+                        65535,
+                        80,
+                    )
+                    container_port = fields[3].number_input(
+                        "Container port",
+                        1,
+                        65535,
+                        8080,
+                    )
+                    service_type = fields[4].selectbox(
+                        "Service type",
+                        ["ClusterIP", "NodePort", "LoadBalancer"],
+                    )
+                    create_service_clicked = st.form_submit_button(
+                        "Create Service",
+                        type="primary",
+                    )
+                if create_service_clicked:
+                    try:
+                        create_service(
+                            state,
+                            service_name,
+                            target["name"],
+                            service_port,
+                            container_port,
+                            service_type,
+                            target["namespace"],
+                        )
+                        _store_state(username, state)
+                        st.rerun()
+                    except (ValueError, TypeError) as exc:
+                        st.error(str(exc))
+
+        with platform_tab:
             plan = st.session_state.get(
                 f"k8s_capacity_plan::{username}",
                 calculate_capacity(
@@ -1379,6 +1543,11 @@ def _render_resource_management_unlimited(username, state):
                 hide_index=True,
             )
             with st.form("data_platform_blueprint_form"):
+                selected_components = st.multiselect(
+                    "Components",
+                    ["PostgreSQL", "Flink", "StarRocks", "Superset"],
+                    default=["PostgreSQL", "Flink", "StarRocks", "Superset"],
+                )
                 use_plan = st.checkbox(
                     "Use Capacity Planner recommendations",
                     value=True,
@@ -1416,18 +1585,18 @@ def _render_resource_management_unlimited(username, state):
                 )
             if deploy_blueprint:
                 try:
+                    if not selected_components:
+                        raise ValueError("select at least one component")
                     recommendations = {
                         item["component"]: item for item in plan["components"]
                     }
                     if use_plan:
                         postgres_replicas = recommendations["PostgreSQL"]["replicas"]
-                        api_replicas = recommendations["Data API"]["replicas"]
                         flink_taskmanagers = recommendations["Flink TaskManager"]["replicas"]
                         starrocks_compute = recommendations["StarRocks CN"]["replicas"]
                         superset_replicas = recommendations["Superset"]["replicas"]
                     resource_names = {
                         "PostgreSQL": "postgresql",
-                        "Data API": "data-api",
                         "Flink Operator": "flink-operator",
                         "Flink JobManager": "flink-jobmanager",
                         "Flink TaskManager": "flink-taskmanager",
@@ -1445,20 +1614,56 @@ def _render_resource_management_unlimited(username, state):
                     new_state = deploy_data_platform_blueprint(
                         state,
                         blueprint_namespace,
-                        postgres_replicas,
-                        api_replicas if use_plan else 2,
-                        flink_taskmanagers,
-                        starrocks_compute,
-                        superset_replicas,
-                        recommendations["Flink Operator"]["replicas"],
-                        recommendations["Flink JobManager"]["replicas"],
-                        recommendations["StarRocks FE"]["replicas"],
-                        component_resources,
+                            postgres_replicas=postgres_replicas,
+                            flink_taskmanagers=flink_taskmanagers,
+                            starrocks_compute_nodes=starrocks_compute,
+                            superset_replicas=superset_replicas,
+                            flink_operator_replicas=recommendations[
+                                "Flink Operator"
+                            ]["replicas"],
+                            flink_jobmanagers=recommendations[
+                                "Flink JobManager"
+                            ]["replicas"],
+                            starrocks_frontends=recommendations[
+                                "StarRocks FE"
+                            ]["replicas"],
+                            component_resources=component_resources,
+                            components=selected_components,
                     )
                     _store_state(username, new_state)
                     st.rerun()
                 except (ValueError, TypeError) as exc:
                     st.error(str(exc))
+            result = state.get("last_blueprint_result")
+            if result:
+                st.success(
+                    f"Created {len(result['created'])}, updated "
+                    f"{len(result['updated'])}, unchanged "
+                    f"{len(result['unchanged'])} resources."
+                )
+
+        st.markdown("##### Current resources")
+        inspect_pods, inspect_deployments, inspect_services = st.tabs(
+            ["Pods", "Deployments", "Services"]
+        )
+        with inspect_pods:
+            st.dataframe(
+                pd.DataFrame(pod_rows(state)),
+                width="stretch",
+                hide_index=True,
+            )
+        with inspect_deployments:
+            st.dataframe(
+                pd.DataFrame(deployment_rows(state)),
+                width="stretch",
+                hide_index=True,
+            )
+        with inspect_services:
+            st.dataframe(
+                pd.DataFrame(service_rows(state)),
+                width="stretch",
+                hide_index=True,
+            )
 
 
 def _terminal_prompt(state, context=None):
@@ -1603,11 +1808,48 @@ def _submit_terminal_command(
         st.session_state[buffer_key] = []
     else:
         st.session_state[buffer_key].append(
-            f"{current_prompt} {command}\n{output}".rstrip()
+            f"{current_prompt}{command}\n{output}".rstrip()
         )
     st.session_state[commands_key].append(command)
     st.session_state[input_key] = ""
     _store_state(username, new_state)
+
+
+def _terminal_transcript_html(transcript):
+    rendered = []
+    success_words = (
+        " created",
+        " configured",
+        " deployed",
+        " scaled",
+        " deleted",
+        " restarted",
+        " updated",
+        " successfully",
+    )
+    for line in transcript.splitlines():
+        escaped = html.escape(line)
+        lowered = line.lower()
+        if "$" in line:
+            prompt, command = line.split("$", 1)
+            rendered.append(
+                '<span class="term-line"><span class="term-prompt">'
+                f"{html.escape(prompt)}$</span>"
+                f'<span class="term-command">{html.escape(command)}</span></span>'
+            )
+        elif lowered.startswith(("error:", "error ", "failed", "fatal")):
+            rendered.append(f'<span class="term-line term-error">{escaped}</span>')
+        elif lowered.startswith(("warning", "warn:")) or " pending" in lowered:
+            rendered.append(f'<span class="term-line term-warning">{escaped}</span>')
+        elif any(word in lowered for word in success_words):
+            rendered.append(f'<span class="term-line term-success">{escaped}</span>')
+        elif line.startswith(
+            ("NAME ", "NAMESPACE ", "TYPE ", "LAST SEEN ", "REVISION ")
+        ):
+            rendered.append(f'<span class="term-line term-header">{escaped}</span>')
+        else:
+            rendered.append(f'<span class="term-line term-output">{escaped}</span>')
+    return "".join(rendered)
 
 
 def _render_unified_terminal(username, state, terminal_id="main"):
@@ -1794,7 +2036,7 @@ def _render_reliable_terminal(username, state, terminal_id, title):
         div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] {{
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 0;
           margin: 0 12px 8px;
         }}
         div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] > div {{
@@ -1812,10 +2054,12 @@ def _render_reliable_terminal(username, state, terminal_id, title):
         div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] input {{
           border: 0 !important;
           background: transparent !important;
-          color: #f2f7fb !important;
+          color: #67d8ff !important;
           caret-color: #65ff8d !important;
           font: 14px/1.5 SFMono-Regular, Menlo, Monaco, Consolas, monospace;
           box-shadow: none !important;
+          margin: 0 !important;
+          padding: 0 !important;
         }}
         div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] label {{
           flex: 0 0 auto;
@@ -1830,6 +2074,27 @@ def _render_reliable_terminal(username, state, terminal_id, title):
         }}
         div[class*="st-key-{shell_key}"] div[data-testid="InputInstructions"] {{
           display: none !important;
+        }}
+        div[class*="st-key-{shell_key}"] .term-line {{
+          display: block;
+          min-height: 1.5em;
+        }}
+        div[class*="st-key-{shell_key}"] .term-prompt,
+        div[class*="st-key-{shell_key}"] .term-success {{
+          color: #6fe58d;
+        }}
+        div[class*="st-key-{shell_key}"] .term-command,
+        div[class*="st-key-{shell_key}"] .term-header {{
+          color: #67d8ff;
+        }}
+        div[class*="st-key-{shell_key}"] .term-warning {{
+          color: #ffd166;
+        }}
+        div[class*="st-key-{shell_key}"] .term-error {{
+          color: #ff6b6b;
+        }}
+        div[class*="st-key-{shell_key}"] .term-output {{
+          color: #d9f7df;
         }}
         </style>
         """
@@ -1855,7 +2120,7 @@ def _render_reliable_terminal(username, state, terminal_id, title):
               overflow:visible;background:#05080c;
               color:#d9f7df;white-space:pre-wrap;overflow-wrap:anywhere;
               font:14px/1.5 SFMono-Regular,Menlo,Monaco,Consolas,monospace"
-              >{html.escape(transcript)}</pre>
+              >{_terminal_transcript_html(transcript)}</pre>
             """
         )
         st.text_input(
