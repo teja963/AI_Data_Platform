@@ -92,12 +92,20 @@ _TERMINAL_INPUT_BEHAVIOR = st.components.v2.component(
       );
       const input = terminal && terminal.querySelector("input");
       if (!input) return;
-      input.focus();
-      input.scrollIntoView({block: "nearest"});
-      if (input.dataset.k8sTerminalBound === "1") return;
-      input.dataset.k8sTerminalBound = "1";
-      let index = data.history.length;
-      input.addEventListener("keydown", async (event) => {
+      const history = Array.isArray(data.history) ? data.history : [];
+      let index = history.length;
+      const setInputValue = (value) => {
+        const setter = Object.getOwnPropertyDescriptor(
+          documentRoot.defaultView.HTMLInputElement.prototype, "value"
+        ).set;
+        setter.call(input, value);
+        input.dispatchEvent(new Event("input", {bubbles: true}));
+        input.setSelectionRange(value.length, value.length);
+      };
+      if (input._k8sTerminalKeyHandler) {
+        input.removeEventListener("keydown", input._k8sTerminalKeyHandler);
+      }
+      const keyHandler = async (event) => {
         const terminalClipboard = (event.ctrlKey || event.metaKey) && event.shiftKey;
         if (terminalClipboard && event.key.toLowerCase() === "c") {
           event.preventDefault();
@@ -114,30 +122,45 @@ _TERMINAL_INPUT_BEHAVIOR = st.components.v2.component(
           const start = input.selectionStart || 0;
           const end = input.selectionEnd || 0;
           const value = input.value.slice(0, start) + pasted + input.value.slice(end);
-          const setter = Object.getOwnPropertyDescriptor(
-            window.HTMLInputElement.prototype, "value"
-          ).set;
-          setter.call(input, value);
-          input.dispatchEvent(new Event("input", {bubbles: true}));
+          setInputValue(value);
           input.setSelectionRange(start + pasted.length, start + pasted.length);
           return;
         }
         if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-        if (!data.history.length) return;
+        if (!history.length) return;
         event.preventDefault();
         if (event.key === "ArrowUp") {
           index = Math.max(0, index - 1);
         } else {
-          index = Math.min(data.history.length, index + 1);
+          index = Math.min(history.length, index + 1);
         }
-        const value = index === data.history.length ? "" : data.history[index];
-        const setter = Object.getOwnPropertyDescriptor(
-          window.HTMLInputElement.prototype, "value"
-        ).set;
-        setter.call(input, value);
-        input.dispatchEvent(new Event("input", {bubbles: true}));
-        input.setSelectionRange(value.length, value.length);
-      });
+        setInputValue(index === history.length ? "" : history[index]);
+      };
+      input._k8sTerminalKeyHandler = keyHandler;
+      input.addEventListener("keydown", keyHandler);
+
+      if (terminal._k8sTerminalClickHandler) {
+        terminal.removeEventListener("click", terminal._k8sTerminalClickHandler);
+      }
+      const clickHandler = () => {
+        const selection = documentRoot.defaultView.getSelection();
+        if (!selection || selection.isCollapsed) input.focus();
+      };
+      terminal._k8sTerminalClickHandler = clickHandler;
+      terminal.addEventListener("click", clickHandler);
+
+      if (terminal._k8sTerminalCopyHandler) {
+        terminal.removeEventListener("copy", terminal._k8sTerminalCopyHandler);
+      }
+      const copyHandler = () => setTimeout(() => input.focus(), 0);
+      terminal._k8sTerminalCopyHandler = copyHandler;
+      terminal.addEventListener("copy", copyHandler);
+
+      const selection = documentRoot.defaultView.getSelection();
+      if (!selection || selection.isCollapsed) {
+        input.focus();
+        input.scrollIntoView({block: "nearest"});
+      }
     }
     """,
 )
@@ -521,7 +544,7 @@ helm install airflow apache-airflow/airflow --replica-count=3
 helm upgrade airflow apache-airflow/airflow --replica-count=5
 helm list
 helm uninstall airflow
-oc new-app example/data-api:1.0 --name=data-api""",
+oc new-app example/application:1.0 --name=application""",
                 language="bash",
             )
 
@@ -1244,8 +1267,8 @@ def _render_resource_management(username, state):
         with st.form("namespace_workload_form"):
             first = st.columns(4)
             namespace = first[0].selectbox("Namespace", namespaces)
-            workload_name = first[1].text_input("Workload name", value="data-api")
-            image = first[2].text_input("Container image", value="example/data-api:1.0")
+            workload_name = first[1].text_input("Workload name", placeholder="orders-api")
+            image = first[2].text_input("Container image", placeholder="example/orders-api:1.0")
             kind = first[3].selectbox("Controller", ["Deployment", "StatefulSet"])
             second = st.columns(3)
             replicas = second[0].number_input("Pods / replicas", 0, 5000, 3)
@@ -1285,7 +1308,7 @@ def _render_resource_management(username, state):
                     deployments,
                     format_func=lambda item: f"{item['namespace']}/{item['name']}",
                 )
-                service_name = service_fields[1].text_input("Service name", value="data-api")
+                service_name = service_fields[1].text_input("Service name", placeholder="orders-api")
                 port = service_fields[2].number_input("Service port", 1, 65535, 80)
                 target_port = service_fields[3].number_input("Container port", 1, 65535, 8080)
                 service_type = service_fields[4].selectbox(

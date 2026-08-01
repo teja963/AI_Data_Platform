@@ -10,6 +10,7 @@ from streamlit.testing.v1 import AppTest
         ("modules.warehouses.ui", "render_warehouses", "Data Warehouses & Query Engines"),
         ("modules.lakehouse.ui", "render_lakehouse", "Lakehouse & Table Formats"),
         ("modules.orchestration.ui", "render_orchestration", "Orchestration"),
+        ("modules.spark.ui", "render_spark", "Spark / Flink"),
     ],
 )
 def test_practical_sections_render_without_runtime_errors(

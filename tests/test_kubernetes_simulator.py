@@ -307,6 +307,38 @@ spec:
         self.assertNotIn("old-team", migrated["namespaces"])
         self.assertEqual(migrated["pods"], {})
 
+    def test_version_four_lab_is_repaired_without_losing_platform_workloads(self):
+        create_namespace(self.state, "analytics")
+        self.state = deploy_data_platform_blueprint(
+            self.state,
+            "analytics",
+            components=["PostgreSQL", "Flink", "StarRocks", "Superset"],
+        )
+        create_deployment(
+            self.state,
+            "data-api",
+            "example/data-api:1",
+            replicas=2,
+            namespace="analytics",
+        )
+        for pod in self.state["pods"].values():
+            if pod.get("owner") != "data-api":
+                pod["status"] = "Pending"
+                pod["node"] = None
+        self.state["simulator_version"] = 4
+
+        migrated = normalize_cluster_state(self.state)
+
+        self.assertIn("analytics/starrocks-cn", migrated["deployments"])
+        self.assertNotIn("analytics/data-api", migrated["deployments"])
+        self.assertTrue(migrated["pods"])
+        self.assertTrue(
+            all(pod["status"] == "Running" for pod in migrated["pods"].values())
+        )
+        self.assertTrue(
+            all(pod.get("owner") != "data-api" for pod in migrated["pods"].values())
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

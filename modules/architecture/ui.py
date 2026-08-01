@@ -1,5 +1,6 @@
 import base64
 import html
+import json
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlparse
@@ -132,6 +133,61 @@ def _render_image_viewer(diagram):
     )
 
 
+def _render_drawio_viewer(file_data, title):
+    config = {
+        "highlight": "#0000ff",
+        "nav": True,
+        "resize": True,
+        "fit": True,
+        "border": 8,
+        "toolbar": "zoom layers lightbox",
+        "xml": file_data.decode("utf-8"),
+    }
+    encoded_config = html.escape(
+        json.dumps(config, separators=(",", ":")),
+        quote=True,
+    )
+    safe_title = html.escape(title or "Architecture Diagram")
+    components.html(
+        f"""
+        <!doctype html>
+        <html>
+          <head>
+            <meta charset="utf-8">
+            <style>
+              html, body {{
+                margin: 0;
+                width: 100%;
+                height: 100%;
+                overflow: hidden;
+                background: #f6f7f9;
+              }}
+              .viewer-shell {{
+                width: 100%;
+                height: 850px;
+                overflow: hidden;
+                background: #f6f7f9;
+              }}
+              .mxgraph {{
+                width: 100%;
+                height: 100%;
+                border: 0;
+              }}
+            </style>
+          </head>
+          <body>
+            <div class="viewer-shell" title="{safe_title}">
+              <div class="mxgraph" data-mxgraph="{encoded_config}"></div>
+            </div>
+            <script src="https://viewer.diagrams.net/js/viewer-static.min.js"></script>
+          </body>
+        </html>
+        """,
+        height=870,
+        scrolling=False,
+    )
+
+
 def _render_admin_upload(collection, key_prefix):
     with st.expander("Add GitHub Draw.io Diagram", expanded=False):
         with st.form(f"{key_prefix}_github_form", clear_on_submit=True):
@@ -218,10 +274,9 @@ def render_diagram_collection(
                         if diagram.source_url
                         else diagram.file_data
                     )
-                    components.iframe(
-                        _drawio_viewer_url(file_data, diagram.title or diagram.file_name),
-                        height=860,
-                        scrolling=True,
+                    _render_drawio_viewer(
+                        file_data,
+                        diagram.title or diagram.file_name,
                     )
                     if diagram.source_url:
                         st.caption("Read-only source: GitHub · synchronized within 60 seconds")

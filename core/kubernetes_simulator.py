@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import yaml
 
 
-SIMULATOR_VERSION = 4
+SIMULATOR_VERSION = 5
 DEFAULT_NAMESPACE = "default"
 PROVIDER_REGIONS = {
     "AWS (EKS)": "us-east-1",
@@ -159,7 +159,8 @@ def normalize_cluster_state(state):
     """Add newly introduced simulator fields to previously saved labs."""
     if not state:
         return state
-    if int(state.get("simulator_version", 0)) < SIMULATOR_VERSION:
+    previous_version = int(state.get("simulator_version", 0))
+    if previous_version < 4:
         workers = [
             node for node in state.get("nodes", [])
             if node.get("role") == "worker"
@@ -175,16 +176,38 @@ def normalize_cluster_state(state):
         state["helm_releases"] = {}
         state["events"] = []
         state["history"] = []
-        state["simulator_version"] = SIMULATOR_VERSION
+    if previous_version < 5:
+        legacy_deployments = {
+            key
+            for key, deployment in state.setdefault("deployments", {}).items()
+            if deployment.get("name") == "data-api"
+        }
+        for key in legacy_deployments:
+            state["deployments"].pop(key, None)
+        state["pods"] = {
+            key: pod
+            for key, pod in state.setdefault("pods", {}).items()
+            if pod.get("owner") != "data-api"
+            and "-data-api-" not in pod.get("name", "")
+        }
+        state["services"] = {
+            key: service
+            for key, service in state.setdefault("services", {}).items()
+            if service.get("name") != "data-api"
+            and service.get("selector") != "data-api"
+        }
+    state["simulator_version"] = SIMULATOR_VERSION
     for name, namespace in state.setdefault("namespaces", {}).items():
         defaults = _namespace_template(name)
         for key, value in defaults.items():
             namespace.setdefault(key, value)
     _normalize_pod_names(state)
+    state.setdefault("counters", {"pod": 0, "service_ip": 10})
     state.setdefault(
         "terminal_context",
         {"mode": "cluster", "namespace": DEFAULT_NAMESPACE, "pod": None, "cwd": "/app"},
     )
+    _reconcile(state)
     return state
 
 
@@ -442,14 +465,6 @@ def _create_pod(
     heap_size_mi=0,
 ):
     pod_name = name
-    if namespace in state["namespaces"]:
-        _validate_namespace_quota(
-            state,
-            namespace,
-            1,
-            int(cpu_request_m),
-            int(memory_request_mi),
-        )
     node_name = _choose_node(state, int(cpu_request_m), int(memory_request_mi))
     status = "Running" if node_name else "Pending"
     pod = {
@@ -760,13 +775,6 @@ def create_deployment(
     key = _key(namespace, name)
     if key in state["deployments"]:
         raise ValueError(f'{kind.lower()}s.apps "{name}" already exists')
-    _validate_namespace_quota(
-        state,
-        namespace,
-        max(0, int(replicas)),
-        max(0, int(replicas)) * max(1, int(cpu_request_m)),
-        max(0, int(replicas)) * max(1, int(memory_request_mi)),
-    )
     state["deployments"][key] = {
         "name": name,
         "namespace": namespace,
@@ -788,14 +796,6 @@ def scale_deployment(state, name, replicas, namespace=DEFAULT_NAMESPACE):
     deployment = state["deployments"].get(_key(namespace, name))
     if not deployment:
         raise ValueError(f'deployments.apps "{name}" not found')
-    replica_delta = max(0, int(replicas) - int(deployment["replicas"]))
-    _validate_namespace_quota(
-        state,
-        namespace,
-        replica_delta,
-        replica_delta * deployment["cpu_request_m"],
-        replica_delta * deployment["memory_request_mi"],
-    )
     deployment["replicas"] = max(0, int(replicas))
     deployment["generation"] += 1
     _event(state, "ScalingReplicaSet", f"Scaled {namespace}/{name} to {replicas} replicas.", obj=f"deployment/{name}")
@@ -860,6 +860,7 @@ def deploy_data_platform_blueprint(
 ):
     """Create or update selected data-platform components without duplicate failures."""
     working = clone_state(state)
+    _reconcile(working)
     component_resources = component_resources or {}
     selected = set(components or {"PostgreSQL", "Flink", "StarRocks", "Superset"})
     workloads = [

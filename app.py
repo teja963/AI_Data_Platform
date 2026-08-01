@@ -623,6 +623,7 @@ if st.session_state.get("user"):
     legacy_module_map = {
         "SQL": CODING_SECTION_LABEL,
         "PySpark": SPARK_SECTION_LABEL,
+        "Spark": SPARK_SECTION_LABEL,
         PYTHON_SECTION_LABEL: CODING_SECTION_LABEL,
         "Cloud": CLOUD_SECTION_LABEL,
     }

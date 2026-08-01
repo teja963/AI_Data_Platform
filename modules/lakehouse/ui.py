@@ -7,10 +7,10 @@ from core.practical_learning import (
     new_lakehouse_state,
 )
 from core.practice_state import load_practice_state, save_practice_state
+from modules.architecture.ui import render_diagram_collection
 
 
-def render_lakehouse():
-    st.title("Lakehouse & Table Formats")
+def _render_lakehouse_lab():
     username = st.session_state.get("user")
     state_key = f"lakehouse_state::{username or 'local'}"
     if state_key not in st.session_state:
@@ -141,4 +141,22 @@ def render_lakehouse():
         st.write(
             "Discuss engine compatibility, catalog choice, update frequency, streaming integration, "
             "partition evolution, operational tooling, and vendor independence—not only feature lists."
+        )
+
+
+def render_lakehouse():
+    st.title("Lakehouse & Table Formats")
+    lab_tab, diagrams_tab = st.tabs(["Practical Lab", "Architecture Diagrams"])
+    with lab_tab:
+        _render_lakehouse_lab()
+    with diagrams_tab:
+        render_diagram_collection(
+            title="Lakehouse Architecture Diagrams",
+            collection="lakehouse",
+            description=(
+                "Read-only Iceberg, Delta Lake, Hudi, catalog, object-storage, "
+                "streaming, and query-engine Draw.io architectures synchronized from GitHub."
+            ),
+            key_prefix="lakehouse",
+            access_checked=True,
         )
