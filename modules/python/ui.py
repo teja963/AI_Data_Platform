@@ -442,9 +442,9 @@ def render_practice_workspace(questions):
                             elapsed_ms,
                             code,
                             f"{passed_count}/{result_count} tests passed",
+                            mark_solved=execution["passed"],
                         )
                         if execution["passed"]:
-                            mark_question_solved(selected_question_key)
                             st.success("All tests passed. Progress saved.")
                         else:
                             st.error("Some tests are still failing. Refine the solution and submit again.")
@@ -778,6 +778,7 @@ def render_active_interview():
                         elapsed_ms,
                         code,
                         f"{passed_count}/{result_count} tests passed",
+                        mark_solved=execution["passed"],
                     )
                     if execution["passed"]:
                         score = calculate_question_score(
@@ -794,7 +795,6 @@ def render_active_interview():
                             "score": score,
                         }
                         st.session_state[INTERVIEW_STATE_KEY] = interview_state
-                        mark_question_solved(question_key)
                         st.success(f"Correct. You earned {score} points on this question.")
                         st.rerun()
 

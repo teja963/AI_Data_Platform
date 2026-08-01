@@ -853,14 +853,18 @@ def _render_cluster_monitor(state):
         </div>
         """
     )
-    namespace_tab, worker_tab = st.tabs(["Namespace Allocation", "Worker Allocation"])
-    with namespace_tab:
+    selected_allocation = lazy_tab(
+        ["Namespace Allocation", "Worker Allocation"],
+        "kubernetes_monitor_allocation",
+        "Cluster allocation view",
+    )
+    if selected_allocation == "Namespace Allocation":
         st.dataframe(
             pd.DataFrame(namespace_rows(state)),
             width="stretch",
             hide_index=True,
         )
-    with worker_tab:
+    else:
         st.caption(
             "Workers may have different capacities. Pods from multiple namespaces can share a worker."
         )
@@ -1350,8 +1354,12 @@ def _profile_capacity(profile, custom_cpu, custom_memory):
 
 
 def _render_resource_management_unlimited(username, state):
-    namespace_tab, workload_tab = st.tabs(["Namespaces", "Deployments & Services"])
-    with namespace_tab:
+    selected_view = lazy_tab(
+        ["Namespaces", "Deployments & Services"],
+        "kubernetes_resources_active_view",
+        "Resource management view",
+    )
+    if selected_view == "Namespaces":
         with st.form("simple_namespace_form"):
             identity = st.columns(3)
             name = identity[0].text_input("Namespace name", placeholder="development")
@@ -1383,16 +1391,18 @@ def _render_resource_management_unlimited(username, state):
             hide_index=True,
         )
 
-    with workload_tab:
+    else:
         namespaces = sorted(state["namespaces"])
         st.caption(
             "Pod runs one container. Deployment keeps replicated pods running. "
             "Service gives a pod or deployment a stable network endpoint."
         )
-        pod_tab, deployment_tab, service_tab, platform_tab = st.tabs(
-            ["Create Pod", "Create Deployment", "Create Service", "Data Platform"]
+        selected_action = lazy_tab(
+            ["Create Pod", "Create Deployment", "Create Service", "Data Platform"],
+            "kubernetes_resource_action",
+            "Resource action",
         )
-        with pod_tab:
+        if selected_action == "Create Pod":
             with st.form("simple_pod_form"):
                 fields = st.columns(3)
                 pod_namespace = fields[0].selectbox("Namespace", namespaces)
@@ -1437,7 +1447,7 @@ def _render_resource_management_unlimited(username, state):
                 except (ValueError, TypeError) as exc:
                     st.error(str(exc))
 
-        with deployment_tab:
+        elif selected_action == "Create Deployment":
             with st.form("simple_deployment_form"):
                 fields = st.columns(5)
                 deployment_namespace = fields[0].selectbox(
@@ -1498,7 +1508,7 @@ def _render_resource_management_unlimited(username, state):
                 except (ValueError, TypeError) as exc:
                     st.error(str(exc))
 
-        with service_tab:
+        elif selected_action == "Create Service":
             targets = [
                 {
                     "namespace": item["namespace"],
@@ -1566,7 +1576,7 @@ def _render_resource_management_unlimited(username, state):
                     except (ValueError, TypeError) as exc:
                         st.error(str(exc))
 
-        with platform_tab:
+        else:
             plan = st.session_state.get(
                 f"k8s_capacity_plan::{username}",
                 calculate_capacity(

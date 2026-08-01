@@ -2,7 +2,7 @@ import streamlit as st
 from sqlalchemy import case, func
 
 from core.db import Base, SessionLocal, engine
-from core.models import CodingSubmission, User
+from core.models import CodingSubmission, Progress, User
 
 _SUBMISSION_SCHEMA_READY = False
 
@@ -19,7 +19,17 @@ def ensure_submission_schema():
         return False
 
 
-def record_submission(username, track, question_key, question_title, correct, elapsed_ms, code="", result_summary=""):
+def record_submission(
+    username,
+    track,
+    question_key,
+    question_title,
+    correct,
+    elapsed_ms,
+    code="",
+    result_summary="",
+    mark_solved=False,
+):
     if not username:
         return
 
@@ -27,9 +37,14 @@ def record_submission(username, track, question_key, question_title, correct, el
         return
     session = SessionLocal()
     try:
-        user = session.query(User).filter_by(username=username).first()
+        user_id = st.session_state.get(f"database_user_id::{username}")
+        if user_id is None:
+            user = session.query(User).filter_by(username=username).first()
+            user_id = user.id if user else None
+            if user_id is not None:
+                st.session_state[f"database_user_id::{username}"] = user_id
         submission = CodingSubmission(
-            user_id=user.id if user else None,
+            user_id=user_id,
             username=username,
             track=track,
             question_key=question_key,
@@ -40,7 +55,35 @@ def record_submission(username, track, question_key, question_title, correct, el
             result_summary=(result_summary or "")[:2000],
         )
         session.add(submission)
+        if mark_solved and correct and user_id is not None:
+            from core.progress import _ensure_progress_schema
+
+            _ensure_progress_schema()
+            existing_progress = (
+                session.query(Progress.id)
+                .filter_by(
+                    user_id=user_id,
+                    track=track,
+                    question_key=question_key,
+                    status="solved",
+                )
+                .first()
+            )
+            if existing_progress is None:
+                session.add(
+                    Progress(
+                        user_id=user_id,
+                        track=track,
+                        question_key=question_key,
+                        status="solved",
+                        attempts=1,
+                    )
+                )
         session.commit()
+        if mark_solved and correct:
+            from core.progress import cache_question_solved
+
+            cache_question_solved(question_key, track)
         _get_submission_stats_cached.clear()
         _get_recent_submissions_cached.clear()
     except Exception:

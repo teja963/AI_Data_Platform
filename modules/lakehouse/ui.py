@@ -27,11 +27,13 @@ def _render_lakehouse_lab():
         ),
     )
     state["format"] = format_name
-    learn_tab, operation_tab, timeline_tab, interview_tab = st.tabs(
-        ["Learn", "Table Operations", "Snapshots & Files", "Troubleshoot & Interview"]
+    selected_view = lazy_tab(
+        ["Learn", "Table Operations", "Snapshots & Files", "Troubleshoot & Interview"],
+        "lakehouse_lab_active_view",
+        "Lakehouse lab view",
     )
 
-    with learn_tab:
+    if selected_view == "Learn":
         st.subheader(format_name)
         st.write(LAKEHOUSE_FORMATS[format_name])
         concepts = [
@@ -58,7 +60,7 @@ def _render_lakehouse_lab():
         ]
         st.dataframe(pd.DataFrame(concepts), width="stretch", hide_index=True)
 
-    with operation_tab:
+    elif selected_view == "Table Operations":
         operation = st.selectbox(
             "Operation",
             [
@@ -110,7 +112,7 @@ def _render_lakehouse_lab():
             hide_index=True,
         )
 
-    with timeline_tab:
+    elif selected_view == "Snapshots & Files":
         current = st.session_state[state_key]
         metrics = st.columns(3)
         metrics[0].metric("Current snapshot", current["snapshots"][-1]["id"])
@@ -127,7 +129,7 @@ def _render_lakehouse_lab():
         ]
         st.dataframe(pd.DataFrame(snapshot_rows), width="stretch", hide_index=True)
 
-    with interview_tab:
+    else:
         st.markdown("**Common production problems**")
         problems = [
             "Small files increase metadata and planning overhead.",

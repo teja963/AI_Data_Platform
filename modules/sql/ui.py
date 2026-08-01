@@ -521,9 +521,9 @@ def render_practice_workspace(questions):
                                 elapsed_ms,
                                 query,
                                 f"{len(result.index)} rows x {len(result.columns)} columns",
+                                mark_solved=correct,
                             )
                             if correct:
-                                mark_question_solved(editor_mode, question_key)
                                 st.success("Correct")
                             else:
                                 st.error("Incorrect")
@@ -900,6 +900,7 @@ def render_active_interview():
                             elapsed_ms,
                             query,
                             f"{len(result.index)} rows x {len(result.columns)} columns",
+                            mark_solved=correct,
                         )
 
                         if correct:
@@ -917,7 +918,6 @@ def render_active_interview():
                                 "score": score,
                             }
                             st.session_state[INTERVIEW_STATE_KEY] = interview_state
-                            mark_question_solved(interview_state["editor_mode"], question_key)
                             st.success(f"Correct. You earned {score} points on this question.")
                             st.rerun()
 

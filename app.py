@@ -174,9 +174,9 @@ st.markdown(
     .block-container {
         max-width: 100% !important;
         padding-top: 3.25rem !important;
-        padding-bottom: 0.35rem !important;
-        padding-left: clamp(0.55rem, 1.2vw, 1.1rem) !important;
-        padding-right: clamp(0.55rem, 1.2vw, 1.1rem) !important;
+        padding-bottom: 1rem !important;
+        padding-left: clamp(1rem, 2vw, 2.25rem) !important;
+        padding-right: clamp(1rem, 2vw, 2.25rem) !important;
     }
     [data-testid="stVerticalBlock"] {
         gap: 0.35rem !important;
@@ -190,10 +190,13 @@ st.markdown(
         position: sticky;
         bottom: 0.4rem;
         z-index: 20;
-        margin-top: max(2rem, 18vh);
+        margin-top: auto !important;
         padding-top: 0.55rem;
         background: var(--background-color);
         border-top: 1px solid rgba(128, 128, 128, 0.35);
+    }
+    [data-testid="stSidebarUserContent"] > [data-testid="stVerticalBlock"] {
+        min-height: calc(100vh - 2rem);
     }
     [data-testid="stSidebar"] div[class*="st-key-sidebar_logout"] button {
         width: 100% !important;
@@ -232,6 +235,22 @@ st.markdown(
         background: #ffffff;
         border: 1px solid #cbd5e1;
         color: #0f172a;
+    }
+    .dm-box, .dm-box *, .coding-io-box, .coding-io-box * {
+        color: var(--text-color) !important;
+    }
+    [data-testid="stSegmentedControl"] button[aria-pressed="true"] {
+        background: #2563eb !important;
+        color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+    [data-testid="stSegmentedControl"] button[aria-pressed="false"] {
+        border-color: color-mix(in srgb, var(--text-color) 28%, transparent) !important;
+    }
+    div[class*="st-key-ace_"] {
+        border: 1px solid color-mix(in srgb, var(--text-color) 35%, transparent);
+        border-radius: 0.4rem;
+        overflow: hidden;
     }
     .genai-box.active-blue { background: #eff6ff; border-color: #2563eb; border-width: 2px; }
     .genai-box.active-green { background: #f0fdfa; border-color: #0f766e; border-width: 2px; }

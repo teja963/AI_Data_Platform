@@ -259,6 +259,13 @@ def save_progress(solved_set, track="sql"):
     st.session_state[_progress_cache_key(track)] = solved_set
 
 
+def cache_question_solved(question_key, track="sql"):
+    solved = set(st.session_state.get(_progress_cache_key(track), set()))
+    solved.add(question_key)
+    st.session_state[_progress_cache_key(track)] = solved
+    _save_local_progress(solved, track)
+
+
 def clear_progress(track=None):
     if _db_available():
         try:

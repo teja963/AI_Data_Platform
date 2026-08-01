@@ -394,10 +394,12 @@ def _render_flink_simulator():
         )
     st.dataframe(pd.DataFrame(operator_rows), width="stretch", hide_index=True)
 
-    code_tab, checkpoints_tab, recovery_tab = st.tabs(
-        ["Flink SQL", "Checkpoints & State", "Failure Recovery"]
+    selected_detail = lazy_tab(
+        ["Flink SQL", "Checkpoints & State", "Failure Recovery"],
+        "flink_active_detail",
+        "Flink detail",
     )
-    with code_tab:
+    if selected_detail == "Flink SQL":
         st.code(
             """CREATE TABLE orders_source (
   order_id BIGINT,
@@ -417,7 +419,7 @@ FROM TABLE(
 GROUP BY customer_id, window_start;""",
             language="sql",
         )
-    with checkpoints_tab:
+    elif selected_detail == "Checkpoints & State":
         checkpoint_rows = [
             {
                 "Checkpoint": index,
@@ -429,7 +431,7 @@ GROUP BY customer_id, window_start;""",
             for index in range(1, 5)
         ]
         st.dataframe(pd.DataFrame(checkpoint_rows), width="stretch", hide_index=True)
-    with recovery_tab:
+    else:
         st.write(
             "Flink restores operator state and source offsets from the latest completed checkpoint. "
             "Exactly-once sinks commit only after a successful checkpoint."

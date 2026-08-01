@@ -6,7 +6,7 @@ from sqlalchemy import inspect
 
 MAX_TRACKED_SECONDS = 300
 MIN_WRITE_SECONDS = 10
-FLUSH_INTERVAL_SECONDS = 60
+FLUSH_INTERVAL_SECONDS = 300
 _ACTIVITY_SCHEMA_READY = False
 
 
@@ -128,6 +128,12 @@ def _pending_performance():
     return st.session_state["section_performance_pending"]
 
 
+def _pending_query_performance():
+    if "query_performance_pending" not in st.session_state:
+        st.session_state["query_performance_pending"] = {}
+    return st.session_state["query_performance_pending"]
+
+
 def _queue_activity(section, elapsed_seconds=0, visit_count=0):
     pending = _pending_activity()
     item = pending.setdefault(section, {"seconds": 0, "visits": 0})
@@ -146,6 +152,19 @@ def _queue_section_performance(section, elapsed_ms):
     )
     elapsed_ms = int(max(elapsed_ms, 0))
     item["render_count"] += 1
+    item["total_ms"] += elapsed_ms
+    item["max_ms"] = max(int(item["max_ms"]), elapsed_ms)
+    item["last_ms"] = elapsed_ms
+
+
+def _queue_query_performance(track, elapsed_ms):
+    pending = _pending_query_performance()
+    item = pending.setdefault(
+        track,
+        {"run_count": 0, "total_ms": 0, "max_ms": 0, "last_ms": 0},
+    )
+    elapsed_ms = int(max(elapsed_ms, 0))
+    item["run_count"] += 1
     item["total_ms"] += elapsed_ms
     item["max_ms"] = max(int(item["max_ms"]), elapsed_ms)
     item["last_ms"] = elapsed_ms
@@ -222,6 +241,11 @@ def _flush_pending_activity(username):
         _add_section_performance(username, section, values)
     st.session_state["section_performance_pending"] = {}
 
+    pending_queries = st.session_state.get("query_performance_pending", {})
+    for track, values in list(pending_queries.items()):
+        _add_query_performance(username, track, values)
+    st.session_state["query_performance_pending"] = {}
+
     st.session_state["activity_last_flush_ts"] = datetime.utcnow()
 
 
@@ -269,8 +293,8 @@ def track_section_render(username, section, elapsed_ms):
         _flush_pending_activity(username)
 
 
-def track_query_execution(username, track, elapsed_ms):
-    if not username or not track or elapsed_ms < 0:
+def _add_query_performance(username, track, values):
+    if not username or not track or not values:
         return
 
     try:
@@ -305,11 +329,10 @@ def track_query_execution(username, track, elapsed_ms):
                 )
                 session.add(perf)
 
-            elapsed_ms = int(max(elapsed_ms, 0))
-            perf.run_count = int(perf.run_count or 0) + 1
-            perf.total_ms = int(perf.total_ms or 0) + elapsed_ms
-            perf.max_ms = max(int(perf.max_ms or 0), elapsed_ms)
-            perf.last_ms = elapsed_ms
+            perf.run_count = int(perf.run_count or 0) + int(values.get("run_count", 0))
+            perf.total_ms = int(perf.total_ms or 0) + int(values.get("total_ms", 0))
+            perf.max_ms = max(int(perf.max_ms or 0), int(values.get("max_ms", 0)))
+            perf.last_ms = int(values.get("last_ms", 0))
             perf.last_seen = now
             perf.updated_at = now
             session.commit()
@@ -319,6 +342,12 @@ def track_query_execution(username, track, elapsed_ms):
             session.close()
     except Exception:
         return
+
+
+def track_query_execution(username, track, elapsed_ms):
+    if not username or not track or elapsed_ms < 0:
+        return
+    _queue_query_performance(track, elapsed_ms)
 
 
 def flush_section_activity(username):
