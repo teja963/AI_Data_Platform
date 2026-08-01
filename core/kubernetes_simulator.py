@@ -68,8 +68,8 @@ def _namespace_template(
     memory_quota_mi=0,
     storage_quota_gi=0,
     pod_quota=0,
-    default_cpu_m=250,
-    default_memory_mi=256,
+    default_cpu_m=0,
+    default_memory_mi=0,
     labels=None,
 ):
     return {
@@ -94,30 +94,22 @@ def _system_namespaces(total_cpu_m, total_memory_mi, total_storage_gi):
             "default",
             owner="Platform Team",
             environment="Shared",
-            default_cpu_m=1000,
-            default_memory_mi=2048,
         ),
         "kube-system": _namespace_template(
             "kube-system",
             owner="Kubernetes",
             environment="System",
-            default_cpu_m=1000,
-            default_memory_mi=1024,
             labels={"kubernetes.io/metadata.name": "kube-system"},
         ),
         "kube-public": _namespace_template(
             "kube-public",
             owner="Kubernetes",
             environment="System",
-            default_cpu_m=1000,
-            default_memory_mi=1024,
         ),
         "kube-node-lease": _namespace_template(
             "kube-node-lease",
             owner="Kubernetes",
             environment="System",
-            default_cpu_m=1000,
-            default_memory_mi=1024,
         ),
     }
 
@@ -369,19 +361,17 @@ def namespace_rows(state):
     rows = []
     for namespace in state["namespaces"].values():
         usage = namespace_usage(state, namespace["name"])
+        labels = namespace.get("labels", {})
         rows.append(
             {
                 "Namespace": namespace["name"],
-                "Owner": namespace.get("owner", "Platform Team"),
-                "Environment": namespace.get("environment", "Shared"),
                 "Status": namespace.get("status", "Active"),
+                "Owner": namespace.get("owner", "Platform Team"),
+                "Labels": ", ".join(
+                    f"{key}={value}" for key, value in sorted(labels.items())
+                )
+                or "—",
                 "Pods": usage["pods"],
-                "CPU Allocated": f"{usage['cpu_m'] / 1000:.2f} cores",
-                "Memory Allocated": f"{usage['memory_mi'] / 1024:.2f} GiB",
-                "Default Pod": (
-                    f"{namespace.get('default_cpu_m', 1000) / 1000:.2f} CPU / "
-                    f"{namespace.get('default_memory_mi', 2048) / 1024:.2f} GiB"
-                ),
                 "Deployments": usage["deployments"],
                 "Services": usage["services"],
             }
@@ -532,8 +522,8 @@ def create_namespace(
     memory_quota_mi=0,
     storage_quota_gi=0,
     pod_quota=0,
-    default_cpu_m=1000,
-    default_memory_mi=2048,
+    default_cpu_m=0,
+    default_memory_mi=0,
     labels=None,
 ):
     name = name.strip().lower()
@@ -1003,15 +993,14 @@ def _get_output(state, resource, namespace, all_namespaces=False):
     if resource in {"namespace", "namespaces", "ns"}:
         rows = namespace_rows(state)
         return _format_table(
-            ["NAME", "STATUS", "PODS", "CPU", "MEMORY", "OWNER"],
+            ["NAME", "STATUS", "OWNER", "LABELS", "PODS"],
             [
                 [
                     item["Namespace"],
                     item["Status"],
-                    item["Pods"],
-                    item["CPU Allocated"],
-                    item["Memory Allocated"],
                     item["Owner"],
+                    item["Labels"],
+                    item["Pods"],
                 ]
                 for item in rows
             ],

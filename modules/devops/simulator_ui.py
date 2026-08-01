@@ -80,6 +80,43 @@ QUICK_COMMANDS = [
     "helm list",
 ]
 
+_TERMINAL_INPUT_BEHAVIOR = st.components.v2.component(
+    "kubernetes_terminal_input_behavior",
+    html="<span></span>",
+    js="""
+    export default function({data, parentElement}) {
+      const documentRoot = parentElement.ownerDocument;
+      const terminal = documentRoot.querySelector(
+        `[class*="st-key-${data.shellKey}"]`
+      );
+      const input = terminal && terminal.querySelector("input");
+      if (!input) return;
+      input.focus();
+      input.scrollIntoView({block: "nearest"});
+      if (input.dataset.k8sTerminalBound === "1") return;
+      input.dataset.k8sTerminalBound = "1";
+      let index = data.history.length;
+      input.addEventListener("keydown", (event) => {
+        if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+        if (!data.history.length) return;
+        event.preventDefault();
+        if (event.key === "ArrowUp") {
+          index = Math.max(0, index - 1);
+        } else {
+          index = Math.min(data.history.length, index + 1);
+        }
+        const value = index === data.history.length ? "" : data.history[index];
+        const setter = Object.getOwnPropertyDescriptor(
+          window.HTMLInputElement.prototype, "value"
+        ).set;
+        setter.call(input, value);
+        input.dispatchEvent(new Event("input", {bubbles: true}));
+        input.setSelectionRange(value.length, value.length);
+      });
+    }
+    """,
+)
+
 
 def _state_key(username):
     return f"kubernetes_simulator_state::{username}"
@@ -1201,31 +1238,13 @@ def _render_resource_management_unlimited(username, state):
     namespace_tab, workload_tab = st.tabs(["Namespaces", "Deployments & Services"])
     with namespace_tab:
         with st.form("simple_namespace_form"):
-            identity = st.columns(4)
+            identity = st.columns(3)
             name = identity[0].text_input("Namespace name", placeholder="development")
             owner = identity[1].text_input("Owner / team", value="Data Platform")
-            environment = identity[2].selectbox(
-                "Environment",
-                ["Development", "Testing", "Staging", "Production", "Shared"],
-            )
-            profile = identity[3].selectbox(
-                "Default pod profile",
-                [*RESOURCE_PROFILES, "Custom"],
-            )
-            defaults = st.columns(3)
-            custom_cpu = defaults[0].number_input(
-                "Custom CPU per pod (cores)",
-                min_value=1,
-                value=1,
-            )
-            custom_memory = defaults[1].number_input(
-                "Custom memory per pod (GiB)",
-                min_value=1,
-                value=2,
-            )
-            labels_text = defaults[2].text_input(
+            labels_text = identity[2].text_input(
                 "Labels",
                 value="team=data-platform",
+                help="Optional comma-separated key=value labels.",
             )
             create_namespace_clicked = st.form_submit_button(
                 "Create Namespace",
@@ -1233,18 +1252,10 @@ def _render_resource_management_unlimited(username, state):
             )
         if create_namespace_clicked:
             try:
-                default_cpu, default_memory = _profile_capacity(
-                    profile,
-                    custom_cpu,
-                    custom_memory,
-                )
                 create_namespace(
                     state,
                     name,
-                    owner,
-                    environment,
-                    default_cpu_m=default_cpu * 1000,
-                    default_memory_mi=default_memory * 1024,
+                    owner=owner,
                     labels=_parse_labels(labels_text),
                 )
                 _store_state(username, state)
@@ -1256,74 +1267,6 @@ def _render_resource_management_unlimited(username, state):
             width="stretch",
             hide_index=True,
         )
-        for namespace_name, policy in state["namespaces"].items():
-            with st.expander(f"Adjust {namespace_name} defaults"):
-                with st.form(f"simple_edit_namespace_{namespace_name}"):
-                    fields = st.columns(5)
-                    edit_owner = fields[0].text_input(
-                        "Owner / team",
-                        value=policy.get("owner", "Platform Team"),
-                        key=f"simple_owner_{namespace_name}",
-                    )
-                    environments = [
-                        "Development",
-                        "Testing",
-                        "Staging",
-                        "Production",
-                        "Shared",
-                        "System",
-                    ]
-                    current_environment = policy.get("environment", "Shared")
-                    edit_environment = fields[1].selectbox(
-                        "Environment",
-                        environments,
-                        index=(
-                            environments.index(current_environment)
-                            if current_environment in environments
-                            else environments.index("Shared")
-                        ),
-                        key=f"simple_environment_{namespace_name}",
-                    )
-                    edit_cpu = fields[2].number_input(
-                        "Default CPU (cores)",
-                        min_value=1,
-                        value=max(1, round(policy.get("default_cpu_m", 1000) / 1000)),
-                        key=f"simple_cpu_{namespace_name}",
-                    )
-                    edit_memory = fields[3].number_input(
-                        "Default memory (GiB)",
-                        min_value=1,
-                        value=max(1, round(policy.get("default_memory_mi", 2048) / 1024)),
-                        key=f"simple_memory_{namespace_name}",
-                    )
-                    edit_labels = fields[4].text_input(
-                        "Labels",
-                        value=",".join(
-                            f"{key}={value}"
-                            for key, value in policy.get("labels", {}).items()
-                        ),
-                        key=f"simple_labels_{namespace_name}",
-                    )
-                    save_namespace = st.form_submit_button("Save Defaults")
-                if save_namespace:
-                    try:
-                        update_namespace(
-                            state,
-                            namespace_name,
-                            edit_owner,
-                            edit_environment,
-                            0,
-                            0,
-                            0,
-                            0,
-                            edit_cpu * 1000,
-                            edit_memory * 1024,
-                            _parse_labels(edit_labels),
-                        )
-                        _store_state(username, state)
-                        st.rerun()
-                    except (ValueError, TypeError) as exc:
-                        st.error(str(exc))
 
     with workload_tab:
         namespaces = sorted(state["namespaces"])
@@ -1635,42 +1578,11 @@ def _terminal_run(state, command, context=None):
     return new_state, output, False
 
 
-def _terminal_history_script(history):
-    history_json = json.dumps(history[-100:])
-    st.iframe(
-        f"""
-        <script>
-        (() => {{
-          try {{
-            const history = {history_json};
-            const root = window.parent.document.querySelector('[class*="st-key-unified_terminal_shell"]');
-            const input = root && root.querySelector('input');
-            if (!input || input.dataset.k8sHistoryBound === '1') return;
-            input.dataset.k8sHistoryBound = '1';
-            let index = history.length;
-            const setValue = (value) => {{
-              const setter = Object.getOwnPropertyDescriptor(
-                window.parent.HTMLInputElement.prototype, 'value'
-              ).set;
-              setter.call(input, value);
-              input.dispatchEvent(new window.parent.Event('input', {{bubbles:true}}));
-            }};
-            input.addEventListener('keydown', (event) => {{
-              if (event.key === 'ArrowUp' && history.length) {{
-                event.preventDefault();
-                index = Math.max(0, index - 1);
-                setValue(history[index]);
-              }} else if (event.key === 'ArrowDown' && history.length) {{
-                event.preventDefault();
-                index = Math.min(history.length, index + 1);
-                setValue(index === history.length ? '' : history[index]);
-              }}
-            }});
-          }} catch (error) {{}}
-        }})();
-        </script>
-        """,
-        height=1,
+def _terminal_input_script(shell_key, history):
+    _TERMINAL_INPUT_BEHAVIOR(
+        key=f"terminal_input_behavior::{shell_key}",
+        data={"shellKey": shell_key, "history": history[-100:]},
+        height=0,
     )
 
 
@@ -1870,17 +1782,32 @@ def _render_reliable_terminal(username, state, terminal_id, title):
           height: min(72vh, 720px);
           min-height: 560px;
           padding: 0 !important;
-          overflow: hidden !important;
+          overflow-x: hidden !important;
+          overflow-y: auto !important;
           border: 1px solid #263445;
           border-radius: 8px;
           background: #05080c;
         }}
         div[class*="st-key-{shell_key}"] > div[data-testid="stVerticalBlock"] {{
-          height: 100%;
           gap: 0 !important;
         }}
         div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] {{
-          margin: 0 12px 10px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 0 12px 8px;
+        }}
+        div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] > div {{
+          flex: 1 1 auto;
+        }}
+        div[class*="st-key-{shell_key}"] div[data-baseweb="input"],
+        div[class*="st-key-{shell_key}"] div[data-baseweb="base-input"],
+        div[class*="st-key-{shell_key}"] .react-aria-TextField,
+        div[class*="st-key-{shell_key}"] div[data-testid="stTextInputRootElement"] {{
+          border: 0 !important;
+          background: transparent !important;
+          box-shadow: none !important;
+          outline: 0 !important;
         }}
         div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] input {{
           border: 0 !important;
@@ -1891,12 +1818,23 @@ def _render_reliable_terminal(username, state, terminal_id, title):
           box-shadow: none !important;
         }}
         div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] label {{
+          flex: 0 0 auto;
+          margin: 0 !important;
+          padding: 0 !important;
           color: #6fe58d !important;
-          font: 600 13px/1.5 SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+          font: 600 14px/1.5 SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        }}
+        div[class*="st-key-{shell_key}"] div[data-testid="stTextInput"] label p {{
+          color: #6fe58d !important;
+          font: inherit !important;
+        }}
+        div[class*="st-key-{shell_key}"] div[data-testid="InputInstructions"] {{
+          display: none !important;
         }}
         </style>
         """
     )
+    scrollback_padding = "12px 12px 0" if transcript else "0"
     with st.container(key=shell_key, border=False):
         st.html(
             f"""
@@ -1912,8 +1850,9 @@ def _render_reliable_terminal(username, state, terminal_id, title):
               <span style="color:#94a4b8;font-size:12px">{html.escape(title)}</span>
               <span style="width:44px"></span>
             </div>
-            <pre class="k8s-terminal-scrollback" style="height:calc(min(72vh,720px) - 134px);
-              min-height:426px;margin:0;padding:12px;overflow:auto;background:#05080c;
+            <pre class="k8s-terminal-scrollback" style="min-height:0;margin:0;
+              padding:{scrollback_padding};
+              overflow:visible;background:#05080c;
               color:#d9f7df;white-space:pre-wrap;overflow-wrap:anywhere;
               font:14px/1.5 SFMono-Regular,Menlo,Monaco,Consolas,monospace"
               >{html.escape(transcript)}</pre>
@@ -1922,7 +1861,7 @@ def _render_reliable_terminal(username, state, terminal_id, title):
         st.text_input(
             prompt,
             key=input_key,
-            placeholder="Type a kubectl, oc, or helm command and press Enter",
+            placeholder="",
             on_change=_submit_terminal_command,
             args=(
                 username,
@@ -1933,11 +1872,7 @@ def _render_reliable_terminal(username, state, terminal_id, title):
                 context,
             ),
         )
-        st.html(
-            '<div style="padding:0 12px 8px;color:#7d8da3;font-size:11px">'
-            "Enter: execute · Backspace/Delete: edit · clear: clear this terminal"
-            "</div>"
-        )
+        _terminal_input_script(shell_key, st.session_state[commands_key])
 
 
 def _terminal_sessions_key(username):

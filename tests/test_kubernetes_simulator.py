@@ -7,6 +7,7 @@ from core.kubernetes_simulator import (
     delete_pod,
     deploy_data_platform_blueprint,
     execute_command,
+    namespace_rows,
     normalize_cluster_state,
     set_node_status,
 )
@@ -154,6 +155,33 @@ spec:
             self.assertEqual(namespace["memory_quota_mi"], 0)
             self.assertEqual(namespace["storage_quota_gi"], 0)
             self.assertEqual(namespace["pod_quota"], 0)
+            self.assertEqual(namespace["default_cpu_m"], 0)
+            self.assertEqual(namespace["default_memory_mi"], 0)
+
+    def test_namespace_creation_is_visible_without_resource_allocations(self):
+        create_namespace(
+            self.state,
+            "analytics",
+            owner="Data Team",
+            labels={"team": "analytics"},
+        )
+
+        analytics = next(
+            row for row in namespace_rows(self.state)
+            if row["Namespace"] == "analytics"
+        )
+        self.assertEqual(analytics["Owner"], "Data Team")
+        self.assertEqual(analytics["Labels"], "team=analytics")
+        self.assertNotIn("CPU Allocated", analytics)
+        self.assertNotIn("Memory Allocated", analytics)
+
+        state, output = execute_command(self.state, "oc create namespace streaming")
+        self.assertIn("streaming", state["namespaces"])
+        _, output = execute_command(state, "oc get namespaces")
+        self.assertIn("analytics", output)
+        self.assertIn("streaming", output)
+        self.assertNotIn("CPU", output)
+        self.assertNotIn("MEMORY", output)
 
     def test_data_platform_blueprint_has_standard_components_and_ports(self):
         create_namespace(self.state, "development")
