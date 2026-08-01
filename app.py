@@ -187,26 +187,19 @@ st.markdown(
         border-radius: 0.35rem;
     }
     [data-testid="stSidebar"] div[class*="st-key-sidebar_logout"] {
-        position: absolute !important;
-        right: 0.75rem !important;
-        bottom: 0.65rem !important;
-        left: 0.75rem !important;
-        z-index: 100;
         margin: 0 !important;
-        padding-top: 0.55rem;
-        background: var(--background-color);
-        border-top: 1px solid rgba(128, 128, 128, 0.35);
-    }
-    [data-testid="stSidebar"] {
-        position: relative !important;
-    }
-    [data-testid="stSidebarUserContent"] {
-        padding-bottom: 4.5rem !important;
+        padding: 0 !important;
     }
     [data-testid="stSidebar"] div[class*="st-key-sidebar_logout"] button {
-        width: 100% !important;
-        border-radius: 0 !important;
-        min-height: 2.5rem !important;
+        width: 2rem !important;
+        min-width: 2rem !important;
+        min-height: 2rem !important;
+        padding: 0 !important;
+        border: 1px solid rgba(128, 128, 128, 0.35) !important;
+        border-radius: 0.35rem !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        font-size: 1rem !important;
     }
     div[class*="st-key-code_action_"] button {
         min-width: 2.5rem !important;
@@ -412,15 +405,14 @@ def _render_section_navigation(visible_sections, selected_module):
 
 
 def _render_sidebar_logout():
-    with st.sidebar:
-        if st.button("Logout", key="sidebar_logout", help="End this signed-in session"):
-            flush_section_activity(st.session_state.get("user"))
-            _clear_persistent_login()
-            st.session_state.pop("persistent_cookie_user", None)
-            st.session_state["user"] = None
-            st.session_state["role"] = "user"
-            st.session_state.pop("login_ts", None)
-            st.rerun()
+    if st.button("⎋", key="sidebar_logout", help="Logout"):
+        flush_section_activity(st.session_state.get("user"))
+        _clear_persistent_login()
+        st.session_state.pop("persistent_cookie_user", None)
+        st.session_state["user"] = None
+        st.session_state["role"] = "user"
+        st.session_state.pop("login_ts", None)
+        st.rerun()
 
 
 # --- Authentication Flow ---
@@ -631,7 +623,12 @@ if st.session_state.get("user"):
 
     # --- Main App (Only reached if authenticated)
     with st.sidebar:
-        st.caption(f"User: **{st.session_state['user']}** ({st.session_state.get('role')})")
+        user_col, logout_col = st.columns([5, 1], vertical_alignment="center")
+        user_col.caption(
+            f"User: **{st.session_state['user']}** ({st.session_state.get('role')})"
+        )
+        with logout_col:
+            _render_sidebar_logout()
         st.caption(f"App version: `{APP_VERSION}`")
 
     if "module" not in st.session_state:
@@ -668,7 +665,6 @@ if st.session_state.get("user"):
         st.session_state["module"] = selected_module
 
     _render_section_navigation(visible_sections, selected_module)
-    _render_sidebar_logout()
     module = st.session_state.get("module", selected_module)
 
     st.session_state["module"] = module
