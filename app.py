@@ -234,6 +234,11 @@ st.markdown(
         border: 1px solid #cbd5e1;
         color: #0f172a;
     }
+    .dm-box, .coding-io-box {
+        background: var(--secondary-background-color) !important;
+        color: var(--text-color) !important;
+        border-color: color-mix(in srgb, var(--text-color) 30%, transparent) !important;
+    }
     .dm-box, .dm-box *, .coding-io-box, .coding-io-box * {
         color: var(--text-color) !important;
     }
@@ -270,8 +275,7 @@ st.markdown(
     [data-theme='dark'] .dm-box,
     [data-theme='dark'] .project-card,
     [data-theme='dark'] .coding-io-box,
-    [data-theme='dark'] .spark-disk-box,
-    [data-theme='dark'] [style*="background"] {
+    [data-theme='dark'] .spark-disk-box {
         background: #1e293b !important;
         border-color: #334155 !important;
         color: #f1f5f9 !important;
@@ -283,9 +287,12 @@ st.markdown(
     [data-theme='dark'] .dm-box *,
     [data-theme='dark'] .project-card *,
     [data-theme='dark'] .coding-io-box *,
-    [data-theme='dark'] [style*="background"] *,
     [data-theme='dark'] [style*="color:#475569" i],
-    [data-theme='dark'] [style*="color:#0f172a" i] {
+    [data-theme='dark'] [style*="color:#0f172a" i],
+    [data-theme='dark'] [style*="color:#374151" i],
+    [data-theme='dark'] [style*="color:#1f2937" i],
+    [data-theme='dark'] [style*="color:#64748b" i],
+    [data-theme='dark'] [style*="color:#111827" i] {
         color: #f1f5f9 !important;
     }
 

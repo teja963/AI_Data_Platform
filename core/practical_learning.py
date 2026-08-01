@@ -211,6 +211,51 @@ SOURCE_CATALOG = {
     "DMS / Debezium CDC": "Database change events preserving inserts, updates, deletes, and source positions.",
 }
 
+INGESTION_PROFILES = {
+    "PostgreSQL / MySQL / Oracle": {
+        "capture": {"Batch snapshot": "Partitioned JDBC query", "Streaming": "Incremental high-watermark polling", "CDC": "WAL / binlog / redo reader"},
+        "checkpoint": {"Batch snapshot": "max primary key", "Streaming": "updated_at watermark", "CDC": "LSN / SCN"},
+        "partition": "Primary-key ranges",
+        "schema": "Relational schema + DDL history",
+    },
+    "MongoDB / Document DB": {
+        "capture": {"Batch snapshot": "Collection cursor", "Streaming": "Tailable/change-stream cursor", "CDC": "Change stream"},
+        "checkpoint": {"Batch snapshot": "last _id", "Streaming": "resume token", "CDC": "clusterTime + resume token"},
+        "partition": "Shard key / _id ranges",
+        "schema": "Inferred nested document contract",
+    },
+    "REST / GraphQL API": {
+        "capture": {"Batch snapshot": "Paginated pull", "Streaming": "Webhook or short polling", "CDC": "Incremental API cursor"},
+        "checkpoint": {"Batch snapshot": "page/cursor", "Streaming": "event delivery id", "CDC": "updated_since token"},
+        "partition": "Endpoint + tenant",
+        "schema": "Versioned response contract",
+    },
+    "Files / S3 / Object Storage": {
+        "capture": {"Batch snapshot": "Manifest file scan", "Streaming": "Object-created notifications", "CDC": "Object version event log"},
+        "checkpoint": {"Batch snapshot": "manifest id", "Streaming": "event sequencer", "CDC": "object version id"},
+        "partition": "Path/date partitions",
+        "schema": "File schema + format metadata",
+    },
+    "Kafka / MSK": {
+        "capture": {"Batch snapshot": "Bounded offset range", "Streaming": "Consumer group poll loop", "CDC": "Debezium envelope consumer"},
+        "checkpoint": {"Batch snapshot": "ending offsets", "Streaming": "topic-partition offsets", "CDC": "offset + source LSN"},
+        "partition": "Topic partition key",
+        "schema": "Schema Registry subject/version",
+    },
+    "Kinesis": {
+        "capture": {"Batch snapshot": "Bounded shard iterator", "Streaming": "Enhanced fan-out consumer", "CDC": "CDC records published to shards"},
+        "checkpoint": {"Batch snapshot": "ending sequence numbers", "Streaming": "per-shard sequence number", "CDC": "sequence number + source LSN"},
+        "partition": "Shard partition key",
+        "schema": "Producer contract / Glue schema",
+    },
+    "DMS / Debezium CDC": {
+        "capture": {"Batch snapshot": "Initial full load", "Streaming": "Full load then ongoing changes", "CDC": "Transaction-log change capture"},
+        "checkpoint": {"Batch snapshot": "table load marker", "Streaming": "replication task checkpoint", "CDC": "LSN / binlog position"},
+        "partition": "Source table + primary key",
+        "schema": "Before/after envelope + DDL events",
+    },
+}
+
 
 WAREHOUSE_ENGINES = {
     "Amazon Redshift": "MPP warehouse using distribution, sort keys, WLM, Spectrum, and materialized views.",
@@ -321,7 +366,12 @@ def parse_records(text):
 
 
 def simulate_ingestion(source, mode, text, deduplicate=True):
+    if source not in INGESTION_PROFILES:
+        raise ValueError(f"unsupported source: {source}")
+    if mode not in {"Batch snapshot", "Streaming", "CDC"}:
+        raise ValueError(f"unsupported ingestion mode: {mode}")
     records = parse_records(text)
+    profile = INGESTION_PROFILES[source]
     seen = set()
     output = []
     for index, record in enumerate(records, start=1):
@@ -329,6 +379,21 @@ def simulate_ingestion(source, mode, text, deduplicate=True):
         enriched["_source"] = source
         enriched["_ingestion_mode"] = mode
         enriched["_offset"] = index
+        if mode == "Batch snapshot":
+            enriched["_capture"] = profile["capture"][mode]
+            enriched["_batch_id"] = "snapshot-0001"
+            enriched["_partition"] = f"range-{(index - 1) // 1000 + 1}"
+        elif mode == "Streaming":
+            enriched["_capture"] = profile["capture"][mode]
+            enriched["_partition"] = (index - 1) % 3
+            enriched["_event_sequence"] = f"{index:020d}"
+            enriched["_delivery"] = "at-least-once input / idempotent sink"
+        else:
+            operation = record.get("op") or ("c" if index == 1 else "u" if index % 3 else "d")
+            enriched["_capture"] = profile["capture"][mode]
+            enriched["_op"] = operation
+            enriched["_transaction"] = f"tx-{(index - 1) // 2 + 1:04d}"
+            enriched["_source_position"] = f"{source.split()[0].lower()}:{index * 128}"
         key = json.dumps(record, sort_keys=True)
         if deduplicate and key in seen:
             continue
@@ -340,6 +405,29 @@ def simulate_ingestion(source, mode, text, deduplicate=True):
         "duplicates_removed": len(records) - len(output),
         "records": output,
         "checkpoint": output[-1]["_offset"] if output else 0,
+        "checkpoint_display": (
+            f"{profile['checkpoint'][mode]} = {output[-1]['_offset']}"
+            if output
+            else f"{profile['checkpoint'][mode]} = empty"
+        ),
+        "capture": profile["capture"][mode],
+        "partitioning": profile["partition"],
+        "schema_control": profile["schema"],
+        "delivery": (
+            "Atomic batch commit after reconciliation"
+            if mode == "Batch snapshot"
+            else "Continuous commit after durable sink write"
+            if mode == "Streaming"
+            else "Ordered insert/update/delete apply with transaction metadata"
+        ),
+        "pipeline_stages": [
+            source,
+            profile["capture"][mode],
+            profile["partition"],
+            "Raw immutable landing",
+            profile["checkpoint"][mode],
+            "Validated target",
+        ],
     }
 
 

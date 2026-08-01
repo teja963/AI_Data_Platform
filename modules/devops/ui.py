@@ -4,6 +4,7 @@ from core.access import user_can_view_architecture
 from core.lazy_tabs import lazy_tab
 from modules.architecture.ui import render_diagram_collection
 from modules.devops.simulator_ui import render_kubernetes_simulator
+from modules.devops.terraform_ui import render_terraform_lab
 
 
 def render_devops():
@@ -15,12 +16,14 @@ def render_devops():
 
     st.title("DevOps")
     selected = lazy_tab(
-        ["Kubernetes Practice Lab", "Architecture Diagrams"],
+        ["Kubernetes Practice Lab", "Terraform Practice Lab", "Architecture Diagrams"],
         "devops_active_workspace",
         "DevOps workspace",
     )
     if selected == "Kubernetes Practice Lab":
         render_kubernetes_simulator()
+    elif selected == "Terraform Practice Lab":
+        render_terraform_lab()
     else:
         render_diagram_collection(
             title="DevOps Architecture Diagrams",

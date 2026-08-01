@@ -63,6 +63,25 @@ def test_ingestion_deduplicates_and_checkpoints_json_lines():
     assert result["checkpoint"] == 3
 
 
+def test_ingestion_modes_and_sources_have_distinct_runtime_metadata():
+    payload = '{"order_id": 1}\n{"order_id": 2}'
+    relational_batch = simulate_ingestion(
+        "PostgreSQL / MySQL / Oracle",
+        "Batch snapshot",
+        payload,
+    )
+    kafka_stream = simulate_ingestion("Kafka / MSK", "Streaming", payload)
+    cdc = simulate_ingestion("DMS / Debezium CDC", "CDC", payload)
+
+    assert relational_batch["capture"] == "Partitioned JDBC query"
+    assert relational_batch["records"][0]["_batch_id"] == "snapshot-0001"
+    assert kafka_stream["capture"] == "Consumer group poll loop"
+    assert "_event_sequence" in kafka_stream["records"][0]
+    assert cdc["records"][0]["_op"] == "c"
+    assert "_source_position" in cdc["records"][1]
+    assert len({relational_batch["checkpoint_display"], kafka_stream["checkpoint_display"], cdc["checkpoint_display"]}) == 3
+
+
 def test_warehouse_lab_is_read_only_and_executes_selects():
     result = execute_warehouse_query("SELECT region, SUM(amount) revenue FROM orders GROUP BY region")
     assert {row["region"] for row in result["rows"]} == {"US", "EU", "APAC"}

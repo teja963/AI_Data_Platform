@@ -9,8 +9,9 @@ from core.lazy_tabs import lazy_tab
 # 🔹 ENTRY POINT
 # =========================================================
 
+@st.fragment
 def render_datamodeling():
-
+    _render_datamodeling_styles()
     render_title("📊 Data Modelling")
 
     tab_labels = [
@@ -51,6 +52,33 @@ def render_datamodeling():
 
     elif selected_tab == "Interview Mode":
         show_interview_mode()
+
+
+def _render_datamodeling_styles():
+    st.markdown(
+        """
+        <style>
+        .dm-box, .dm-box *, .dm-architecture-box, .dm-architecture-box *,
+        .dm-flow-chip, .dm-flow-chip *, .dm-colored-card, .dm-colored-card * {
+            color: var(--text-color) !important;
+        }
+        .dm-box, .dm-architecture-box, .dm-flow-chip, .dm-colored-card {
+            background: var(--secondary-background-color) !important;
+            border-color: color-mix(in srgb, var(--text-color) 34%, transparent);
+        }
+        .dm-architecture-box {
+            box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--text-color) 8%, transparent);
+        }
+        .dm-flow-chip { display: inline-block; }
+        .dm-highlight-table th, .dm-highlight-table td {
+            background: var(--secondary-background-color) !important;
+            color: var(--text-color) !important;
+            border-color: color-mix(in srgb, var(--text-color) 28%, transparent) !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # =========================================================
@@ -140,7 +168,7 @@ def build_architecture_box(
         detail_lines = [detail_lines]
 
     min_height_style = f"min-height:{min_height}px;" if min_height else ""
-    opacity = "0.6" if subtle else "1"
+    opacity = "0.86" if subtle else "1"
     border_width = "3px" if active else "1.5px"
     accent = "box-shadow: inset 0 0 0 1px rgba(31, 41, 55, 0.05);" if active else ""
     detail_html = "".join(
@@ -153,7 +181,7 @@ def build_architecture_box(
     )
 
     return (
-        f"<div style='background:{fill};border:{border_width} solid {border};border-radius:0;"
+        f"<div class='dm-architecture-box' style='background:{fill};border:{border_width} solid {border};border-radius:0;"
         f"padding:10px 12px;box-sizing:border-box;text-align:{align};{min_height_style}"
         f"opacity:{opacity};{accent}'>"
         f"<div style='font-size:{title_size}px;font-weight:700;color:{text};line-height:1.25'>{title}</div>"
@@ -169,9 +197,9 @@ def build_flow_chip(label, tone="slate", active=False, subtle=False):
     text = palette["text"]
     shadow = "box-shadow: inset 0 0 0 1px rgba(31, 41, 55, 0.05);" if active else ""
     border_width = "3px" if active else "1.5px"
-    opacity = "0.58" if subtle else "1"
+    opacity = "0.84" if subtle else "1"
     return (
-        f"<div style='display:inline-block;background:{fill};border:{border_width} solid {border};"
+        f"<div class='dm-flow-chip' style='display:inline-block;background:{fill};border:{border_width} solid {border};"
         f"border-radius:0;padding:7px 10px;font-size:12px;font-weight:700;color:{text};"
         f"margin:2px 4px;opacity:{opacity};{shadow}'>{label}</div>"
     )
@@ -226,7 +254,7 @@ def render_highlight_table(headers, rows, highlight_index=None, highlight_tone="
         )
 
     st.markdown(
-        "<table style='width:100%;border-collapse:collapse;margin:8px 0 14px 0;'>"
+        "<table class='dm-highlight-table' style='width:100%;border-collapse:collapse;margin:8px 0 14px 0;'>"
         + f"<thead><tr>{header_html}</tr></thead>"
         + f"<tbody>{''.join(row_html)}</tbody></table>",
         unsafe_allow_html=True,
@@ -2010,13 +2038,13 @@ def show_fundamentals():
         st.markdown("""
         <table style="width:100%; border-spacing:6px;">
             <tr>
-                <td style="padding:8px; background:#E8F4FD; border-radius:0;">
+                <td class="dm-colored-card" style="padding:8px; background:#E8F4FD; border-radius:0;">
                     <b>Entity</b><br>Real-world object (Customer, Order)
                 </td>
-                <td style="padding:8px; background:#E6F4EA; border-radius:0;">
+                <td class="dm-colored-card" style="padding:8px; background:#E6F4EA; border-radius:0;">
                     <b>Attribute</b><br>Properties (name, id)
                 </td>
-                <td style="padding:8px; background:#FFF4E5; border-radius:0;">
+                <td class="dm-colored-card" style="padding:8px; background:#FFF4E5; border-radius:0;">
                     <b>Relationship</b><br>Connection between entities
                 </td>
             </tr>
@@ -2043,7 +2071,7 @@ def show_fundamentals():
         """, unsafe_allow_html=True)
 
         st.markdown("""
-        <div style="padding:8px; background:#E8F4FD; border-radius:0;">
+        <div class="dm-colored-card" style="padding:8px; background:#E8F4FD; border-radius:0;">
         Customer places Orders (1:M relationship)
         </div>
         """, unsafe_allow_html=True)
@@ -2056,13 +2084,13 @@ def show_fundamentals():
         st.markdown("""
         <table style="width:100%; text-align:center;">
             <tr>
-                <td style="padding:8px; background:#FDECEA; border-radius:0;">
+                <td class="dm-colored-card" style="padding:8px; background:#FDECEA; border-radius:0;">
                     1 : 1 → One to One
                 </td>
-                <td style="padding:8px; background:#E6F4EA; border-radius:0;">
+                <td class="dm-colored-card" style="padding:8px; background:#E6F4EA; border-radius:0;">
                     1 : M → One to Many
                 </td>
-                <td style="padding:8px; background:#FFF4E5; border-radius:0;">
+                <td class="dm-colored-card" style="padding:8px; background:#FFF4E5; border-radius:0;">
                     M : N → Many to Many
                 </td>
             </tr>
@@ -2089,7 +2117,7 @@ def show_fundamentals():
         """, unsafe_allow_html=True)
 
         st.markdown("""
-        <div style="padding:8px; background:#E6F4EA; border-radius:0;">
+        <div class="dm-colored-card" style="padding:8px; background:#E6F4EA; border-radius:0;">
         Resolved using bridge table (student_course)
         </div>
         """, unsafe_allow_html=True)
@@ -2109,7 +2137,7 @@ def show_fundamentals():
         )
 
         st.markdown("""
-        <div style="padding:8px; background:#E8F4FD; border-radius:0;">
+        <div class="dm-colored-card" style="padding:8px; background:#E8F4FD; border-radius:0;">
         🔥 Key Insight: M:N relationships are always broken into bridge tables.
         </div>
         """, unsafe_allow_html=True)
@@ -2120,7 +2148,7 @@ def show_fundamentals():
         render_subtitle("Real-world Example")
 
         st.markdown("""
-        <div style="padding:10px; background:#E6F4EA; border-radius:0;">
+        <div class="dm-colored-card" style="padding:10px; background:#E6F4EA; border-radius:0;">
         <b>Netflix Example</b><br><br>
 
         - Users watch movies  
@@ -2150,7 +2178,7 @@ def show_dimensional_modeling():
     st.header("Dimensional Modeling")
 
     selected_view = lazy_tab(
-        ["Core Concepts", "Schemas & Dimensions", "Dimensional Changes (SCD)"],
+        ["Schemas & Dimensions", "Core Concepts", "Dimension Types & SCD"],
         "dm_dimensional_active_view",
         "Dimensional modeling view",
     )
@@ -2225,7 +2253,7 @@ def show_dimensional_modeling():
         center = st.columns([1,2,1])
         with center[1]:
             st.markdown("""
-            <div style="
+            <div class="dm-box" style="
                 text-align:center;
                 padding:10px;
                 border:2px solid #4CAF50;
@@ -2267,13 +2295,13 @@ def show_dimensional_modeling():
 
         box = "padding:8px;border:2px solid #2196F3;border-radius:8px;font-size:12px;text-align:center;"
 
-        k1.markdown(f"<div style='{box}'><b>Primary Key</b><br>Uniquely identifies each row</div>", unsafe_allow_html=True)
-        k2.markdown(f"<div style='{box}'><b>Foreign Key</b><br>Connects fact & dimension tables</div>", unsafe_allow_html=True)
-        k3.markdown(f"<div style='{box}'><b>Natural Key</b><br>Business identifier like email/id</div>", unsafe_allow_html=True)
-        k4.markdown(f"<div style='{box}'><b>Surrogate Key</b><br>System-generated key (used in SCD)</div>", unsafe_allow_html=True)
-        k5.markdown(f"<div style='{box}'><b>Composite Key</b><br>Combination of multiple columns</div>", unsafe_allow_html=True)
-        k6.markdown(f"<div style='{box}'><b>Candidate Key</b><br>Possible primary keys</div>", unsafe_allow_html=True)
-        k7.markdown(f"<div style='{box}'><b>Alternate Key</b><br>Unused candidate key</div>", unsafe_allow_html=True)
+        k1.markdown(f"<div class='dm-box' style='{box}'><b>Primary Key</b><br>Uniquely identifies each row</div>", unsafe_allow_html=True)
+        k2.markdown(f"<div class='dm-box' style='{box}'><b>Foreign Key</b><br>Connects fact & dimension tables</div>", unsafe_allow_html=True)
+        k3.markdown(f"<div class='dm-box' style='{box}'><b>Natural Key</b><br>Business identifier like email/id</div>", unsafe_allow_html=True)
+        k4.markdown(f"<div class='dm-box' style='{box}'><b>Surrogate Key</b><br>System-generated key (used in SCD)</div>", unsafe_allow_html=True)
+        k5.markdown(f"<div class='dm-box' style='{box}'><b>Composite Key</b><br>Combination of multiple columns</div>", unsafe_allow_html=True)
+        k6.markdown(f"<div class='dm-box' style='{box}'><b>Candidate Key</b><br>Possible primary keys</div>", unsafe_allow_html=True)
+        k7.markdown(f"<div class='dm-box' style='{box}'><b>Alternate Key</b><br>Unused candidate key</div>", unsafe_allow_html=True)
 
         # EXAMPLE
         st.markdown("### 📊 Example")
@@ -2445,7 +2473,7 @@ def show_dimensional_modeling():
         center = st.columns([1,2,1])
         with center[1]:
             st.markdown("""
-            <div style='text-align:center;border:2px solid #4CAF50;padding:10px;font-weight:bold'>
+            <div class='dm-box' style='text-align:center;border:2px solid #4CAF50;padding:10px;font-weight:bold'>
             DIMENSION TYPES
             </div>
             """, unsafe_allow_html=True)
