@@ -187,16 +187,21 @@ st.markdown(
         border-radius: 0.35rem;
     }
     [data-testid="stSidebar"] div[class*="st-key-sidebar_logout"] {
-        position: sticky;
-        bottom: 0.4rem;
-        z-index: 20;
-        margin-top: auto !important;
+        position: absolute !important;
+        right: 0.75rem !important;
+        bottom: 0.65rem !important;
+        left: 0.75rem !important;
+        z-index: 100;
+        margin: 0 !important;
         padding-top: 0.55rem;
         background: var(--background-color);
         border-top: 1px solid rgba(128, 128, 128, 0.35);
     }
-    [data-testid="stSidebarUserContent"] > [data-testid="stVerticalBlock"] {
-        min-height: calc(100vh - 2rem);
+    [data-testid="stSidebar"] {
+        position: relative !important;
+    }
+    [data-testid="stSidebarUserContent"] {
+        padding-bottom: 4.5rem !important;
     }
     [data-testid="stSidebar"] div[class*="st-key-sidebar_logout"] button {
         width: 100% !important;
