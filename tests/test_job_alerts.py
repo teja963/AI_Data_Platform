@@ -1,6 +1,11 @@
 import unittest
 
-from core.job_alerts import collect_microsoft_jobs, match_job_title
+from core.job_alerts import (
+    collect_microsoft_jobs,
+    is_india_or_eligible_remote,
+    match_job_title,
+)
+from core.job_sources import load_job_sources
 
 
 class FakeMicrosoftClient:
@@ -53,6 +58,9 @@ class JobTitleMatchingTests(unittest.TestCase):
     def test_excludes_non_midlevel_role(self):
         self.assertIsNone(match_job_title("Principal Data Engineer"))
 
+    def test_excludes_staff_role(self):
+        self.assertIsNone(match_job_title("Staff Data Engineer"))
+
 
 class MicrosoftCollectionTests(unittest.TestCase):
     def test_collects_and_deduplicates_matching_jobs(self):
@@ -65,6 +73,34 @@ class MicrosoftCollectionTests(unittest.TestCase):
             jobs[0]["job_url"],
             "https://apply.careers.microsoft.com/careers/job/123",
         )
+
+
+class LocationEligibilityTests(unittest.TestCase):
+    def test_includes_india_onsite_role(self):
+        self.assertTrue(is_india_or_eligible_remote("Bengaluru, India", "onsite"))
+
+    def test_includes_global_remote_role(self):
+        self.assertTrue(is_india_or_eligible_remote("Remote", "remote"))
+
+    def test_includes_apac_remote_role(self):
+        self.assertTrue(is_india_or_eligible_remote("Remote - APAC", "remote"))
+
+    def test_excludes_foreign_onsite_role(self):
+        self.assertFalse(is_india_or_eligible_remote("London, United Kingdom", "onsite"))
+
+    def test_excludes_country_restricted_remote_role(self):
+        self.assertFalse(
+            is_india_or_eligible_remote("Remote - United States", "remote")
+        )
+        self.assertFalse(is_india_or_eligible_remote("Germany (remote)", "remote"))
+
+
+class SourceRegistryTests(unittest.TestCase):
+    def test_registry_has_broad_product_company_coverage(self):
+        sources = load_job_sources()
+        self.assertGreaterEqual(len(sources) + 1, 200)
+        keys = {(source["platform"], source["slug"]) for source in sources}
+        self.assertEqual(len(keys), len(sources))
 
 
 if __name__ == "__main__":

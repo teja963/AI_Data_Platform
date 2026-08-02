@@ -2,8 +2,9 @@ name: Scan career sites
 
 on:
   schedule:
-    # GitHub cron uses UTC: 02:00/14:00 UTC = 07:30/19:30 IST.
-    - cron: "0 2,14 * * *"
+    # Run hourly; the scanner selects a small due batch so each source refreshes
+    # approximately every 12 hours without hitting every career site at once.
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 permissions:
