@@ -23,6 +23,7 @@ if "pending_admin" not in st.session_state:
 
 from core.constants import (
     DASHBOARD_SECTION_LABEL,
+    JOB_ALERTS_SECTION_LABEL,
     CONCEPTS_SECTION_LABEL,
     GENAI_SECTION_LABEL,
     CODING_SECTION_LABEL,
@@ -628,6 +629,18 @@ if st.session_state.get("user"):
         _persist_login(st.session_state["user"])
         st.session_state["persistent_cookie_user"] = st.session_state["user"]
 
+    if not st.session_state.get("job_alerts_checked"):
+        try:
+            from core.job_alerts import claim_new_job_notifications
+
+            new_job_alerts = claim_new_job_notifications(st.session_state["user"])
+            for job_alert in new_job_alerts:
+                st.toast(f"New job: {job_alert['title']} at {job_alert['company']}")
+            st.session_state["job_alerts_checked"] = True
+        except SQLAlchemyError:
+            # Job alerts must not prevent the rest of the learning platform from loading.
+            pass
+
     # --- Main App (Only reached if authenticated)
     with st.sidebar:
         user_col, logout_col = st.columns([5, 1], vertical_alignment="center")
@@ -741,6 +754,7 @@ if st.session_state.get("user"):
     # Map labels to rendering functions
     ROUTER = {
         DASHBOARD_SECTION_LABEL: render_dashboard,
+        JOB_ALERTS_SECTION_LABEL: lambda: __import__("modules.job_alerts.ui", fromlist=["render_job_alerts"]).render_job_alerts(),
         CODING_SECTION_LABEL: lambda: __import__("modules.coding.ui", fromlist=["render_coding"]).render_coding(),
         CONCEPTS_SECTION_LABEL: lambda: __import__("modules.concepts.ui", fromlist=["render_concepts"]).render_concepts(),
         GENAI_SECTION_LABEL: lambda: __import__("modules.genai.ui", fromlist=["render_genai"]).render_genai(),

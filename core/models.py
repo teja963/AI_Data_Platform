@@ -203,3 +203,61 @@ class ArchitectureDiagram(Base):
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class JobPosting(Base):
+    __tablename__ = "job_postings"
+    __table_args__ = (
+        UniqueConstraint("source", "external_id", name="uq_job_source_external_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    source = Column(String, nullable=False)
+    external_id = Column(String, nullable=False)
+    company = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    location = Column(Text, nullable=True)
+    work_mode = Column(String, nullable=True)
+    department = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    job_url = Column(Text, nullable=False)
+    posted_at = Column(DateTime, nullable=True)
+    first_seen_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_seen_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    match_score = Column(Integer, default=0, nullable=False)
+    match_reason = Column(Text, nullable=True)
+    raw_payload = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserJobState(Base):
+    __tablename__ = "user_job_states"
+    __table_args__ = (
+        UniqueConstraint("user_id", "job_id", name="uq_user_job_state"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    job_id = Column(Integer, ForeignKey("job_postings.id"), nullable=False)
+    status = Column(String, default="new", nullable=False)
+    first_notified_at = Column(DateTime, nullable=True)
+    last_viewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class JobScanRun(Base):
+    __tablename__ = "job_scan_runs"
+
+    id = Column(Integer, primary_key=True)
+    source = Column(String, nullable=False)
+    started_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+    status = Column(String, default="running", nullable=False)
+    discovered_count = Column(Integer, default=0, nullable=False)
+    matched_count = Column(Integer, default=0, nullable=False)
+    inserted_count = Column(Integer, default=0, nullable=False)
+    error_message = Column(Text, nullable=True)

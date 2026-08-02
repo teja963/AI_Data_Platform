@@ -6,6 +6,7 @@ from core.constants import (
     ARCHITECTURE_SECTION_LABEL,
     CLOUD_SECTION_LABEL,
     DEVOPS_SECTION_LABEL,
+    JOB_ALERTS_SECTION_LABEL,
     PROJECTS_SECTION_LABEL,
     SECTION_ORDER,
 )
@@ -90,6 +91,8 @@ def get_allowed_sections(username, role="user"):
             return [section for section in SECTION_ORDER if section in allowed]
 
         allowed = {row.section for row in rows if row.allowed}
+        if not any(row.section == JOB_ALERTS_SECTION_LABEL for row in rows):
+            allowed.add(JOB_ALERTS_SECTION_LABEL)
         if restricted_sections_allowed:
             allowed.update(restricted_sections)
         else:
