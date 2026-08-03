@@ -248,5 +248,6 @@
   {"company":"Amazon","platform":"amazon","slug":"amazon-jobs","category":"commerce"},
   {"company":"Wells Fargo","platform":"workday","slug":"wf/WellsFargoJobs","host":"wf.wd1.myworkdayjobs.com","tenant":"wf","site":"WellsFargoJobs","category":"financial-services"},
   {"company":"Nike","platform":"workday","slug":"nike/nke","host":"nike.wd1.myworkdayjobs.com","tenant":"nike","site":"nke","category":"consumer"},
-  {"company":"Expedia Group","platform":"workday","slug":"expedia/search","host":"expedia.wd108.myworkdayjobs.com","tenant":"expedia","site":"search","category":"travel"}
+  {"company":"Expedia Group","platform":"workday","slug":"expedia/search","host":"expedia.wd108.myworkdayjobs.com","tenant":"expedia","site":"search","category":"travel"},
+  {"company":"Turing","platform":"greenhouse","slug":"turing","category":"remote-talent"}
 ]
