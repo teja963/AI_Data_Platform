@@ -55,6 +55,11 @@ class JobTitleMatchingTests(unittest.TestCase):
         match = match_job_title("Software Engineer II, Data Intelligence")
         self.assertIsNotNone(match)
 
+    def test_matches_ai_platform_engineer_role(self):
+        match = match_job_title("AI Platform Engineer")
+        self.assertIsNotNone(match)
+        self.assertEqual(match["score"], 98)
+
     def test_excludes_non_midlevel_role(self):
         self.assertIsNone(match_job_title("Principal Data Engineer"))
 
@@ -88,11 +93,11 @@ class LocationEligibilityTests(unittest.TestCase):
     def test_excludes_foreign_onsite_role(self):
         self.assertFalse(is_india_or_eligible_remote("London, United Kingdom", "onsite"))
 
-    def test_excludes_country_restricted_remote_role(self):
-        self.assertFalse(
+    def test_includes_country_restricted_remote_role_for_visibility(self):
+        self.assertTrue(
             is_india_or_eligible_remote("Remote - United States", "remote")
         )
-        self.assertFalse(is_india_or_eligible_remote("Germany (remote)", "remote"))
+        self.assertTrue(is_india_or_eligible_remote("Germany (remote)", "remote"))
 
 
 class SourceRegistryTests(unittest.TestCase):

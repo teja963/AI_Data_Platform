@@ -27,6 +27,7 @@ DEFAULT_SCAN_BATCH_SIZE = 24
 
 TARGET_QUERIES = (
     "AI Data Engineer",
+    "AI Platform Engineer",
     "Data Engineer",
     "Data Platform Engineer",
     "Big Data Engineer",
@@ -63,17 +64,9 @@ _INDIA_LOCATION_TERMS = (
     "kolkata",
 )
 
-_GLOBAL_REMOTE_TERMS = (
-    "anywhere",
-    "global",
-    "worldwide",
-    "apac",
-    "asia",
-    "distributed",
-)
-
 _TITLE_RULES = (
     (re.compile(r"\bai data engineer\b", re.I), 100, "AI Data Engineer title"),
+    (re.compile(r"\bai platform engineer\b", re.I), 98, "AI Platform Engineer title"),
     (re.compile(r"\bdata engineer\b", re.I), 95, "Data Engineer title"),
     (re.compile(r"\bdata (?:platform|infrastructure|research) engineer\b", re.I), 90, "Data platform title"),
     (re.compile(r"\bbig data engineer\b", re.I), 90, "Big Data Engineer title"),
@@ -154,11 +147,7 @@ def is_india_or_eligible_remote(location, work_mode):
         return True
 
     is_remote = "remote" in location_text or "remote" in work_mode_text
-    if not is_remote:
-        return False
-    if not location_text or location_text == "remote":
-        return True
-    return any(term in location_text for term in _GLOBAL_REMOTE_TERMS)
+    return is_remote
 
 
 class MicrosoftCareersClient:

@@ -78,6 +78,30 @@ def _get_json(url, retries=2):
     raise last_error
 
 
+def _post_json(url, payload, retries=2):
+    last_error = None
+    encoded = json.dumps(payload).encode("utf-8")
+    for attempt in range(retries + 1):
+        try:
+            request = Request(
+                url,
+                data=encoded,
+                headers={
+                    "Accept": "application/json",
+                    "Content-Type": "application/json",
+                    "User-Agent": USER_AGENT,
+                },
+                method="POST",
+            )
+            with urlopen(request, timeout=HTTP_TIMEOUT_SECONDS) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except Exception as error:
+            last_error = error
+            if attempt < retries:
+                time.sleep(attempt + 1)
+    raise last_error
+
+
 def _greenhouse_jobs(source):
     url = (
         "https://boards-api.greenhouse.io/v1/boards/"
@@ -199,6 +223,99 @@ def _smartrecruiters_jobs(source):
     return jobs
 
 
+def _workday_jobs(source):
+    host = source["host"]
+    tenant = source["tenant"]
+    site = source["site"]
+    api_base = f"https://{host}/wday/cxs/{tenant}/{site}"
+    public_base = f"https://{host}/en-US/{site}"
+    queries = source.get("queries") or ["data engineer", "AI data", "data platform"]
+    jobs_by_path = {}
+    for query in queries:
+        offset = 0
+        while offset < 100:
+            payload = _post_json(
+                f"{api_base}/jobs",
+                {
+                    "appliedFacets": {},
+                    "limit": 20,
+                    "offset": offset,
+                    "searchText": query,
+                },
+            )
+            postings = payload.get("jobPostings") or []
+            for item in postings:
+                external_path = item.get("externalPath") or ""
+                if not external_path:
+                    continue
+                jobs_by_path[external_path] = {
+                    "external_id": external_path.rstrip("/").split("/")[-1],
+                    "title": item.get("title") or "",
+                    "location": item.get("locationsText") or "",
+                    "work_mode": (
+                        "remote"
+                        if "remote" in (item.get("locationsText") or "").lower()
+                        else "onsite"
+                    ),
+                    "department": "",
+                    "description": "",
+                    "job_url": f"{public_base}{external_path}",
+                    "posted_at": None,
+                    "raw_payload": item,
+                }
+            offset += len(postings)
+            if not postings or offset >= int(payload.get("total") or 0):
+                break
+    return list(jobs_by_path.values())
+
+
+def _amazon_jobs(source):
+    jobs_by_id = {}
+    queries = source.get("queries") or ["data engineer", "AI platform engineer"]
+    for query in queries:
+        offset = 0
+        while offset < 100:
+            params = urlencode(
+                {
+                    "base_query": query,
+                    "loc_query": "",
+                    "offset": offset,
+                    "result_limit": 50,
+                }
+            )
+            payload = _get_json(f"https://www.amazon.jobs/en/search.json?{params}")
+            postings = payload.get("jobs") or []
+            for item in postings:
+                external_id = str(item.get("id_icims") or item.get("id") or "")
+                if not external_id:
+                    continue
+                location = item.get("location") or item.get("normalized_location") or ""
+                job_path = item.get("job_path") or ""
+                jobs_by_id[external_id] = {
+                    "external_id": external_id,
+                    "title": item.get("title") or "",
+                    "location": location,
+                    "work_mode": (
+                        "remote" if "remote" in location.lower() else "onsite"
+                    ),
+                    "department": item.get("business_category") or "",
+                    "description": clean_html(
+                        item.get("description") or item.get("description_short")
+                    ),
+                    "job_url": (
+                        f"https://www.amazon.jobs{job_path}"
+                        if job_path.startswith("/")
+                        else item.get("url_next_step") or job_path
+                    ),
+                    "posted_at": parse_datetime(item.get("posted_date")),
+                    "raw_payload": item,
+                }
+            offset += len(postings)
+            if not postings or offset >= int(payload.get("hits") or 0):
+                break
+    return list(jobs_by_id.values())
+
+
 def collect_source_jobs(source):
     platform = source["platform"]
     collectors = {
@@ -206,6 +323,8 @@ def collect_source_jobs(source):
         "lever": _lever_jobs,
         "ashby": _ashby_jobs,
         "smartrecruiters": _smartrecruiters_jobs,
+        "workday": _workday_jobs,
+        "amazon": _amazon_jobs,
     }
     if platform not in collectors:
         raise ValueError(f"Unsupported job source platform: {platform}")

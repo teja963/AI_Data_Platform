@@ -238,5 +238,15 @@
   {"company":"Believe","platform":"smartrecruiters","slug":"Believe","category":"consumer"},
   {"company":"Gameloft","platform":"smartrecruiters","slug":"Gameloft","category":"consumer"},
   {"company":"NBCUniversal","platform":"smartrecruiters","slug":"NBCUniversal3","category":"consumer"},
-  {"company":"Versant","platform":"smartrecruiters","slug":"Versant3","category":"product"}
+  {"company":"Versant","platform":"smartrecruiters","slug":"Versant3","category":"product"},
+  {"company":"Airbnb","platform":"greenhouse","slug":"airbnb","category":"marketplace"},
+  {"company":"Roku","platform":"greenhouse","slug":"roku","category":"consumer"},
+  {"company":"Celigo","platform":"greenhouse","slug":"celigo","category":"saas"},
+  {"company":"Salesforce","platform":"workday","slug":"salesforce/External_Career_Site","host":"salesforce.wd12.myworkdayjobs.com","tenant":"salesforce","site":"External_Career_Site","category":"saas"},
+  {"company":"Citi","platform":"workday","slug":"citi/2","host":"citi.wd5.myworkdayjobs.com","tenant":"citi","site":"2","category":"financial-services"},
+  {"company":"Adobe","platform":"workday","slug":"adobe/external_experienced","host":"adobe.wd5.myworkdayjobs.com","tenant":"adobe","site":"external_experienced","category":"software"},
+  {"company":"Amazon","platform":"amazon","slug":"amazon-jobs","category":"commerce"},
+  {"company":"Wells Fargo","platform":"workday","slug":"wf/WellsFargoJobs","host":"wf.wd1.myworkdayjobs.com","tenant":"wf","site":"WellsFargoJobs","category":"financial-services"},
+  {"company":"Nike","platform":"workday","slug":"nike/nke","host":"nike.wd1.myworkdayjobs.com","tenant":"nike","site":"nke","category":"consumer"},
+  {"company":"Expedia Group","platform":"workday","slug":"expedia/search","host":"expedia.wd108.myworkdayjobs.com","tenant":"expedia","site":"search","category":"travel"}
 ]

@@ -16,8 +16,36 @@ INTERVIEW_PROCESS_PATH = (
 COMPENSATION_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "compensation_reports.json"
 )
+PRIORITY_COMPANIES_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "priority_companies.json"
+)
 
 PUBLIC_TICKERS = {
+    "Amazon": "AMZN",
+    "Google": "GOOGL",
+    "JPMorgan Chase": "JPM",
+    "Oracle": "ORCL",
+    "Salesforce": "CRM",
+    "Apple": "AAPL",
+    "Qualcomm": "QCOM",
+    "Uber": "UBER",
+    "Citi": "C",
+    "Wells Fargo": "WFC",
+    "Sony": "SONY",
+    "Walmart": "WMT",
+    "Barclays": "BCS",
+    "Microsoft": "MSFT",
+    "Cisco": "CSCO",
+    "Airbnb": "ABNB",
+    "Adobe": "ADBE",
+    "Goldman Sachs": "GS",
+    "Nike": "NKE",
+    "LG": "066570.KS",
+    "Expedia Group": "EXPE",
+    "Roku": "ROKU",
+    "eBay": "EBAY",
+    "Philips": "PHG",
+    "Commonwealth Bank": "CBA.AX",
     "Adyen": "ADYEN.AS",
     "Amplitude": "AMPL",
     "Bill.com": "BILL",
@@ -92,12 +120,19 @@ def get_company_metadata(source, company):
             "lever": f"https://jobs.lever.co/{slug}",
             "ashby": f"https://jobs.ashbyhq.com/{slug}",
             "smartrecruiters": f"https://jobs.smartrecruiters.com/{slug}",
+            "amazon": "https://www.amazon.jobs/en/search",
         }
+        if platform == "workday":
+            careers_url = (
+                f"https://{configured['host']}/en-US/{configured['site']}"
+            )
+        else:
+            careers_url = careers_urls.get(platform)
         return {
             "company": configured["company"],
             "category": configured.get("category", "product").replace("-", " ").title(),
             "platform": platform.title(),
-            "careers_url": careers_urls.get(platform),
+            "careers_url": careers_url,
             "ticker": PUBLIC_TICKERS.get(configured["company"]),
         }
 
@@ -108,6 +143,28 @@ def get_company_metadata(source, company):
         "careers_url": None,
         "ticker": PUBLIC_TICKERS.get(company),
     }
+
+
+@st.cache_data(show_spinner=False)
+def load_priority_companies():
+    try:
+        companies = json.loads(PRIORITY_COMPANIES_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+
+    configured = {
+        source["company"]: source["platform"].title()
+        for source in load_job_sources()
+    }
+    configured["Microsoft"] = "Eightfold"
+    return [
+        {
+            **company,
+            "ticker": PUBLIC_TICKERS.get(company["company"]),
+            "scan_platform": configured.get(company["company"]),
+        }
+        for company in companies
+    ]
 
 
 def extract_compensation(description):

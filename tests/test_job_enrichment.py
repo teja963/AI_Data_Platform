@@ -5,6 +5,7 @@ from core.job_enrichment import (
     get_company_metadata,
     get_compensation_reports,
     get_interview_process,
+    load_priority_companies,
 )
 
 
@@ -56,6 +57,18 @@ class CompanyEnrichmentTests(unittest.TestCase):
         self.assertEqual(reports[0]["role"], "Senior Data Engineer")
         self.assertEqual(reports[0]["minimum_lpa"], 27)
         self.assertIn("ambitionbox.com", reports[0]["url"])
+
+    def test_loads_complete_priority_company_tracker(self):
+        companies = load_priority_companies()
+        names = {company["company"] for company in companies}
+        self.assertGreaterEqual(len(companies), 35)
+        self.assertIn("Amazon", names)
+        self.assertIn("Commonwealth Bank", names)
+        microsoft = next(
+            company for company in companies if company["company"] == "Microsoft"
+        )
+        self.assertEqual(microsoft["scan_platform"], "Eightfold")
+        self.assertEqual(microsoft["ticker"], "MSFT")
 
 
 if __name__ == "__main__":
