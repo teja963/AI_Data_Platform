@@ -3,6 +3,7 @@ import unittest
 from core.job_enrichment import (
     extract_compensation,
     get_company_metadata,
+    get_compensation_reports,
     get_interview_process,
 )
 
@@ -35,18 +36,26 @@ class CompanyEnrichmentTests(unittest.TestCase):
         self.assertEqual(metadata["ticker"], "DDOG")
         self.assertIn("datadog", metadata["careers_url"])
 
-    def test_interview_fallback_is_explicitly_unverified(self):
+    def test_does_not_invent_interview_fallback(self):
         process = get_interview_process("Example", "Data Engineer")
-        self.assertFalse(process["is_company_verified"])
-        self.assertGreaterEqual(len(process["steps"]), 4)
-        self.assertIn("not a guarantee", process["note"])
+        self.assertIsNone(process)
 
     def test_loads_sourced_company_interview_process(self):
         process = get_interview_process("NielsenIQ", "Senior Data Engineer")
         self.assertTrue(process["is_company_verified"])
-        self.assertEqual(process["confidence"], "medium")
-        self.assertGreaterEqual(len(process["sources"]), 2)
+        self.assertEqual(process["confidence"], "medium-high")
+        self.assertGreaterEqual(len(process["sources"]), 1)
         self.assertIn("Python and SQL", process["question_categories"])
+        self.assertIn(
+            "Find the longest substring without repeating characters.",
+            process["questions"],
+        )
+
+    def test_loads_sourced_compensation_reports(self):
+        reports = get_compensation_reports("Experian")
+        self.assertEqual(reports[0]["role"], "Senior Data Engineer")
+        self.assertEqual(reports[0]["minimum_lpa"], 27)
+        self.assertIn("ambitionbox.com", reports[0]["url"])
 
 
 if __name__ == "__main__":

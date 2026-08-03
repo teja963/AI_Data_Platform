@@ -2,7 +2,7 @@ import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import quote_plus, urlencode
 from urllib.request import Request, urlopen
 
 import streamlit as st
@@ -12,6 +12,9 @@ from core.job_sources import load_job_sources, source_key
 
 INTERVIEW_PROCESS_PATH = (
     Path(__file__).resolve().parents[1] / "data" / "interview_processes.json"
+)
+COMPENSATION_PATH = (
+    Path(__file__).resolve().parents[1] / "data" / "compensation_reports.json"
 )
 
 PUBLIC_TICKERS = {
@@ -176,6 +179,71 @@ def fetch_stock_quote(ticker):
         return None
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_stock_history(ticker, period="1y"):
+    if not ticker:
+        return []
+    supported_periods = {"1mo", "3mo", "1y", "5y", "max"}
+    period = period if period in supported_periods else "1y"
+    interval = "1d" if period in {"1mo", "3mo", "1y"} else "1wk"
+    params = urlencode({"interval": interval, "range": period})
+    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?{params}"
+    request = Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0"},
+    )
+    try:
+        with urlopen(request, timeout=8) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        result = payload["chart"]["result"][0]
+        timestamps = result.get("timestamp") or []
+        closes = (
+            ((result.get("indicators") or {}).get("quote") or [{}])[0].get("close")
+            or []
+        )
+        return [
+            {
+                "date": datetime.fromtimestamp(timestamp, timezone.utc).date(),
+                "close": close,
+            }
+            for timestamp, close in zip(timestamps, closes)
+            if close is not None
+        ]
+    except Exception:
+        return []
+
+
+@st.cache_data(show_spinner=False)
+def _load_compensation_reports():
+    try:
+        return json.loads(COMPENSATION_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def get_compensation_reports(company):
+    return _load_compensation_reports().get(company, [])
+
+
+def get_research_links(company, role_title):
+    query = f'"{company}" "{role_title}"'
+    encoded = quote_plus(query)
+    return {
+        "Salary reviews": (
+            f"https://www.google.com/search?q={encoded}+salary+"
+            "Glassdoor+AmbitionBox+Levels.fyi"
+        ),
+        "LeetCode": (
+            f"https://www.google.com/search?q={encoded}+site%3Aleetcode.com%2Fdiscuss"
+        ),
+        "GeeksforGeeks": (
+            f"https://www.google.com/search?q={encoded}+"
+            "site%3Ageeksforgeeks.org+interview"
+        ),
+        "Reddit": f"https://www.reddit.com/search/?q={encoded}",
+    }
+
+
 @st.cache_data(show_spinner=False)
 def _load_interview_processes():
     try:
@@ -196,30 +264,8 @@ def get_interview_process(company, role_title):
             "note": verified.get("note") or "Reported process; rounds may vary.",
             "steps": verified.get("steps") or [],
             "question_categories": verified.get("question_categories") or [],
+            "questions": verified.get("questions") or [],
             "role": role_title,
         }
 
-    return {
-        "is_company_verified": False,
-        "confidence": "unverified",
-        "sources": [],
-        "source_url": None,
-        "note": (
-            f"No sourced {company}-specific sequence is stored yet. "
-            "The following is a typical data-engineering process, not a guarantee."
-        ),
-        "steps": [
-            "Recruiter or talent-acquisition screening",
-            "SQL and Python coding or take-home assessment",
-            "Data engineering technical discussion",
-            "Data platform or system-design round",
-            "Hiring-manager and behavioural discussion",
-        ],
-        "question_categories": [
-            "SQL and Python",
-            "ETL and data modelling",
-            "Data platform system design",
-            "Project and behavioural discussion",
-        ],
-        "role": role_title,
-    }
+    return None

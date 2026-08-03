@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.DB_URL || secrets.NEON_DATABASE_URL }}
       PYTHONUNBUFFERED: "1"
 
     steps:
@@ -39,9 +39,11 @@ jobs:
       - name: Verify scanner database configuration
         run: |
           if [ -z "$DATABASE_URL" ]; then
-            echo "GitHub repository secret DATABASE_URL is required." >&2
-            exit 1
+            echo "::warning::Scanner skipped: add the PostgreSQL connection URL as the DATABASE_URL repository secret."
+            echo "### Job scan skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "The DATABASE_URL repository secret is missing." >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Scan public career sites
+        if: env.DATABASE_URL != ''
         run: python scripts/run_job_scanner.py

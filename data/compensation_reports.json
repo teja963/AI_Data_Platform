@@ -1,0 +1,79 @@
+{
+  "AppZen": [
+    {
+      "role": "Senior Data Engineer",
+      "location": "India",
+      "minimum_lpa": 15.2,
+      "maximum_lpa": 42,
+      "source": "AmbitionBox · 4 reports",
+      "url": "https://www.ambitionbox.com/salaries/appzen-salaries/senior-data-engineer",
+      "caveat": "Small self-reported sample; variable pay may be excluded."
+    }
+  ],
+  "Bosch Group": [
+    {
+      "role": "Big Data Engineer",
+      "location": "India",
+      "minimum_lpa": 6,
+      "maximum_lpa": 27,
+      "source": "AmbitionBox · 4 reports",
+      "url": "https://www.ambitionbox.com/salaries/bosch-salaries/big-data-engineer",
+      "caveat": "Small sample spanning fresher to seven years, so the range is broad."
+    }
+  ],
+  "Experian": [
+    {
+      "role": "Senior Data Engineer",
+      "location": "India",
+      "minimum_lpa": 27,
+      "maximum_lpa": 30,
+      "source": "AmbitionBox · 6 reports",
+      "url": "https://www.ambitionbox.com/salaries/experian-salaries/senior-data-engineer",
+      "caveat": "Small self-reported sample covering four to twelve years of experience."
+    }
+  ],
+  "NielsenIQ": [
+    {
+      "role": "Senior Data Engineer",
+      "location": "India",
+      "minimum_lpa": 26,
+      "maximum_lpa": 31.6,
+      "source": "AmbitionBox",
+      "url": "https://www.ambitionbox.com/salaries/nielseniq-salaries/senior-data-engineer",
+      "caveat": "Employee-submitted estimate; a reliable public sample count was unavailable."
+    }
+  ],
+  "Greenlight": [
+    {
+      "role": "Staff Data Engineer",
+      "location": "India",
+      "minimum_lpa": 38,
+      "maximum_lpa": 38,
+      "source": "Weekday · 1 report",
+      "url": "https://www.weekday.works/salary/what-salary-does-greenlight-pay",
+      "caveat": "Single fixed-pay report; experience metadata was unreliable."
+    }
+  ],
+  "Syngenta Group": [
+    {
+      "role": "Data Engineer",
+      "location": "India",
+      "minimum_lpa": 10.5,
+      "maximum_lpa": 48,
+      "source": "AmbitionBox · 4 reports",
+      "url": "https://www.ambitionbox.com/salaries/syngenta-salaries/data-engineer",
+      "caveat": "Small sample spanning three to eight years, producing a wide range."
+    }
+  ],
+  "Tekion": [
+    {
+      "role": "Senior Data Engineer",
+      "location": "India",
+      "minimum_lpa": 28.2,
+      "maximum_lpa": 40.9,
+      "source": "AmbitionBox",
+      "url": "https://www.ambitionbox.com/salaries/tekion-salaries/senior-data-engineer",
+      "caveat": "Employee-submitted estimate from a relatively small indexed sample."
+    }
+  ]
+}

@@ -1,33 +1,7 @@
 {
-  "AppZen": {
-    "confidence": "low",
-    "steps": [
-      "Recruiter screening",
-      "SQL and Python technical screening",
-      "Virtual onsite with technical and behavioural sessions"
-    ],
-    "question_categories": [
-      "SQL optimization",
-      "Python coding",
-      "ETL and pipeline design",
-      "Data modelling",
-      "Architecture and reliability",
-      "Behavioural fit"
-    ],
-    "note": "Reported sequence; exact virtual-onsite sessions vary by team.",
-    "sources": [
-      {"label": "Dataford candidate-report synthesis", "url": "https://dataford.io/interview-guides/appzen/data-engineer"},
-      {"label": "Official Senior Data Engineer role", "url": "https://jobs.lever.co/appzen/060250ef-ee0c-418c-925e-679ed58669ca"}
-    ]
-  },
   "Bosch Group": {
-    "confidence": "medium",
-    "steps": [
-      "HR or recruiter screening",
-      "Possible online technical assessment",
-      "One or more technical interviews",
-      "Senior-team or hiring-manager discussion"
-    ],
+    "confidence": "low",
+    "steps": [],
     "question_categories": [
       "SQL and data manipulation",
       "Python scripting",
@@ -37,20 +11,27 @@
       "Pipeline and system design",
       "Project and behavioural discussion"
     ],
-    "note": "Round count and assessment format vary by Bosch division and seniority.",
+    "questions": [
+      "Find the second-highest employee salary in SQL.",
+      "Calculate cumulative sales per product over time in SQL.",
+      "Explain how NULL values behave during SQL aggregation.",
+      "Compare Spark with Hadoop MapReduce and explain the purpose of HDFS.",
+      "Explain serverless processing and deployment of a cloud data pipeline."
+    ],
+    "note": "Candidate posts list questions but not a round sequence. Several posts are nearly identical, so treat the evidence cautiously.",
     "sources": [
-      {"label": "Candidate interview report", "url": "https://www.linkedin.com/posts/ajay026_dataengineering-interviewexperience-sql-activity-7268485767331483649-0d4k"},
-      {"label": "InterviewQuery guide", "url": "https://www.interviewquery.com/interview-guides/robert-bosch-data-engineer"},
-      {"label": "Dataford synthesis", "url": "https://dataford.io/interview-guides/bosch/data-engineer"}
+      {"label": "Ajay Kadiyala candidate post", "url": "https://www.linkedin.com/posts/ajay026_dataengineering-interviewexperience-sql-activity-7268485767331483649-0d4k"},
+      {"label": "Ashish Srivastava candidate post", "url": "https://www.linkedin.com/posts/ashish-srivastava-33518615b_my-data-engineering-interviewexperience-activity-7274983647034687488-Md0q"},
+      {"label": "Satish G candidate post", "url": "https://www.linkedin.com/posts/satish-g-51735b1a1_dataengineering-interviewexperience-sql-activity-7274015221998862336-wZXT"}
     ]
   },
   "Experian": {
-    "confidence": "medium",
+    "confidence": "medium-low",
     "steps": [
-      "HR or recruiter screening",
-      "Virtual technical screen or live coding",
-      "Technical or architecture panel",
-      "Leadership and competency interview"
+      "Recruiter screen",
+      "Virtual technical screen with video and screen sharing",
+      "Role-dependent case study or assessment centre",
+      "Finalist evaluation"
     ],
     "question_categories": [
       "SQL and Python",
@@ -61,19 +42,22 @@
       "Project deep dives",
       "Competency-based behaviour"
     ],
-    "note": "Assessment-centre and onsite formats appear specific to the team and location.",
+    "questions": [
+      "Solve Python and SQL exercises and discuss ETL and Experian data systems.",
+      "Explain KNN, K-means, L1 versus L2 regularization, random forests and statistics.",
+      "Assessment-centre example: rank group-survival items after a spaceship crash."
+    ],
+    "note": "Aggregated candidate reports; assessment-centre and machine-learning questions may apply only to some locations or hybrid data roles.",
     "sources": [
-      {"label": "Candidate interview report", "url": "https://www.linkedin.com/posts/sandy-r-57a046253_experian-interview-experience-for-the-role-activity-7354346441282129920-cVHj"},
-      {"label": "Dataford synthesis", "url": "https://dataford.io/interview-guides/experian/data-engineer"},
       {"label": "InterviewQuery guide", "url": "https://www.interviewquery.com/interview-guides/experian-data-engineer"}
     ]
   },
   "NielsenIQ": {
-    "confidence": "medium",
+    "confidence": "medium-high",
     "steps": [
-      "Talent-acquisition screening",
-      "Optional online assessment or business case",
-      "One or more manager and team interviews"
+      "Technical round: coding and SQL",
+      "System-design round: data modelling, Spark scaling and data skew",
+      "Leadership round: situational architecture and decision-making"
     ],
     "question_categories": [
       "Professional experience and motivation",
@@ -82,35 +66,19 @@
       "ETL, Snowflake, dbt and Airflow",
       "Cloud platforms and pipeline reliability"
     ],
-    "note": "NIQ confirms the sequence but states that components and interview count vary by role. Technical categories are inferred from the current official role requirements.",
-    "sources": [
-      {"label": "Official NIQ candidate guide", "url": "https://c.smartrecruiters.com/sr-company-attachments-prod-aws-dc5/5f20077aa2b8ac7a5a26cb93/f76b8a57-c2ee-4248-a9c2-4170bac1a05e?r=s3-eu-central-1"},
-      {"label": "Official Senior Data Engineer role", "url": "https://jobs.smartrecruiters.com/NielsenIQ/744000120464338-senior-data-engineer"}
-    ]
-  },
-  "SIXT": {
-    "confidence": "low",
-    "steps": [
-      "Recruiter screening",
-      "Take-home SQL and Python assignment",
-      "Technical review and deep dive",
-      "Architecture and behavioural or hiring-manager discussion"
+    "questions": [
+      "Find the longest substring without repeating characters.",
+      "Determine whether two strings are anagrams in O(n) without sorting.",
+      "Use SQL window functions to detect price trends across months.",
+      "Design fact and dimension models for a ride-booking platform and handle Spark data skew.",
+      "Detect cross-country account use while preserving personalized recommendations.",
+      "Explain PySpark joins, RDDs, partitioning, DAG Scheduler and code optimization.",
+      "Discuss Lambda CLI deployment, EMR bootstrap actions and fleets, KMS, S3 restrictions, Glue, Redshift and Athena."
     ],
-    "question_categories": [
-      "Advanced SQL",
-      "Python",
-      "Assignment design choices",
-      "ETL architecture",
-      "Distributed systems",
-      "Cloud data platforms",
-      "Data modelling",
-      "Ownership and collaboration"
-    ],
-    "note": "The assignment and technical review are reported; exact cloud and AI topics depend on the role.",
+    "note": "Two detailed reports name Nielsen rather than NielsenIQ; confirm the corporate team with the recruiter.",
     "sources": [
-      {"label": "Dataford synthesis", "url": "https://dataford.io/interview-guides/sixt/data-engineer"},
-      {"label": "Official Data Engineer II role", "url": "https://www.sixt.jobs/nl/jobs/9365691d-788c-4cf9-8946-600c3a1f37d1"},
-      {"label": "Official AI Data Engineer role", "url": "https://www.sixt.jobs/us/jobs/78487204-788c-4639-aa13-b2ed7064300c"}
+      {"label": "Data Engineer II report · April 2025", "url": "https://learn.growdataskills.com/experience/Nielsen_%7C_Data_Engineer_-_II_Interview_Experience_%7C_2.5_YoE"},
+      {"label": "AWS Data Engineer report · September 2024", "url": "https://learn.growdataskills.com/experience/Nielsen_%7C_AWS_Data_Engineer_Interview_Experience_%7C_3_YOE"}
     ]
   }
 }
