@@ -11,7 +11,7 @@ def _render_engine_styles():
         .engine-node, .spark-node, .flink-node {
             background: var(--secondary-background-color) !important;
             color: var(--text-color) !important;
-            border: 1px solid color-mix(in srgb, var(--text-color) 30%, transparent) !important;
+            border: 1px solid #64748b !important;
             border-radius: .55rem;
             box-sizing: border-box;
             overflow-wrap: anywhere;
@@ -55,6 +55,206 @@ def _render_engine_styles():
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: .4rem;
+        }
+        .spark-architecture {
+            display: grid;
+            grid-template-columns: minmax(18rem, .9fr) minmax(22rem, 1.1fr);
+            gap: 1rem;
+            align-items: stretch;
+            margin-top: 1rem;
+        }
+        .spark-panel {
+            min-width: 0;
+            padding: 1rem;
+            color: var(--text-color);
+            background: var(--secondary-background-color);
+            border: 2px solid #64748b;
+            border-radius: .75rem;
+            box-sizing: border-box;
+        }
+        .spark-panel-title {
+            margin-bottom: .75rem;
+            font-size: 1.05rem;
+            font-weight: 800;
+        }
+        .spark-driver-flow {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: .5rem;
+        }
+        .spark-component {
+            min-width: 0;
+            min-height: 3.25rem;
+            padding: .6rem .45rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            color: var(--text-color);
+            background: color-mix(in srgb, var(--secondary-background-color) 75%, #3b82f6 25%);
+            border: 1px solid #3b82f6;
+            border-radius: .5rem;
+            font-size: .78rem;
+            font-weight: 700;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+        }
+        .spark-flow-label {
+            margin: .75rem 0 .45rem;
+            padding: .45rem;
+            text-align: center;
+            border: 1px solid #64748b;
+            border-radius: .45rem;
+            font-size: .8rem;
+            font-weight: 700;
+        }
+        .spark-cluster-options {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: .5rem;
+        }
+        .spark-cluster-option {
+            min-width: 0;
+            padding: .75rem .35rem;
+            text-align: center;
+            color: var(--text-color);
+            background: color-mix(in srgb, var(--secondary-background-color) 72%, #f59e0b 28%);
+            border: 1px solid #d97706;
+            border-radius: .5rem;
+            font-size: .78rem;
+            font-weight: 800;
+            overflow-wrap: anywhere;
+        }
+        .spark-resource-flow {
+            margin-top: .75rem;
+            padding: .65rem;
+            text-align: center;
+            border: 1px solid #d97706;
+            border-radius: .5rem;
+            font-size: .8rem;
+            font-weight: 700;
+        }
+        .spark-workers-panel {
+            grid-column: 1 / -1;
+        }
+        .spark-executors {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(15.5rem, 1fr));
+            gap: .75rem;
+        }
+        .spark-executor {
+            min-width: 0;
+            padding: .75rem;
+            color: var(--text-color);
+            background: var(--background-color);
+            border: 2px solid #475569;
+            border-radius: .65rem;
+            box-sizing: border-box;
+        }
+        .spark-executor-title {
+            margin-bottom: .55rem;
+            font-size: .9rem;
+            font-weight: 800;
+        }
+        .spark-cores {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: .5rem;
+        }
+        .spark-core-box {
+            min-width: 0;
+            min-height: 5.5rem;
+            padding: .55rem .3rem;
+            text-align: center;
+            background: color-mix(in srgb, var(--secondary-background-color) 78%, #8b5cf6 22%);
+            border: 1px solid #8b5cf6;
+            border-radius: .5rem;
+            font-size: .76rem;
+            box-sizing: border-box;
+        }
+        .spark-partitions {
+            margin-top: .4rem;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: .18rem;
+            line-height: 1;
+        }
+        .spark-memory-box {
+            margin-top: .65rem;
+            padding: .6rem;
+            border: 2px solid #64748b;
+            border-radius: .55rem;
+        }
+        .spark-memory-zones {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: .5rem;
+        }
+        .spark-memory-zone {
+            min-width: 0;
+            min-height: 3.25rem;
+            padding: .5rem .3rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            border-radius: .45rem;
+            font-size: .76rem;
+            font-weight: 800;
+            box-sizing: border-box;
+        }
+        .spark-execution-memory {
+            background: color-mix(in srgb, var(--secondary-background-color) 70%, #2563eb 30%);
+            border: 1px solid #2563eb;
+        }
+        .spark-storage-memory {
+            background: color-mix(in srgb, var(--secondary-background-color) 70%, #16a34a 30%);
+            border: 1px solid #16a34a;
+        }
+        .spark-disk {
+            margin-top: .55rem;
+            padding: .5rem;
+            text-align: center;
+            background: color-mix(in srgb, var(--secondary-background-color) 72%, #64748b 28%);
+            border: 2px solid #64748b;
+            border-radius: .45rem;
+            font-size: .78rem;
+            font-weight: 800;
+        }
+        .spark-metrics {
+            margin-top: .55rem;
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: .4rem;
+        }
+        .spark-metric {
+            min-width: 0;
+            padding: .45rem .25rem;
+            text-align: center;
+            background: var(--secondary-background-color);
+            border: 1px solid #64748b;
+            border-radius: .4rem;
+            font-size: .72rem;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+        }
+        .spark-diagnostic {
+            margin-top: .55rem;
+            padding: .55rem;
+            border: 1px solid #dc2626;
+            border-radius: .45rem;
+            font-size: .74rem;
+            line-height: 1.35;
+        }
+        .spark-shuffle-summary {
+            margin-top: .75rem;
+            padding: .65rem;
+            text-align: center;
+            border: 2px solid #64748b;
+            border-radius: .5rem;
+            font-size: .8rem;
+            font-weight: 800;
         }
         .flink-control-plane {
             display: grid;
@@ -130,9 +330,19 @@ def _render_engine_styles():
             font-size: .8rem;
         }
         @media (max-width: 900px) {
+            .spark-architecture { grid-template-columns: 1fr; }
+            .spark-workers-panel { grid-column: auto; }
+            .spark-driver-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .spark-cluster-options { grid-template-columns: 1fr; }
             .flink-control-plane, .comparison-grid { grid-template-columns: 1fr; }
             .flink-pipeline { grid-template-columns: 1fr; }
             .flink-arrow { transform: rotate(90deg); min-height: 1.5rem; }
+        }
+        @media (max-width: 520px) {
+            .spark-driver-flow, .spark-cores, .spark-memory-zones, .spark-metrics {
+                grid-template-columns: 1fr;
+            }
+            .spark-executors { grid-template-columns: 1fr; }
         }
         </style>
         """,
@@ -214,9 +424,9 @@ def render_partitions(state, core_id, executor_id):
 
     blocks = ""
     for _ in range(count):
-        blocks += f"<span style='font-size:10px;margin:1px'>{pattern}</span>"
+        blocks += f"<span>{pattern}</span>"
 
-    return f"<div>{blocks}</div>"
+    return f"<div class='spark-partitions'>{blocks}</div>"
 
 
 # ---------------- STAGE PIPELINE ----------------
@@ -367,6 +577,145 @@ def render_workers(state):
         if state["join"] == "Broadcast":
             st.markdown("🟢 Broadcast → No shuffle")
 
+
+def _stage_pipeline_html(state):
+    active = 1
+    if state["transform"] == "Wide":
+        active = 2
+    if state["join"] == "Shuffle":
+        active = 3
+    chips = []
+    for index, name in enumerate(("Job", "Stage 1", "Stage 2", "Stage 3")):
+        class_name = "spark-chip-active" if index == active else "spark-chip-idle"
+        chips.append(
+            f"<span class='{class_name}' style='padding:.3rem .55rem;"
+            f"border-radius:1rem;font-size:.7rem;font-weight:700'>{name}</span>"
+        )
+    return " <b>→</b> ".join(chips)
+
+
+def _driver_architecture_html(state):
+    components = (
+        "SparkSession",
+        "SparkContext",
+        "Logical Plan",
+        "Catalyst Optimizer",
+        "Physical Plan",
+        "DAG Scheduler",
+    )
+    component_html = "".join(
+        f"<div class='spark-component'>{component}</div>" for component in components
+    )
+    return (
+        "<section class='spark-panel'>"
+        "<div class='spark-panel-title'>Driver</div>"
+        f"<div class='spark-driver-flow'>{component_html}</div>"
+        "<div class='spark-flow-label'>Tasks scheduled to executors</div>"
+        f"<div style='text-align:center;line-height:2'>{_stage_pipeline_html(state)}</div>"
+        "</section>"
+    )
+
+
+def _cluster_architecture_html():
+    options = "".join(
+        f"<div class='spark-cluster-option'>{manager}</div>"
+        for manager in ("YARN", "Kubernetes", "Standalone")
+    )
+    return (
+        "<section class='spark-panel'>"
+        "<div class='spark-panel-title'>Cluster Manager</div>"
+        f"<div class='spark-cluster-options'>{options}</div>"
+        "<div class='spark-resource-flow'>"
+        "Receives resource requests → allocates worker capacity → launches executors"
+        "</div>"
+        "</section>"
+    )
+
+
+def _executor_architecture_html(index, state):
+    time_seconds, shuffle, status = compute_metrics(state)
+    is_spill = state["debug"] == "Spill"
+    is_oom = state["debug"] == "OOM"
+    memory_class = "spark-mem-error" if (is_spill or is_oom) else ""
+    disk_class = (
+        "spark-disk-error"
+        if is_oom
+        else "spark-disk-spill"
+        if is_spill
+        else ""
+    )
+    cores = "".join(
+        (
+            f"<div class='spark-core-box "
+            f"{'spark-mem-error' if state['debug'] == 'Skew' and index % 2 == 0 and core == 1 else ''}'>"
+            f"<strong>Core {core}</strong>{render_partitions(state, core, index)}</div>"
+        )
+        for core in (1, 2)
+    )
+    diagnostic = ""
+    if is_spill:
+        diagnostic = (
+            "<div class='spark-diagnostic'><strong>Disk spill active</strong><br>"
+            "Increase execution memory, reduce cached data, or tune shuffle partitions.</div>"
+        )
+    elif is_oom:
+        diagnostic = (
+            "<div class='spark-diagnostic'><strong>Memory exhausted</strong><br>"
+            "Increase executor memory, reduce shuffle volume, or optimize the join.</div>"
+        )
+    elif state["debug"] == "Skew":
+        diagnostic = (
+            "<div class='spark-diagnostic'><strong>Skew detected</strong><br>"
+            "AQE splits the hot partition; inspect key distribution and salting.</div>"
+        )
+    status_class = "text-success" if status == "Success" else "text-error"
+    status_icon = "Running ✓" if status == "Success" else "Failed ✕"
+    return f"""
+    <article class="spark-executor">
+      <div class="spark-executor-title">Executor {index}</div>
+      <div class="spark-cores">{cores}</div>
+      <div class="spark-memory-box">
+        <div class="spark-memory-title">Unified Memory</div>
+        <div class="spark-memory-zones">
+          <div class="spark-memory-zone spark-execution-memory {memory_class}">
+            Execution<br><small>joins · sorts · shuffle</small>
+          </div>
+          <div class="spark-memory-zone spark-storage-memory {memory_class}">
+            Storage<br><small>cache · persisted blocks</small>
+          </div>
+        </div>
+      </div>
+      <div class="spark-disk {disk_class}">Disk · shuffle files / spill / cache overflow</div>
+      <div class="spark-metrics">
+        <div class="spark-metric"><strong>Runtime</strong><br>{time_seconds}s</div>
+        <div class="spark-metric"><strong>Shuffle</strong><br>{shuffle}</div>
+        <div class="spark-metric"><strong>Status</strong><br><span class="{status_class}">{status_icon}</span></div>
+      </div>
+      {diagnostic}
+    </article>
+    """
+
+
+def _workers_architecture_html(state):
+    executors = "".join(
+        _executor_architecture_html(index, state)
+        for index in range(1, state["executors"] + 1)
+    )
+    _, shuffle, status = compute_metrics(state)
+    exchange = (
+        "No shuffle exchange · partitions remain local"
+        if shuffle == "None"
+        else f"Shuffle exchange active · {shuffle.lower()} data movement between executors"
+    )
+    return (
+        "<section class='spark-panel spark-workers-panel'>"
+        "<div class='spark-panel-title'>Worker Nodes</div>"
+        f"<div class='spark-executors'>{executors}</div>"
+        f"<div class='spark-shuffle-summary'>{exchange} · Job {status.lower()}</div>"
+        "</section>"
+    )
+
+
 # ---------------- AI CHAT ----------------        
 def render_ai_chat():
     st.markdown("---")
@@ -415,16 +764,14 @@ def render_ai_chat():
 
 # ---------------- MAIN ----------------
 def render_architecture_simulator(state):
-    c1, c2, c3 = st.columns([1, 1, 3])
-
-    with c1:
-        render_driver(state)
-
-    with c2:
-        render_cluster()
-
-    with c3:
-        render_workers(state)
+    st.markdown(
+        "<div class='spark-architecture'>"
+        + _driver_architecture_html(state)
+        + _cluster_architecture_html()
+        + _workers_architecture_html(state)
+        + "</div>",
+        unsafe_allow_html=True,
+    )
 
 
 # ---------------- ENTRY ----------------
