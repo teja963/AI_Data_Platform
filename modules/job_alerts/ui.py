@@ -24,7 +24,6 @@ from core.job_sources import load_job_sources, source_key
 from core.lazy_tabs import lazy_tab
 
 
-STATUS_OPTIONS = ("Active", "Saved", "Applied", "Rejected", "Not Relevant", "All")
 PAGE_SIZE = 12
 STATUS_LABELS = {
     "new": "New",
@@ -671,97 +670,16 @@ def _render_job(username, job):
             compact_links.append(f"[Careers ↗]({company['careers_url']})")
         st.markdown(" · ".join(compact_links))
 
-        panel_key = f"job_panel::{job['id']}"
-        description_col, evidence_col, application_col, close_col = st.columns(4)
-        if description_col.button(
-            "Description",
-            key=f"description_job_{job['id']}",
-            width="stretch",
-            help="Open this job's official description without loading the other job cards.",
-        ):
-            st.session_state[panel_key] = "description"
-        if evidence_col.button(
-            "Evidence",
-            key=f"evidence_job_{job['id']}",
-            width="stretch",
-            help="Review salary, stock and interview evidence for this company.",
-        ):
-            st.session_state[panel_key] = "evidence"
-        if application_col.button(
-            "Application",
-            key=f"application_job_{job['id']}",
-            width="stretch",
-            help="Prepare and review your application details. The app never submits automatically.",
-        ):
-            st.session_state[panel_key] = "application"
-        if close_col.button(
-            "Close",
-            key=f"close_job_{job['id']}",
-            width="stretch",
-        ):
-            st.session_state.pop(panel_key, None)
-
-        selected_panel = st.session_state.get(panel_key)
-        if selected_panel == "description":
-            st.markdown("#### Official job description")
-            st.caption(
-                f"{posted_label} {_display_job_time(job, posted_value)} · "
-                f"Last verified {_display_time(job.get('last_seen_at'))}"
-            )
-            st.write(
-                job["description"]
-                or "The official feed did not provide a description. Use the Apply link for full details."
-            )
-        elif selected_panel == "evidence":
-            st.markdown("#### Salary, stock and interview evidence")
-            selected_evidence = lazy_tab(
-                ["Salary reviews", "Stock", "Interview reports"],
-                f"job_evidence_{job['id']}",
-                "Evidence view",
-            )
-            if selected_evidence == "Salary reviews":
-                _render_compensation(job)
-            elif selected_evidence == "Stock":
-                _render_stock(company, job["id"])
-            else:
-                _render_interview(job["company"], job["title"])
-        elif selected_panel == "application":
-            st.markdown("#### Prepare application review")
-            _render_application_review(job)
-
-        save_col, applied_col, reject_col, irrelevant_col = st.columns(4)
-        if save_col.button(
-            "Save",
-            key=f"save_job_{job['id']}",
-            width="stretch",
-            help="Bookmark this job for later. This does not apply to the employer.",
-        ):
-            if update_job_status(username, job["id"], "saved"):
-                current_status = "saved"
-        if applied_col.button(
-            "Applied",
+        if current_status == "applied":
+            st.success("Applied")
+        elif st.button(
+            "Mark as applied",
             key=f"apply_job_{job['id']}",
             width="stretch",
             help="Record that you applied on the employer's official website.",
         ):
             if update_job_status(username, job["id"], "applied"):
                 current_status = "applied"
-        if reject_col.button(
-            "Reject",
-            key=f"reject_job_{job['id']}",
-            width="stretch",
-            help="Mark a relevant job that you reviewed but decided not to pursue.",
-        ):
-            if update_job_status(username, job["id"], "rejected"):
-                current_status = "rejected"
-        if irrelevant_col.button(
-            "Not relevant",
-            key=f"irrelevant_job_{job['id']}",
-            width="stretch",
-            help="Hide a job that does not match your role, location or career goals.",
-        ):
-            if update_job_status(username, job["id"], "not_relevant"):
-                current_status = "not_relevant"
 
         if current_status != job["status"]:
             st.session_state[f"job_status_override::{job['id']}"] = current_status
@@ -784,7 +702,7 @@ def render_job_alerts():
 
     _render_scan_status(is_admin=role == "admin")
     selected_workspace = lazy_tab(
-        ["Jobs", "Sector demand", "Priority companies", "Application Profile"],
+        ["Jobs", "Applied", "Sector demand", "Priority companies", "Application Profile"],
         "job_alert_workspace",
         "Job workspace",
     )
@@ -802,12 +720,7 @@ def render_job_alerts():
             | {"Microsoft"}
         )
         with st.form("job_alert_filters"):
-            status_col, location_col, sector_col, company_col = st.columns(4)
-            selected_status = status_col.selectbox(
-                "Status",
-                STATUS_OPTIONS,
-                key="job_alert_status_filter",
-            )
+            location_col, sector_col, company_col = st.columns(3)
             location_scope = location_col.selectbox(
                 "Location",
                 ["All jobs", "Remote", "India", "Priority companies"],
@@ -832,7 +745,7 @@ def render_job_alerts():
         if apply_filters:
             st.session_state["job_alert_page"] = 0
 
-        jobs = _jobs_with_sectors(_load_jobs_cached(username, selected_status))
+        jobs = _jobs_with_sectors(_load_jobs_cached(username, "Active"))
         filtered_jobs = _filter_jobs(
             jobs,
             location_scope,
@@ -887,6 +800,14 @@ def render_job_alerts():
         for job in page_jobs:
             _render_job(username, job)
 
+    elif selected_workspace == "Applied":
+        applied_jobs = _jobs_with_sectors(_load_jobs_cached(username, "Applied"))
+        if not applied_jobs:
+            st.info("Jobs you mark as applied will appear here.")
+        else:
+            st.caption(f"{len(applied_jobs)} applied jobs")
+            for job in applied_jobs:
+                _render_job(username, job)
     elif selected_workspace == "Sector demand":
         active_jobs = _jobs_with_sectors(_load_jobs_cached(username, "Active"))
         _render_sector_demand(active_jobs)
