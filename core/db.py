@@ -33,7 +33,6 @@ engine_options = {
 if DATABASE_URL.startswith(("postgresql://", "postgresql+psycopg2://")):
     engine_options["connect_args"] = {
         "connect_timeout": 10,
-        "options": "-c statement_timeout=60000",
     }
 engine = create_engine(DATABASE_URL, **engine_options)
 # expire_on_commit=False prevents attributes from being wiped after a commit,
