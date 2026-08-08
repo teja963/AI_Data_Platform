@@ -625,6 +625,10 @@ if st.session_state.get("pending_admin"):
 
 # --- Main Application Logic (Only reached if st.session_state["user"] is set) ---
 if st.session_state.get("user"):
+    from core.prewarm import prewarm_section_modules
+
+    prewarm_section_modules()
+
     if st.session_state.get("persistent_cookie_user") != st.session_state["user"]:
         _persist_login(st.session_state["user"])
         st.session_state["persistent_cookie_user"] = st.session_state["user"]
@@ -691,6 +695,7 @@ if st.session_state.get("user"):
     _set_query_param_if_changed("module", module)
     track_section_activity(st.session_state.get("user"), module)
 
+    @st.fragment
     def render_dashboard():
         from core.interview import load_interview_history
         from core.loader import load_questions
@@ -704,10 +709,14 @@ if st.session_state.get("user"):
         ]
         cols = st.columns(3)
         chart_rows = []
+        question_catalogs = {}
         for i, module_config in enumerate(modules):
             with cols[i % 3]:
                 try:
-                    questions = load_questions(module_config["question_module"])
+                    question_module = module_config["question_module"]
+                    if question_module not in question_catalogs:
+                        question_catalogs[question_module] = load_questions(question_module)
+                    questions = question_catalogs[question_module]
                 except Exception:
                     questions = []
 

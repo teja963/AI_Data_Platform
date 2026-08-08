@@ -34,6 +34,7 @@ def _read_sql_cached(query, params=None):
     return _read_sql_cached_with_version(query, get_app_version(), params=params)
 
 
+@st.fragment
 def render_admin():
     if st.session_state.get("role") != "admin":
         st.error("Unauthorized access.")

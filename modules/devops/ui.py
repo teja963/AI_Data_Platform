@@ -2,11 +2,9 @@ import streamlit as st
 
 from core.access import user_can_view_architecture
 from core.lazy_tabs import lazy_tab
-from modules.architecture.ui import render_diagram_collection
-from modules.devops.simulator_ui import render_kubernetes_simulator
-from modules.devops.terraform_ui import render_terraform_lab
 
 
+@st.fragment
 def render_devops():
     username = st.session_state.get("user")
     role = st.session_state.get("role", "user")
@@ -21,10 +19,16 @@ def render_devops():
         "DevOps workspace",
     )
     if selected == "Kubernetes Practice Lab":
+        from modules.devops.simulator_ui import render_kubernetes_simulator
+
         render_kubernetes_simulator()
     elif selected == "Terraform Practice Lab":
+        from modules.devops.terraform_ui import render_terraform_lab
+
         render_terraform_lab()
     else:
+        from modules.architecture.ui import render_diagram_collection
+
         render_diagram_collection(
             title="DevOps Architecture Diagrams",
             collection="devops",

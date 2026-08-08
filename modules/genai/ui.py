@@ -526,6 +526,7 @@ def render_interview_tab():
         st.markdown(f"- {item}")
 
 
+@st.fragment
 def render_genai():
     selected = lazy_tab(
         ["Roadmap", "Stage Labs", "Interview Prep"],

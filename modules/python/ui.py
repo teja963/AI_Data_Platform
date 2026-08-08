@@ -6,7 +6,6 @@ from pprint import pformat
 import pandas as pd
 import streamlit as st
 
-from core.ai import ask_ai
 from core.activity import track_query_execution
 from core.coding_layout import coding_columns
 from core.editor import clear_editor_draft, render_code_editor, set_editor_draft
@@ -24,7 +23,6 @@ from core.lazy_tabs import lazy_tab
 from core.progress import clear_progress, load_progress, save_progress
 from core.solution_notes import with_solution_comments
 from core.submissions import get_recent_submissions, get_submission_stats, record_submission
-from modules.python.engine import preview_python_question, run_python_question
 
 WORKSPACES = ["Practice", "Interview Simulator"]
 INTERVIEW_DIFFICULTIES = ["Easy", "Medium"]
@@ -32,11 +30,28 @@ INTERVIEW_STATE_KEY = "python_interview_state"
 INTERVIEW_REPORT_KEY = "python_interview_report"
 
 
+def preview_python_question(*args, **kwargs):
+    from modules.python.engine import preview_python_question as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def run_python_question(*args, **kwargs):
+    from modules.python.engine import run_python_question as implementation
+
+    return implementation(*args, **kwargs)
+
+
 def get_query_param(name, default):
     value = st.query_params.get(name, default)
     if isinstance(value, list):
         return value[0] if value else default
     return value
+
+
+def set_query_param_if_changed(name, value):
+    if get_query_param(name, None) != value:
+        st.query_params[name] = value
 
 
 def get_filtered_query_list(name, allowed_values, default):
@@ -291,6 +306,8 @@ def render_ai_tools(question, code, button_prefix):
         if not code.strip():
             st.warning("Write some code first so the explanation has something to inspect.")
         else:
+            from core.ai import ask_ai
+
             preview = preview_python_question(question, code)
             preview_lines = []
             if preview.get("error"):
@@ -336,7 +353,7 @@ def render_practice_workspace(questions):
         st.sidebar.success("Python progress cleared.")
 
     selected_category = st.sidebar.selectbox("Category", categories, key="python_category")
-    st.query_params["py_category"] = selected_category
+    set_query_param_if_changed("py_category", selected_category)
 
     category_questions = sorted(
         grouped[selected_category],
@@ -347,7 +364,6 @@ def render_practice_workspace(questions):
     selected_question_key = get_query_param("py_question", category_questions[0]["progress_key"])
     if selected_question_key not in category_keys:
         selected_question_key = category_questions[0]["progress_key"]
-    st.query_params["py_question"] = selected_question_key
 
     solved_in_category = sum(1 for question in category_questions if question["progress_key"] in solved)
     progress_ratio = solved_in_category / len(category_questions) if category_questions else 0.0
@@ -358,16 +374,24 @@ def render_practice_workspace(questions):
     )
 
     st.sidebar.markdown("### Questions")
+    question_labels = {}
     for question in category_questions:
         question_key = question["progress_key"]
         label = f"{question['id']}. {question['title']} ({question['difficulty']})"
-        if question_key == selected_question_key:
-            label = "▶ " + label
         if question_key in solved:
             label = "✅ " + label
-        if st.sidebar.button(label, key=f"python_q_{question_key}"):
-            st.query_params["py_question"] = question_key
-            st.rerun()
+        question_labels[question_key] = label
+
+    selected_question_key = st.sidebar.selectbox(
+        "Question",
+        [question["progress_key"] for question in category_questions],
+        index=[question["progress_key"] for question in category_questions].index(
+            selected_question_key
+        ),
+        format_func=question_labels.get,
+        key=f"python_question_selector_{selected_category}",
+    )
+    set_query_param_if_changed("py_question", selected_question_key)
 
     question = next(item for item in category_questions if item["progress_key"] == selected_question_key)
     result_key = f"python_result_{selected_question_key}"
@@ -879,7 +903,7 @@ def render_python(show_sidebar_title=True):
         st.session_state.python_workspace = initial_workspace
 
     workspace = st.sidebar.radio("Workspace", WORKSPACES, key="python_workspace")
-    st.query_params["py_workspace"] = workspace
+    set_query_param_if_changed("py_workspace", workspace)
 
     if workspace == "Practice":
         render_practice_workspace(questions)

@@ -1713,6 +1713,7 @@ def render_reference_tab(title, sections, code_language, key_prefix, concept_lan
             render_reference_section(section, code_language, concept_language)
 
 
+@st.fragment
 def render_concepts():
     st.title("Syntax Concepts")
 

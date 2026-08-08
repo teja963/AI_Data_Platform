@@ -1,8 +1,5 @@
 import streamlit as st
 
-from modules.python.ui import render_python
-from modules.sql.ui import render_sql
-
 TRACKS = ["SQL / PySpark", "Python"]
 
 
@@ -18,6 +15,7 @@ def _set_query_param_if_changed(name, value):
         st.query_params[name] = value
 
 
+@st.fragment
 def render_coding():
     st.sidebar.title("Coding Workspace")
 
@@ -32,6 +30,10 @@ def render_coding():
     _set_query_param_if_changed("coding_track", track)
 
     if track == "Python":
+        from modules.python.ui import render_python
+
         render_python(show_sidebar_title=False)
     else:
+        from modules.sql.ui import render_sql
+
         render_sql(show_sidebar_title=False)

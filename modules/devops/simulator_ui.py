@@ -369,8 +369,12 @@ def _render_overview(username, state):
 
 def _render_workloads(username, state):
     namespaces = sorted(state["namespaces"])
-    create_tab, inspect_tab = st.tabs(["Create Resources", "Inspect Resources"])
-    with create_tab:
+    workload_view = lazy_tab(
+        ["Create Resources", "Inspect Resources"],
+        "sim_workload_view",
+        "Workload view",
+    )
+    if workload_view == "Create Resources":
         namespace_col, deployment_col = st.columns([0.8, 2.2])
         with namespace_col:
             st.markdown("##### Namespace")
@@ -456,7 +460,7 @@ def _render_workloads(username, state):
             ):
                 st.rerun()
 
-    with inspect_tab:
+    if workload_view == "Inspect Resources":
         resource = st.segmented_control(
             "Resource",
             ["Pods", "Deployments", "Services"],
@@ -480,10 +484,12 @@ def _render_terminal(username, state):
         "Safe simulator terminal: commands are parsed against the virtual state. "
         "No host shell, cloud account, or real Kubernetes API is contacted."
     )
-    cluster_terminal, pod_shell, manifest_tab = st.tabs(
-        ["Cluster Terminal", "Pod Shell", "YAML Apply"]
+    terminal_view = lazy_tab(
+        ["Cluster Terminal", "Pod Shell", "YAML Apply"],
+        "sim_terminal_view",
+        "Terminal view",
     )
-    with cluster_terminal:
+    if terminal_view == "Cluster Terminal":
         with st.form("sim_terminal_form"):
             quick = st.selectbox(
                 "Command template",
@@ -557,7 +563,7 @@ oc new-app example/application:1.0 --name=application""",
                 with st.expander(f"{status} {entry['command']}"):
                     st.code(entry["output"], language="text", wrap_lines=True)
 
-    with pod_shell:
+    if terminal_view == "Pod Shell":
         running_pods = [
             pod for pod in state["pods"].values() if pod["status"] == "Running"
         ]
@@ -632,7 +638,7 @@ oc new-app example/application:1.0 --name=application""",
                     wrap_lines=True,
                 )
 
-    with manifest_tab:
+    if terminal_view == "YAML Apply":
         with st.form("sim_manifest_form"):
             st.text_area(
                 "Manifest",
@@ -1102,8 +1108,12 @@ def _parse_labels(value):
 
 
 def _render_resource_management(username, state):
-    namespace_tab, workload_tab = st.tabs(["Namespaces", "Deployments & Services"])
-    with namespace_tab:
+    resource_view = lazy_tab(
+        ["Namespaces", "Deployments & Services"],
+        "sim_resource_management_view",
+        "Resource management view",
+    )
+    if resource_view == "Namespaces":
         with st.form("namespace_policy_form"):
             identity = st.columns(3)
             name = identity[0].text_input("Namespace name", placeholder="data-engineering")
@@ -1263,7 +1273,7 @@ def _render_resource_management(username, state):
                     except (ValueError, TypeError) as exc:
                         st.error(str(exc))
 
-    with workload_tab:
+    if resource_view == "Deployments & Services":
         st.caption(
             "Deployment keeps the requested number of pods running. "
             "Service gives those pods a stable network name and port."

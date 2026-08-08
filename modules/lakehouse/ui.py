@@ -147,6 +147,7 @@ def _render_lakehouse_lab():
         )
 
 
+@st.fragment
 def render_lakehouse():
     st.title("Lakehouse & Table Formats")
     selected = lazy_tab(

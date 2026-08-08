@@ -1,7 +1,5 @@
 from datetime import timedelta, timezone
 
-import altair as alt
-import pandas as pd
 import streamlit as st
 
 from core.job_enrichment import (
@@ -194,6 +192,8 @@ def _render_scan_status(is_admin):
 
 
 def _render_compensation(job):
+    import pandas as pd
+
     company_name = job["company"]
     reports = get_compensation_reports(company_name)
     extracted = extract_compensation(job.get("description", ""))
@@ -253,6 +253,9 @@ def _render_compensation(job):
 
 
 def _render_stock(company, job_id):
+    import altair as alt
+    import pandas as pd
+
     quote = fetch_stock_quote(company["ticker"])
     if not quote or quote["price"] is None:
         st.caption("Private company or no public market history is available.")
@@ -623,6 +626,8 @@ def _filter_jobs(
 
 
 def _render_sector_demand(jobs):
+    import pandas as pd
+
     if not jobs:
         st.info("No active jobs are available for sector analysis.")
         return
@@ -736,6 +741,7 @@ def _render_job(username, job):
             )
 
 
+@st.fragment
 def render_job_alerts():
     username = st.session_state.get("user")
     role = st.session_state.get("role", "user")

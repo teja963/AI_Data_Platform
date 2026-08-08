@@ -2,10 +2,9 @@ import streamlit as st
 
 from core.access import user_can_view_architecture
 from core.lazy_tabs import lazy_tab
-from modules.architecture.ui import render_diagram_collection
-from modules.cloud.aws_lab import render_aws_practical_lab
 
 
+@st.fragment
 def render_cloud():
     username = st.session_state.get("user")
     role = st.session_state.get("role", "user")
@@ -23,8 +22,12 @@ def render_cloud():
             "AWS workspace",
         )
         if aws_view == "Practical Labs":
+            from modules.cloud.aws_lab import render_aws_practical_lab
+
             render_aws_practical_lab()
         else:
+            from modules.architecture.ui import render_diagram_collection
+
             render_diagram_collection(
                 title="AWS Architecture Diagrams",
                 collection="cloud_aws",
@@ -34,6 +37,8 @@ def render_cloud():
             )
 
     elif provider == "GCP":
+        from modules.architecture.ui import render_diagram_collection
+
         render_diagram_collection(
             title="GCP Architecture Diagrams",
             collection="cloud_gcp",
@@ -43,6 +48,8 @@ def render_cloud():
         )
 
     else:
+        from modules.architecture.ui import render_diagram_collection
+
         render_diagram_collection(
             title="Azure Architecture Diagrams",
             collection="cloud_azure",

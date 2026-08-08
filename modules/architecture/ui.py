@@ -303,6 +303,7 @@ def render_diagram_collection(
             st.rerun()
 
 
+@st.fragment
 def render_architecture():
     st.title("Architecture Diagrams")
     render_diagram_collection(

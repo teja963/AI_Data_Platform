@@ -808,6 +808,7 @@ def render_project(project):
         render_code_walkthrough(project)
 
 
+@st.fragment
 def render_projects():
     st.sidebar.title("Projects Workspace")
     companies = list(PROJECTS_CATALOG.keys())

@@ -1,13 +1,20 @@
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 import streamlit as st
 from sqlalchemy import inspect
+from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 
 MAX_TRACKED_SECONDS = 300
 MIN_WRITE_SECONDS = 10
 FLUSH_INTERVAL_SECONDS = 300
 _ACTIVITY_SCHEMA_READY = False
+
+
+@st.cache_resource
+def _activity_executor():
+    return ThreadPoolExecutor(max_workers=1, thread_name_prefix="activity-writer")
 
 
 def ensure_activity_schema():
@@ -38,11 +45,12 @@ def _get_user_id(session, username):
     from core.models import User
 
     cache_key = f"database_user_id::{username}"
-    if cache_key in st.session_state:
+    has_streamlit_context = get_script_run_ctx(suppress_warning=True) is not None
+    if has_streamlit_context and cache_key in st.session_state:
         return st.session_state[cache_key]
     user = session.query(User).filter_by(username=username).first()
     user_id = user.id if user else None
-    if user_id is not None:
+    if has_streamlit_context and user_id is not None:
         st.session_state[cache_key] = user_id
     return user_id
 
@@ -221,12 +229,8 @@ def _add_section_performance(username, section, values):
         return
 
 
-def _flush_pending_activity(username):
-    pending = st.session_state.get("activity_pending", {})
-    if not pending:
-        return
-
-    for section, values in list(pending.items()):
+def _write_activity_payload(username, pending, pending_perf, pending_queries):
+    for section, values in pending.items():
         seconds = int(values.get("seconds", 0))
         visits = int(values.get("visits", 0))
         if seconds > 0:
@@ -234,19 +238,33 @@ def _flush_pending_activity(username):
         for _ in range(visits):
             _add_activity_seconds(username, section, 0, count_visit=True)
 
-    st.session_state["activity_pending"] = {}
-
-    pending_perf = st.session_state.get("section_performance_pending", {})
-    for section, values in list(pending_perf.items()):
+    for section, values in pending_perf.items():
         _add_section_performance(username, section, values)
-    st.session_state["section_performance_pending"] = {}
 
-    pending_queries = st.session_state.get("query_performance_pending", {})
-    for track, values in list(pending_queries.items()):
+    for track, values in pending_queries.items():
         _add_query_performance(username, track, values)
-    st.session_state["query_performance_pending"] = {}
 
+
+def _flush_pending_activity(username, background=False):
+    pending = st.session_state.get("activity_pending", {})
+    pending_perf = st.session_state.get("section_performance_pending", {})
+    pending_queries = st.session_state.get("query_performance_pending", {})
+    if not pending and not pending_perf and not pending_queries:
+        return
+
+    st.session_state["activity_pending"] = {}
+    st.session_state["section_performance_pending"] = {}
+    st.session_state["query_performance_pending"] = {}
     st.session_state["activity_last_flush_ts"] = datetime.utcnow()
+    payload = (
+        dict(pending),
+        dict(pending_perf),
+        dict(pending_queries),
+    )
+    if background:
+        _activity_executor().submit(_write_activity_payload, username, *payload)
+    else:
+        _write_activity_payload(username, *payload)
 
 
 def track_section_activity(username, section):
@@ -278,7 +296,7 @@ def track_section_activity(username, section):
         or int((now - last_flush_ts).total_seconds()) >= FLUSH_INTERVAL_SECONDS
     )
     if should_flush:
-        _flush_pending_activity(username)
+        _flush_pending_activity(username, background=True)
 
 
 def track_section_render(username, section, elapsed_ms):
@@ -290,7 +308,7 @@ def track_section_render(username, section, elapsed_ms):
         or int((now - last_flush_ts).total_seconds()) >= FLUSH_INTERVAL_SECONDS
     )
     if should_flush:
-        _flush_pending_activity(username)
+        _flush_pending_activity(username, background=True)
 
 
 def _add_query_performance(username, track, values):

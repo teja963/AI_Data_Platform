@@ -186,11 +186,8 @@ def get_app_version():
 
 def ensure_fresh_runtime():
     current_version = get_app_version()
-    previous_version = st.session_state.get("app_version")
-
-    if previous_version and previous_version != current_version:
-        st.cache_data.clear()
-
+    # Cached functions include their own code and/or app-version keys. Clearing every
+    # data cache here made unrelated sections cold after any deployment or source edit.
     st.session_state["app_version"] = current_version
     return current_version
 

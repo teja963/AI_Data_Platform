@@ -20,17 +20,38 @@ def build_question_key(module, question):
     return f"{module}:{_normalize_category_key(category)}:{question.get('id')}"
 
 
+def _decode_static_value(value):
+    if isinstance(value, list):
+        return [_decode_static_value(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    value_type = value.get("__python_type__")
+    if value_type == "tuple":
+        return tuple(_decode_static_value(item) for item in value["items"])
+    if value_type == "dataframe":
+        import pandas as pd
+
+        return pd.DataFrame(value["data"], columns=value["columns"])
+    return {key: _decode_static_value(item) for key, item in value.items()}
+
+
 def _load_question_file(file_path, module, category=None):
     with open(file_path) as f:
-        question = json.load(f)
+        payload = _decode_static_value(json.load(f))
 
-    if category:
-        question["category"] = question.get("category", category)
-    else:
-        question["category"] = question.get("category", "Others")
+    questions = payload if isinstance(payload, list) else [payload]
+    normalized_questions = []
+    for question in questions:
+        normalized = dict(question)
+        if category:
+            normalized["category"] = normalized.get("category", category)
+        else:
+            normalized["category"] = normalized.get("category", "Others")
 
-    question["progress_key"] = build_question_key(module, question)
-    return question
+        normalized["progress_key"] = build_question_key(module, normalized)
+        normalized_questions.append(normalized)
+    return normalized_questions
 
 
 def _load_local_questions(module):
@@ -50,12 +71,12 @@ def _load_local_questions(module):
                     if relative_dir != "."
                     else None
                 )
-                questions.append(_load_question_file(file_path, module, category))
+                questions.extend(_load_question_file(file_path, module, category))
         return questions
     if os.path.isdir(legacy_path):
         for file_name in sorted(os.listdir(legacy_path)):
             if file_name.endswith(".json"):
-                questions.append(
+                questions.extend(
                     _load_question_file(
                         os.path.join(legacy_path, file_name),
                         module,

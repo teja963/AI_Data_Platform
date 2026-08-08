@@ -5,7 +5,6 @@ import uuid
 import streamlit as st
 
 from core.activity import track_query_execution
-from core.ai import ask_ai
 from core.coding_layout import coding_columns
 from core.editor import clear_editor_draft, render_code_editor, set_editor_draft
 from core.interview import (
@@ -22,14 +21,6 @@ from core.lazy_tabs import lazy_tab
 from core.progress import clear_progress, load_progress, save_progress
 from core.solution_notes import with_solution_comments
 from core.submissions import get_recent_submissions, get_submission_stats, record_submission
-from modules.sql.engine import (
-    create_db,
-    get_pyspark_unavailable_message,
-    is_pyspark_available,
-    run_pyspark_code,
-    run_query,
-)
-from modules.sql.validator import validate
 
 EDITOR_TRACKS = {
     "SQL": "sql",
@@ -40,6 +31,42 @@ WORKSPACES = ["Practice", "Interview Simulator"]
 INTERVIEW_DIFFICULTIES = ["Easy", "Medium", "Hard"]
 INTERVIEW_STATE_KEY = "sql_interview_state"
 INTERVIEW_REPORT_KEY = "sql_interview_report"
+
+
+def create_db(*args, **kwargs):
+    from modules.sql.engine import create_db as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def get_pyspark_unavailable_message():
+    from modules.sql.engine import get_pyspark_unavailable_message as implementation
+
+    return implementation()
+
+
+def is_pyspark_available():
+    from modules.sql.engine import is_pyspark_available as implementation
+
+    return implementation()
+
+
+def run_pyspark_code(*args, **kwargs):
+    from modules.sql.engine import run_pyspark_code as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def run_query(*args, **kwargs):
+    from modules.sql.engine import run_query as implementation
+
+    return implementation(*args, **kwargs)
+
+
+def validate(*args, **kwargs):
+    from modules.sql.validator import validate as implementation
+
+    return implementation(*args, **kwargs)
 
 
 def format_sql_vertical(sql):
@@ -60,6 +87,11 @@ def get_query_param(name, default):
         return value[0] if value else default
 
     return value
+
+
+def set_query_param_if_changed(name, value):
+    if get_query_param(name, None) != value:
+        st.query_params[name] = value
 
 
 def get_filtered_query_list(name, allowed_values, default):
@@ -388,7 +420,7 @@ def render_practice_workspace(questions):
         submodules,
         key="sql_selected_submodule",
     )
-    st.query_params["submodule"] = selected_submodule
+    set_query_param_if_changed("submodule", selected_submodule)
 
     sub_qs = grouped[selected_submodule]
     sub_q_keys = {question["progress_key"] for question in sub_qs}
@@ -407,23 +439,25 @@ def render_practice_workspace(questions):
     if selected_question_key not in sub_q_keys:
         selected_question_key = sub_qs[0]["progress_key"]
 
-    st.query_params["question"] = selected_question_key
-
     st.sidebar.markdown("### Questions")
     st.sidebar.caption(f"Progress view: {st.session_state.editor_mode}")
 
+    question_labels = {}
     for question in sub_qs:
         question_key = question["progress_key"]
         label = f"{question['id']}. {question['title']}"
-
-        if question_key == selected_question_key:
-            label = "▶ " + label
         if question_key in solved:
             label = "✅ " + label
+        question_labels[question_key] = label
 
-        if st.sidebar.button(label, key=f"q_{question_key}"):
-            st.query_params["question"] = question_key
-            st.rerun()
+    selected_question_key = st.sidebar.selectbox(
+        "Question",
+        [question["progress_key"] for question in sub_qs],
+        index=[question["progress_key"] for question in sub_qs].index(selected_question_key),
+        format_func=question_labels.get,
+        key=f"sql_question_selector_{selected_submodule}",
+    )
+    set_query_param_if_changed("question", selected_question_key)
 
     question = next(item for item in sub_qs if item["progress_key"] == selected_question_key)
     question_key = selected_question_key
@@ -443,7 +477,7 @@ def render_practice_workspace(questions):
                     key="editor_mode",
                     label_visibility="collapsed",
                 )
-            st.query_params["editor_mode"] = editor_mode
+            set_query_param_if_changed("editor_mode", editor_mode)
             with control_cols[1]:
                 if st.button("↺", key=f"code_action_sql_starter_{question_key}_{editor_mode}", help="Load starter"):
                     set_editor_draft(
@@ -535,6 +569,8 @@ def render_practice_workspace(questions):
             explain = c_b.button("Explain", key=f"practice_explain_{question_key}_{editor_mode}")
 
             if hint:
+                from core.ai import ask_ai
+
                 st.write(
                     ask_ai(
                         f"Question:\n{question['description']}",
@@ -545,6 +581,8 @@ def render_practice_workspace(questions):
                     )
                 )
             elif explain and query.strip():
+                from core.ai import ask_ai
+
                 st.write(
                     ask_ai(
                         (
@@ -1017,7 +1055,7 @@ def render_sql(show_sidebar_title=True):
         WORKSPACES,
         key="sql_workspace",
     )
-    st.query_params["workspace"] = workspace
+    set_query_param_if_changed("workspace", workspace)
 
     if workspace == "Practice":
         render_practice_workspace(questions)

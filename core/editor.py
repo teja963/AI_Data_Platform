@@ -144,5 +144,6 @@ def render_code_editor(draft_key, language, starter, height=520, placeholder=Non
 
     if code != st.session_state.get(session_key):
         st.session_state[session_key] = code
+    if action in {"run", "submit"}:
         save_draft(draft_key, code)
     return code, action

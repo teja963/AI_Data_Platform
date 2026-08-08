@@ -49,6 +49,7 @@ ENGINE_DESIGN = {
 }
 
 
+@st.fragment
 def render_warehouses():
     username = st.session_state.get("user")
     marker = f"warehouse_loaded::{username}"
