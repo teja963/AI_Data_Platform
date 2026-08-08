@@ -15,7 +15,6 @@ def _set_query_param_if_changed(name, value):
         st.query_params[name] = value
 
 
-@st.fragment
 def render_coding():
     st.sidebar.title("Coding Workspace")
 
