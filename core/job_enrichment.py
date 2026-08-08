@@ -81,6 +81,16 @@ PUBLIC_TICKERS = {
     "Western Digital": "WDC",
     "Experian": "EXPN.L",
 }
+_CURRENCY_SYMBOLS = {
+    "$": "USD",
+    "USD": "USD",
+    "€": "EUR",
+    "EUR": "EUR",
+    "£": "GBP",
+    "GBP": "GBP",
+    "₹": "INR",
+    "INR": "INR",
+}
 
 _PAY_RANGE_PATTERN = re.compile(
     r"(?P<currency>USD|INR|EUR|GBP|\$|₹|€|£)\s*"
@@ -200,6 +210,102 @@ def extract_compensation(description):
             if any(term in lowered for term in terms)
         ],
     }
+
+
+def _parse_pay_amount(value):
+    normalized = value.lower().replace(",", "").strip()
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)\s*(k|m|lakh|lakhs|crore)?", normalized)
+    if not match:
+        return None
+    amount = float(match.group(1))
+    multiplier = {
+        None: 1,
+        "k": 1_000,
+        "m": 1_000_000,
+        "lakh": 100_000,
+        "lakhs": 100_000,
+        "crore": 10_000_000,
+    }[match.group(2)]
+    return amount * multiplier
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_inr_exchange_rates():
+    rates = {"INR": 1.0}
+    for currency in ("USD", "EUR", "GBP"):
+        ticker = f"{currency}INR=X"
+        url = (
+            f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?"
+            + urlencode({"interval": "1d", "range": "5d"})
+        )
+        request = Request(
+            url,
+            headers={"Accept": "application/json", "User-Agent": "Mozilla/5.0"},
+        )
+        try:
+            with urlopen(request, timeout=8) as response:
+                payload = json.loads(response.read().decode("utf-8"))
+            rates[currency] = float(
+                payload["chart"]["result"][0]["meta"]["regularMarketPrice"]
+            )
+        except (KeyError, TypeError, ValueError, OSError):
+            continue
+    return rates
+
+
+def compensation_range_in_inr(value, rates=None):
+    match = _PAY_RANGE_PATTERN.search(value or "") or _SINGLE_PAY_PATTERN.search(value or "")
+    if not match:
+        return None
+    currency = _CURRENCY_SYMBOLS.get(match.group("currency").upper(), match.group("currency"))
+    rate = (rates or fetch_inr_exchange_rates()).get(currency)
+    if rate is None:
+        return None
+    minimum = _parse_pay_amount(match.groupdict().get("minimum") or match.group("amount"))
+    maximum = _parse_pay_amount(match.groupdict().get("maximum") or match.group("amount"))
+    if minimum is None or maximum is None:
+        return None
+    minimum_inr = minimum * rate
+    maximum_inr = maximum * rate
+    period = "per hour" if "hour" in value.lower() else "per annum"
+    if period == "per hour":
+        return f"₹{minimum_inr:,.0f}–₹{maximum_inr:,.0f} per hour"
+    return f"₹{minimum_inr / 100_000:g}L–₹{maximum_inr / 100_000:g}L per annum"
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def fetch_company_history(company):
+    params = urlencode(
+        {
+            "action": "query",
+            "format": "json",
+            "prop": "extracts|info",
+            "inprop": "url",
+            "exintro": 1,
+            "explaintext": 1,
+            "redirects": 1,
+            "titles": company,
+        }
+    )
+    request = Request(
+        f"https://en.wikipedia.org/w/api.php?{params}",
+        headers={"Accept": "application/json", "User-Agent": "AI-Data-Engineering-Platform/1.0"},
+    )
+    try:
+        with urlopen(request, timeout=8) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        page = next(iter(payload["query"]["pages"].values()))
+        extract = " ".join((page.get("extract") or "").split())
+        if not extract or "may refer to:" in extract.lower():
+            return None
+        sentences = re.split(r"(?<=[.!?])\s+", extract)
+        return {
+            "summary": " ".join(sentences[:3])[:900],
+            "url": page.get("fullurl"),
+            "source": "Wikipedia",
+        }
+    except (KeyError, StopIteration, TypeError, ValueError, OSError):
+        return None
 
 
 @st.cache_data(ttl=3600, show_spinner=False)

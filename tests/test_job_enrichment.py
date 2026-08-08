@@ -1,6 +1,7 @@
 import unittest
 
 from core.job_enrichment import (
+    compensation_range_in_inr,
     extract_compensation,
     get_company_metadata,
     get_compensation_reports,
@@ -28,6 +29,20 @@ class CompensationExtractionTests(unittest.TestCase):
         self.assertEqual(details["published_ranges"], [])
         self.assertFalse(details["equity_mentioned"])
         self.assertFalse(details["bonus_mentioned"])
+
+    def test_converts_foreign_salary_range_to_indian_lpa(self):
+        converted = compensation_range_in_inr(
+            "USD 120,000 - 160,000 per year",
+            rates={"USD": 83.0},
+        )
+        self.assertEqual(converted, "₹99.6L–₹132.8L per annum")
+
+    def test_preserves_indian_salary_range_units(self):
+        converted = compensation_range_in_inr(
+            "INR 20 lakh - 30 lakh per annum",
+            rates={"INR": 1.0},
+        )
+        self.assertEqual(converted, "₹20L–₹30L per annum")
 
 
 class CompanyEnrichmentTests(unittest.TestCase):

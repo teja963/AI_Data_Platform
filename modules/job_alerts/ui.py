@@ -5,7 +5,9 @@ import pandas as pd
 import streamlit as st
 
 from core.job_enrichment import (
+    compensation_range_in_inr,
     extract_compensation,
+    fetch_company_history,
     fetch_stock_history,
     fetch_stock_quote,
     get_company_metadata,
@@ -225,9 +227,15 @@ def _render_compensation(job):
         st.caption("No curated company salary band is stored for this role.")
 
     if extracted["published_ranges"]:
-        st.write("**Compensation published in this job description**")
+        st.write("**Compensation published in this job description (INR)**")
+        rates = None
         for value in extracted["published_ranges"]:
-            st.write(f"- {value}")
+            converted = compensation_range_in_inr(value, rates)
+            if converted:
+                st.write(f"- **{converted}**")
+                st.caption(f"Original employer amount: {value}")
+            else:
+                st.write(f"- {value}")
     reward_signals = []
     if extracted["equity_mentioned"]:
         reward_signals.append("Equity/RSU mentioned")
@@ -325,8 +333,13 @@ def _render_interview(company_name, role_title):
     links = get_research_links(company_name, role_title)
     if interview:
         st.caption(
-            f"Candidate-reported evidence · {interview['confidence'].title()} confidence"
+            f"Source-backed candidate experience · {interview['confidence'].title()} confidence"
         )
+        st.write("**Candidate-report sources**")
+        for source in interview["sources"]:
+            st.markdown(f"- [{source['label']} ↗]({source['url']})")
+        if interview["steps"]:
+            st.write("**Rounds described in those reports**")
         for index, step in enumerate(interview["steps"], start=1):
             st.write(f"{index}. {step}")
         if interview["questions"]:
@@ -337,15 +350,25 @@ def _render_interview(company_name, role_title):
             st.caption("Topics: " + " · ".join(interview["question_categories"]))
         if interview["note"]:
             st.caption(interview["note"])
-        st.markdown(
-            " · ".join(
-                f"[{source['label']} ↗]({source['url']})"
-                for source in interview["sources"]
-            )
-        )
     else:
-        st.caption("No credible company-specific candidate report is stored yet.")
-    st.markdown(" · ".join(f"[{label} ↗]({url})" for label, url in links.items()))
+        st.warning(
+            "No sourced company-specific candidate experience is stored yet. "
+            "A generalized interview process is intentionally not shown."
+        )
+        st.markdown(
+            "Find candidate reports: "
+            + " · ".join(f"[{label} ↗]({url})" for label, url in links.items())
+        )
+
+
+def _render_company_history(company_name):
+    history = fetch_company_history(company_name)
+    if not history:
+        st.caption("A reliable brief company history is not available.")
+        return
+    st.write(history["summary"])
+    if history.get("url"):
+        st.markdown(f"[Source: {history['source']} ↗]({history['url']})")
 
 
 def _render_priority_companies(companies, jobs):
@@ -669,6 +692,25 @@ def _render_job(username, job):
         if company["careers_url"]:
             compact_links.append(f"[Careers ↗]({company['careers_url']})")
         st.markdown(" · ".join(compact_links))
+
+        if st.toggle(
+            "Evidence",
+            key=f"evidence_job_{job['id']}",
+            help="Show salary reviews, stock performance and interview reports for this company.",
+        ):
+            selected_evidence = lazy_tab(
+                ["Salary reviews", "Stock", "Interview reports", "Company history"],
+                f"job_evidence_{job['id']}",
+                "Evidence view",
+            )
+            if selected_evidence == "Salary reviews":
+                _render_compensation(job)
+            elif selected_evidence == "Stock":
+                _render_stock(company, job["id"])
+            elif selected_evidence == "Interview reports":
+                _render_interview(job["company"], job["title"])
+            else:
+                _render_company_history(job["company"])
 
         if current_status == "applied":
             st.success("Applied")
