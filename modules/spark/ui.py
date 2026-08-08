@@ -2,6 +2,10 @@ import streamlit as st
 import pandas as pd
 from core.ai import ask_ai   # ✅ IMPORT LLM INTERFACE
 from core.lazy_tabs import lazy_tab
+from modules.spark.flink_pipeline import (
+    render_compact_flink_simulator,
+    render_engine_decision_guide,
+)
 
 
 def _render_engine_styles():
@@ -55,6 +59,76 @@ def _render_engine_styles():
             display: grid;
             grid-template-columns: repeat(2, minmax(0, 1fr));
             gap: .4rem;
+        }
+        .spark-legacy-box {
+            width: 100%;
+            min-width: 0;
+            padding: .45rem .35rem;
+            margin: .25rem 0;
+            color: var(--text-color) !important;
+            background: var(--secondary-background-color) !important;
+            border: 1.5px solid #64748b !important;
+            border-radius: .4rem;
+            box-sizing: border-box;
+            text-align: center;
+            font-size: .75rem;
+            font-weight: 650;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
+        }
+        .spark-legacy-cluster {
+            border-color: #d97706 !important;
+        }
+        .spark-legacy-memory {
+            margin-top: .5rem;
+            padding: .5rem;
+            background: var(--background-color);
+            border: 1.5px dashed #64748b;
+            border-radius: .5rem;
+        }
+        .spark-legacy-memory-title {
+            margin-bottom: .45rem;
+            text-align: center;
+            color: var(--text-color) !important;
+            font-size: .72rem;
+            font-weight: 800;
+        }
+        .spark-legacy-memory-row {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: .35rem;
+        }
+        .spark-legacy-execution {
+            border-color: #2563eb !important;
+        }
+        .spark-legacy-storage {
+            border-color: #16a34a !important;
+        }
+        .spark-legacy-disk {
+            margin-top: .35rem;
+            padding: .3rem;
+            color: var(--text-color) !important;
+            background: var(--secondary-background-color) !important;
+            border: 1.5px solid #64748b !important;
+            border-radius: .35rem;
+            text-align: center;
+            font-size: .72rem;
+            font-weight: 750;
+        }
+        [data-theme="dark"] .spark-legacy-box,
+        [data-theme="dark"] .spark-legacy-disk {
+            background: #1e293b !important;
+            color: #f8fafc !important;
+            border-color: #94a3b8 !important;
+        }
+        [data-theme="dark"] .spark-legacy-cluster {
+            border-color: #f59e0b !important;
+        }
+        [data-theme="dark"] .spark-legacy-execution {
+            border-color: #60a5fa !important;
+        }
+        [data-theme="dark"] .spark-legacy-storage {
+            border-color: #4ade80 !important;
         }
         .spark-architecture {
             display: grid;
@@ -424,9 +498,9 @@ def render_partitions(state, core_id, executor_id):
 
     blocks = ""
     for _ in range(count):
-        blocks += f"<span>{pattern}</span>"
+        blocks += f"<span style='font-size:10px;margin:1px'>{pattern}</span>"
 
-    return f"<div class='spark-partitions'>{blocks}</div>"
+    return f"<div>{blocks}</div>"
 
 
 # ---------------- STAGE PIPELINE ----------------
@@ -463,7 +537,7 @@ def render_driver(state):
 
         for i, comp in enumerate(components):
             st.markdown(
-                f"<div class='spark-node'>{comp}</div>",
+                f"<div class='spark-legacy-box'>{comp}</div>",
                 unsafe_allow_html=True
             )
             if i < len(components) - 1:
@@ -479,11 +553,11 @@ def render_cluster():
         st.markdown("### Cluster Manager")
 
         st.markdown(
-            "<div class='spark-node'>YARN / Kubernetes / Standalone</div>",
+            "<div class='spark-legacy-box spark-legacy-cluster'>YARN / Kubernetes / Standalone</div>",
             unsafe_allow_html=True
         )
         st.markdown(
-            "<div class='spark-node'>Resources → Launch</div>",
+            "<div class='spark-legacy-box spark-legacy-cluster'>Resources → Launch</div>",
             unsafe_allow_html=True
         )
 
@@ -496,8 +570,10 @@ def render_core(core_id, state, executor_id):
     extra_class = "spark-mem-error" if is_hot else ""
 
     return f"""
-    <div class='spark-node spark-core {extra_class}'>
-    <strong>Core {core_id}</strong>
+    <div class='spark-legacy-box {extra_class}' style='height:75px;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    font-size:12px;'>
+    Core {core_id}
     {render_partitions(state, core_id, executor_id)}
     </div>
     """
@@ -524,20 +600,23 @@ def render_executor(idx, state):
             st.markdown(render_core(2, state, idx), unsafe_allow_html=True)
 
         st.markdown(f"""
-        <div class='spark-memory'>
-            <div class='spark-memory-title'>Unified Memory</div>
-            <div class='spark-memory-grid'>
-                <div class='spark-node {mem_class}'>
+        <div class='spark-legacy-memory'>
+            <div class='spark-legacy-memory-title'>Unified Memory</div>
+            <div class='spark-legacy-memory-row'>
+                <div class='spark-legacy-box spark-legacy-execution {mem_class}' style='min-height:45px;display:flex;align-items:center;justify-content:center;'>
                     ⚡ Execution
                 </div>
-                <div class='spark-node {mem_class}'>
+                <div class='spark-legacy-box spark-legacy-storage {mem_class}' style='min-height:45px;display:flex;align-items:center;justify-content:center;'>
                     💾 Storage
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
 
-        st.markdown(f"<div class='spark-disk-box {disk_class}' style='text-align:center;margin-top:4px;padding:2px;border-radius:4px;'>Disk</div>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='spark-legacy-disk {disk_class}'>Disk</div>",
+            unsafe_allow_html=True,
+        )
 
         # ✅ FIXED SOLUTIONS
         if state["debug"] == "Spill":
@@ -576,144 +655,6 @@ def render_workers(state):
 
         if state["join"] == "Broadcast":
             st.markdown("🟢 Broadcast → No shuffle")
-
-
-def _stage_pipeline_html(state):
-    active = 1
-    if state["transform"] == "Wide":
-        active = 2
-    if state["join"] == "Shuffle":
-        active = 3
-    chips = []
-    for index, name in enumerate(("Job", "Stage 1", "Stage 2", "Stage 3")):
-        class_name = "spark-chip-active" if index == active else "spark-chip-idle"
-        chips.append(
-            f"<span class='{class_name}' style='padding:.3rem .55rem;"
-            f"border-radius:1rem;font-size:.7rem;font-weight:700'>{name}</span>"
-        )
-    return " <b>→</b> ".join(chips)
-
-
-def _driver_architecture_html(state):
-    components = (
-        "SparkSession",
-        "SparkContext",
-        "Logical Plan",
-        "Catalyst Optimizer",
-        "Physical Plan",
-        "DAG Scheduler",
-    )
-    component_html = "".join(
-        f"<div class='spark-component'>{component}</div>" for component in components
-    )
-    return (
-        "<section class='spark-panel'>"
-        "<div class='spark-panel-title'>Driver</div>"
-        f"<div class='spark-driver-flow'>{component_html}</div>"
-        "<div class='spark-flow-label'>Tasks scheduled to executors</div>"
-        f"<div style='text-align:center;line-height:2'>{_stage_pipeline_html(state)}</div>"
-        "</section>"
-    )
-
-
-def _cluster_architecture_html():
-    options = "".join(
-        f"<div class='spark-cluster-option'>{manager}</div>"
-        for manager in ("YARN", "Kubernetes", "Standalone")
-    )
-    return (
-        "<section class='spark-panel'>"
-        "<div class='spark-panel-title'>Cluster Manager</div>"
-        f"<div class='spark-cluster-options'>{options}</div>"
-        "<div class='spark-resource-flow'>"
-        "Receives resource requests → allocates worker capacity → launches executors"
-        "</div>"
-        "</section>"
-    )
-
-
-def _executor_architecture_html(index, state):
-    time_seconds, shuffle, status = compute_metrics(state)
-    is_spill = state["debug"] == "Spill"
-    is_oom = state["debug"] == "OOM"
-    memory_class = "spark-mem-error" if (is_spill or is_oom) else ""
-    disk_class = (
-        "spark-disk-error"
-        if is_oom
-        else "spark-disk-spill"
-        if is_spill
-        else ""
-    )
-    cores = "".join(
-        (
-            f"<div class='spark-core-box "
-            f"{'spark-mem-error' if state['debug'] == 'Skew' and index % 2 == 0 and core == 1 else ''}'>"
-            f"<strong>Core {core}</strong>{render_partitions(state, core, index)}</div>"
-        )
-        for core in (1, 2)
-    )
-    diagnostic = ""
-    if is_spill:
-        diagnostic = (
-            "<div class='spark-diagnostic'><strong>Disk spill active</strong><br>"
-            "Increase execution memory, reduce cached data, or tune shuffle partitions.</div>"
-        )
-    elif is_oom:
-        diagnostic = (
-            "<div class='spark-diagnostic'><strong>Memory exhausted</strong><br>"
-            "Increase executor memory, reduce shuffle volume, or optimize the join.</div>"
-        )
-    elif state["debug"] == "Skew":
-        diagnostic = (
-            "<div class='spark-diagnostic'><strong>Skew detected</strong><br>"
-            "AQE splits the hot partition; inspect key distribution and salting.</div>"
-        )
-    status_class = "text-success" if status == "Success" else "text-error"
-    status_icon = "Running ✓" if status == "Success" else "Failed ✕"
-    return f"""
-    <article class="spark-executor">
-      <div class="spark-executor-title">Executor {index}</div>
-      <div class="spark-cores">{cores}</div>
-      <div class="spark-memory-box">
-        <div class="spark-memory-title">Unified Memory</div>
-        <div class="spark-memory-zones">
-          <div class="spark-memory-zone spark-execution-memory {memory_class}">
-            Execution<br><small>joins · sorts · shuffle</small>
-          </div>
-          <div class="spark-memory-zone spark-storage-memory {memory_class}">
-            Storage<br><small>cache · persisted blocks</small>
-          </div>
-        </div>
-      </div>
-      <div class="spark-disk {disk_class}">Disk · shuffle files / spill / cache overflow</div>
-      <div class="spark-metrics">
-        <div class="spark-metric"><strong>Runtime</strong><br>{time_seconds}s</div>
-        <div class="spark-metric"><strong>Shuffle</strong><br>{shuffle}</div>
-        <div class="spark-metric"><strong>Status</strong><br><span class="{status_class}">{status_icon}</span></div>
-      </div>
-      {diagnostic}
-    </article>
-    """
-
-
-def _workers_architecture_html(state):
-    executors = "".join(
-        _executor_architecture_html(index, state)
-        for index in range(1, state["executors"] + 1)
-    )
-    _, shuffle, status = compute_metrics(state)
-    exchange = (
-        "No shuffle exchange · partitions remain local"
-        if shuffle == "None"
-        else f"Shuffle exchange active · {shuffle.lower()} data movement between executors"
-    )
-    return (
-        "<section class='spark-panel spark-workers-panel'>"
-        "<div class='spark-panel-title'>Worker Nodes</div>"
-        f"<div class='spark-executors'>{executors}</div>"
-        f"<div class='spark-shuffle-summary'>{exchange} · Job {status.lower()}</div>"
-        "</section>"
-    )
 
 
 # ---------------- AI CHAT ----------------        
@@ -764,14 +705,16 @@ def render_ai_chat():
 
 # ---------------- MAIN ----------------
 def render_architecture_simulator(state):
-    st.markdown(
-        "<div class='spark-architecture'>"
-        + _driver_architecture_html(state)
-        + _cluster_architecture_html()
-        + _workers_architecture_html(state)
-        + "</div>",
-        unsafe_allow_html=True,
-    )
+    driver_col, cluster_col, workers_col = st.columns([5, 3, 12])
+
+    with driver_col:
+        render_driver(state)
+
+    with cluster_col:
+        render_cluster()
+
+    with workers_col:
+        render_workers(state)
 
 
 # ---------------- ENTRY ----------------
@@ -1185,13 +1128,13 @@ def render_spark():
     _render_engine_styles()
     st.title("Spark / Flink")
     selected = lazy_tab(
-        ["Spark Batch Simulator", "Flink Streaming Simulator", "Spark vs Flink"],
+        ["Spark Batch Simulator", "Flink Execution Simulator", "Spark or Flink?"],
         "spark_flink_active_workspace",
         "Processing engine workspace",
     )
     if selected == "Spark Batch Simulator":
         _render_spark_simulator()
-    elif selected == "Flink Streaming Simulator":
-        _render_flink_simulator()
+    elif selected == "Flink Execution Simulator":
+        render_compact_flink_simulator()
     else:
-        _render_spark_flink_comparison()
+        render_engine_decision_guide()
