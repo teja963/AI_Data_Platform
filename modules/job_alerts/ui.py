@@ -566,7 +566,14 @@ def _render_application_review(job):
     )
 
 
-def _filter_jobs(jobs, location_scope, sector_scope, search_query, priority_names):
+def _filter_jobs(
+    jobs,
+    location_scope,
+    sector_scope,
+    company_scope,
+    search_query,
+    priority_names,
+):
     filtered = []
     search_query = search_query.strip().lower()
     for job in jobs:
@@ -581,6 +588,8 @@ def _filter_jobs(jobs, location_scope, sector_scope, search_query, priority_name
         if location_scope == "Priority companies" and job["company"] not in priority_names:
             continue
         if sector_scope != "All sectors" and job["sector"] != sector_scope:
+            continue
+        if company_scope != "All companies" and job["company"] != company_scope:
             continue
         if search_query and search_query not in (
             f"{job['company']} {job['title']} {job['location']} "
@@ -668,18 +677,21 @@ def _render_job(username, job):
             "Description",
             key=f"description_job_{job['id']}",
             width="stretch",
+            help="Open this job's official description without loading the other job cards.",
         ):
             st.session_state[panel_key] = "description"
         if evidence_col.button(
             "Evidence",
             key=f"evidence_job_{job['id']}",
             width="stretch",
+            help="Review salary, stock and interview evidence for this company.",
         ):
             st.session_state[panel_key] = "evidence"
         if application_col.button(
             "Application",
             key=f"application_job_{job['id']}",
             width="stretch",
+            help="Prepare and review your application details. The app never submits automatically.",
         ):
             st.session_state[panel_key] = "application"
         if close_col.button(
@@ -718,19 +730,35 @@ def _render_job(username, job):
             _render_application_review(job)
 
         save_col, applied_col, reject_col, irrelevant_col = st.columns(4)
-        if save_col.button("Save", key=f"save_job_{job['id']}", width="stretch"):
+        if save_col.button(
+            "Save",
+            key=f"save_job_{job['id']}",
+            width="stretch",
+            help="Bookmark this job for later. This does not apply to the employer.",
+        ):
             if update_job_status(username, job["id"], "saved"):
                 current_status = "saved"
-        if applied_col.button("Applied", key=f"apply_job_{job['id']}", width="stretch"):
+        if applied_col.button(
+            "Applied",
+            key=f"apply_job_{job['id']}",
+            width="stretch",
+            help="Record that you applied on the employer's official website.",
+        ):
             if update_job_status(username, job["id"], "applied"):
                 current_status = "applied"
-        if reject_col.button("Reject", key=f"reject_job_{job['id']}", width="stretch"):
+        if reject_col.button(
+            "Reject",
+            key=f"reject_job_{job['id']}",
+            width="stretch",
+            help="Mark a relevant job that you reviewed but decided not to pursue.",
+        ):
             if update_job_status(username, job["id"], "rejected"):
                 current_status = "rejected"
         if irrelevant_col.button(
             "Not relevant",
             key=f"irrelevant_job_{job['id']}",
             width="stretch",
+            help="Hide a job that does not match your role, location or career goals.",
         ):
             if update_job_status(username, job["id"], "not_relevant"):
                 current_status = "not_relevant"
@@ -769,8 +797,12 @@ def render_job_alerts():
             set(_source_sector_lookup().values())
             | {"Enterprise Software & Cloud", "Retail & E-commerce"}
         )
+        company_options = ["All companies"] + sorted(
+            {source["company"] for source in load_job_sources()}
+            | {"Microsoft"}
+        )
         with st.form("job_alert_filters"):
-            status_col, location_col, sector_col = st.columns([1, 1, 2])
+            status_col, location_col, sector_col, company_col = st.columns(4)
             selected_status = status_col.selectbox(
                 "Status",
                 STATUS_OPTIONS,
@@ -786,6 +818,11 @@ def render_job_alerts():
                 sector_options,
                 key="job_alert_sector_filter",
             )
+            company_scope = company_col.selectbox(
+                "Company",
+                company_options,
+                key="job_alert_company_filter",
+            )
             search_query = st.text_input(
                 "Search jobs",
                 placeholder="Company, title, location or skill",
@@ -800,6 +837,7 @@ def render_job_alerts():
             jobs,
             location_scope,
             sector_scope,
+            company_scope,
             search_query,
             priority_names,
         )
