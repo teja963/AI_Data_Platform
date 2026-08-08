@@ -53,7 +53,7 @@ query_params = st.query_params
 from core.auth import create_user, login_user, verify_otp, generate_and_store_otp, update_password, verify_email_otp, validate_email, validate_phone
 from core.activity import flush_section_activity, track_section_activity, track_section_render
 from core.access import get_allowed_sections
-from core.db import SessionLocal, get_database_host
+from core.db import SessionLocal, get_database_host, run_with_database_retry
 from core.login_history import record_login
 from core.models import User
 from core.runtime import ensure_fresh_runtime
@@ -564,7 +564,7 @@ elif not st.session_state.get("user") and not st.session_state.get("pending_admi
 
     if login_clicked and username and password:
         try:
-            user = login_user(username, password)
+            user = run_with_database_retry(lambda: login_user(username, password))
 
             if user:
                 if user.role == "admin":

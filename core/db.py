@@ -1,6 +1,8 @@
 from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker, declarative_base
 import os
+import time
 from urllib.parse import urlparse
 
 try:
@@ -40,6 +42,20 @@ engine = create_engine(DATABASE_URL, **engine_options)
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
 
 Base = declarative_base()
+
+
+def run_with_database_retry(operation, attempts=3, initial_delay=0.75):
+    """Retry transient connection failures, including a sleeping Neon compute."""
+    last_error = None
+    for attempt in range(attempts):
+        try:
+            return operation()
+        except OperationalError as error:
+            last_error = error
+            engine.dispose()
+            if attempt + 1 < attempts:
+                time.sleep(initial_delay * (2**attempt))
+    raise last_error
 
 
 def get_database_host():
