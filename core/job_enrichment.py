@@ -100,6 +100,7 @@ _SINGLE_PAY_PATTERN = re.compile(
 )
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
 def get_company_metadata(source, company):
     if source == "microsoft_careers":
         return {

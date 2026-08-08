@@ -13,6 +13,7 @@ from core.db import Base, SessionLocal, engine
 from core.job_sources import (
     collect_source_jobs,
     load_job_sources,
+    load_priority_company_names,
     source_key,
 )
 from core.models import JobPosting, JobScanRun, User, UserJobState
@@ -23,6 +24,7 @@ MICROSOFT_COMPANY = "Microsoft"
 MICROSOFT_BASE_URL = "https://apply.careers.microsoft.com"
 RETENTION_DAYS = 7
 SCAN_INTERVAL_HOURS = 12
+FAILED_SOURCE_RETRY_HOURS = 6
 DEFAULT_SCAN_BATCH_SIZE = 24
 
 TARGET_QUERIES = (
@@ -62,6 +64,13 @@ _INDIA_LOCATION_TERMS = (
     "new delhi",
     "delhi",
     "kolkata",
+    "lucknow",
+    "jaipur",
+    "kochi",
+    "coimbatore",
+    "ahmedabad",
+    "trivandrum",
+    "bhubaneswar",
 )
 
 _TITLE_RULES = (
@@ -267,7 +276,7 @@ def _expire_old_jobs(session, now):
         session.query(JobPosting)
         .filter(
             JobPosting.is_active.is_(True),
-            JobPosting.first_seen_at < cutoff,
+            JobPosting.last_seen_at < cutoff,
         )
         .all()
     )
@@ -301,12 +310,20 @@ def _run_source_scan(scan_source, collector):
         inserted_count = 0
         try:
             now = datetime.utcnow()
-            for item in jobs:
-                row = (
-                    session.query(JobPosting)
-                    .filter_by(source=item["source"], external_id=item["external_id"])
-                    .first()
+            external_ids = [item["external_id"] for item in jobs]
+            existing_rows = (
+                session.query(JobPosting)
+                .filter(
+                    JobPosting.source == scan_source,
+                    JobPosting.external_id.in_(external_ids),
                 )
+                .all()
+                if external_ids
+                else []
+            )
+            existing_by_id = {row.external_id: row for row in existing_rows}
+            for item in jobs:
+                row = existing_by_id.get(item["external_id"])
                 if row is None:
                     row = JobPosting(
                         **item,
@@ -321,7 +338,21 @@ def _run_source_scan(scan_source, collector):
                     for field, value in item.items():
                         setattr(row, field, value)
                     row.last_seen_at = now
+                    row.expires_at = now + timedelta(days=RETENTION_DAYS)
                     row.is_active = True
+
+            (
+                session.query(JobPosting)
+                .filter(
+                    JobPosting.source == scan_source,
+                    JobPosting.is_active.is_(True),
+                    JobPosting.last_seen_at < started_at,
+                )
+                .update(
+                    {JobPosting.is_active: False},
+                    synchronize_session=False,
+                )
+            )
 
             run = session.query(JobScanRun).filter_by(id=run_id).first()
             run.finished_at = now
@@ -371,6 +402,16 @@ def run_registered_source_scan(source):
 
 def _all_scan_targets():
     sources = load_job_sources()
+    priority_companies = load_priority_company_names()
+    sources.sort(
+        key=lambda source: (
+            0
+            if source["company"].casefold() in priority_companies
+            else 1
+            if source.get("featured", False)
+            else 2
+        )
+    )
     return [
         (MICROSOFT_SOURCE, lambda: run_microsoft_scan()),
         *[
@@ -408,10 +449,15 @@ def _execute_scan_targets(scan_targets):
                 "inserted_count": 0,
                 "failures": [],
             }
-        failure_summary = "; ".join(
-            f"{failure['source']}: {failure['error']}" for failure in failures[:5]
-        )
-        raise RuntimeError(f"All career-site scans failed. {failure_summary}")
+        return {
+            "status": "failed",
+            "source_count": len(scan_targets),
+            "successful_sources": 0,
+            "failed_sources": len(failures),
+            "matched_count": 0,
+            "inserted_count": 0,
+            "failures": failures,
+        }
 
     session = SessionLocal()
     try:
@@ -441,7 +487,9 @@ def run_all_company_scans():
 
 def run_due_company_scans(batch_size=DEFAULT_SCAN_BATCH_SIZE):
     ensure_job_schema()
-    cutoff = datetime.utcnow() - timedelta(hours=SCAN_INTERVAL_HOURS)
+    now = datetime.utcnow()
+    cutoff = now - timedelta(hours=SCAN_INTERVAL_HOURS)
+    failed_retry_cutoff = now - timedelta(hours=FAILED_SOURCE_RETRY_HOURS)
     scan_targets = _all_scan_targets()
     source_order = {source: index for index, (source, _) in enumerate(scan_targets)}
     session = SessionLocal()
@@ -462,7 +510,11 @@ def run_due_company_scans(batch_size=DEFAULT_SCAN_BATCH_SIZE):
     for source, run_scan in scan_targets:
         latest = latest_by_source.get(source)
         completed_at = (latest.finished_at or latest.started_at) if latest else None
-        if latest is None or latest.status != "success" or completed_at < cutoff:
+        if latest is None:
+            due_targets.append((source, run_scan, completed_at))
+        elif latest.status == "success" and completed_at < cutoff:
+            due_targets.append((source, run_scan, completed_at))
+        elif latest.status != "success" and completed_at < failed_retry_cutoff:
             due_targets.append((source, run_scan, completed_at))
 
     due_targets.sort(
@@ -660,7 +712,10 @@ def claim_new_job_notifications(username, limit=8):
                 JobPosting.first_seen_at >= cutoff,
                 UserJobState.id.is_(None),
             )
-            .order_by(JobPosting.first_seen_at.desc())
+            .order_by(
+                func.coalesce(JobPosting.posted_at, JobPosting.first_seen_at).desc(),
+                JobPosting.id.desc(),
+            )
             .limit(limit)
             .all()
         )
@@ -722,7 +777,10 @@ def list_jobs_for_user(username, status_filter="Active"):
                 )
             )
 
-        rows = query.order_by(JobPosting.posted_at.desc(), JobPosting.first_seen_at.desc()).all()
+        rows = query.order_by(
+            func.coalesce(JobPosting.posted_at, JobPosting.first_seen_at).desc(),
+            JobPosting.id.desc(),
+        ).all()
         return [
             {
                 "id": job.id,
@@ -736,7 +794,9 @@ def list_jobs_for_user(username, status_filter="Active"):
                 "job_url": job.job_url,
                 "posted_at": job.posted_at,
                 "first_seen_at": job.first_seen_at,
+                "last_seen_at": job.last_seen_at,
                 "expires_at": job.expires_at,
+                "is_active": job.is_active,
                 "match_score": job.match_score,
                 "match_reason": job.match_reason or "",
                 "status": state.status if state else "new",

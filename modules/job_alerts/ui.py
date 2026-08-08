@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 
 from core.job_enrichment import (
+    extract_compensation,
     fetch_stock_history,
     fetch_stock_quote,
     get_company_metadata,
@@ -13,14 +14,18 @@ from core.job_enrichment import (
     get_research_links,
     load_priority_companies,
 )
+from core.application_assist import build_application_review, profile_completion
 from core.job_alerts import (
     list_jobs_for_user,
-    run_all_company_scans,
+    run_due_company_scans,
     update_job_status,
 )
+from core.job_sources import load_job_sources, source_key
+from core.lazy_tabs import lazy_tab
 
 
 STATUS_OPTIONS = ("Active", "Saved", "Applied", "Rejected", "Not Relevant", "All")
+PAGE_SIZE = 12
 STATUS_LABELS = {
     "new": "New",
     "saved": "Saved",
@@ -28,6 +33,93 @@ STATUS_LABELS = {
     "rejected": "Rejected",
     "not_relevant": "Not Relevant",
 }
+SECTOR_LABELS = {
+    "aerospace": "Aerospace",
+    "aviation": "Travel & Aviation",
+    "commerce": "Retail & E-commerce",
+    "consulting": "Consulting & Services",
+    "consumer": "Consumer Internet",
+    "consumer-tech": "Consumer Internet",
+    "entertainment": "Media & Entertainment",
+    "financial-services": "Banking & Financial Services",
+    "fintech": "Payments & Fintech",
+    "health-tech": "Healthcare Technology",
+    "marketplace": "Retail & E-commerce",
+    "payments": "Payments & Fintech",
+    "remote-talent": "Staffing & Talent Platforms",
+    "retail": "Retail & E-commerce",
+    "semiconductors": "Chips & Semiconductors",
+    "software": "Enterprise Software & Cloud",
+    "technology": "Enterprise Software & Cloud",
+    "travel": "Travel & Aviation",
+}
+
+
+@st.cache_data(ttl=60, show_spinner=False)
+def _load_jobs_cached(username, status_filter):
+    return list_jobs_for_user(username, status_filter=status_filter)
+
+
+def _invalidate_job_cache():
+    _load_jobs_cached.clear()
+
+
+@st.cache_data(show_spinner=False)
+def _source_sector_lookup():
+    return {
+        source_key(source): SECTOR_LABELS.get(
+            source.get("category", ""),
+            (source.get("category") or "Other").replace("-", " ").title(),
+        )
+        for source in load_job_sources()
+    }
+
+
+def _job_sector(job):
+    fallback = {
+        "Microsoft": "Enterprise Software & Cloud",
+        "Amazon": "Retail & E-commerce",
+    }
+    return _source_sector_lookup().get(
+        job.get("source"),
+        fallback.get(job.get("company"), "Other"),
+    )
+
+
+def _jobs_with_sectors(jobs):
+    return [{**job, "sector": _job_sector(job)} for job in jobs]
+
+
+def _balance_jobs(jobs, max_per_company=None):
+    jobs_by_company = {}
+    company_order = []
+    for job in jobs:
+        company = job["company"]
+        if company not in jobs_by_company:
+            jobs_by_company[company] = []
+            company_order.append(company)
+        jobs_by_company[company].append(job)
+
+    balanced = []
+    largest_company = max((len(items) for items in jobs_by_company.values()), default=0)
+    rounds = (
+        min(largest_company, max_per_company)
+        if max_per_company is not None
+        else largest_company
+    )
+    for index in range(rounds):
+        for company in company_order:
+            company_jobs = jobs_by_company[company]
+            if index < len(company_jobs):
+                balanced.append(company_jobs[index])
+    return balanced
+
+
+def _change_job_page(delta):
+    st.session_state["job_alert_page"] = max(
+        0,
+        int(st.session_state.get("job_alert_page", 0)) + delta,
+    )
 
 
 def _display_time(value):
@@ -37,6 +129,18 @@ def _display_time(value):
         value = value.replace(tzinfo=timezone.utc)
     ist = timezone(timedelta(hours=5, minutes=30))
     return value.astimezone(ist).strftime("%d %b %Y, %I:%M %p IST")
+
+
+def _display_job_time(job, value):
+    if not value:
+        return "Not available"
+    source_platform = (job.get("source") or "").split(":", 1)[0]
+    if source_platform in {"amazon", "workday"}:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        ist = timezone(timedelta(hours=5, minutes=30))
+        return value.astimezone(ist).strftime("%d %b %Y")
+    return _display_time(value)
 
 
 def _role_signals(description):
@@ -66,50 +170,79 @@ def _render_scan_status(is_admin):
     if not is_admin:
         return
     with st.popover("Admin"):
-        if st.button("Scan now", width="stretch"):
-            with st.spinner("Checking career sites…"):
+        st.caption("Scans the next six due companies without blocking on every configured source.")
+        if st.button("Scan due companies", width="stretch"):
+            with st.spinner("Checking the next due career sites…"):
                 try:
-                    result = run_all_company_scans()
+                    result = run_due_company_scans(batch_size=6)
                 except Exception as error:
                     st.error(f"Scan failed: {error}")
                 else:
-                    st.success(
+                    message = (
                         f"{result['successful_sources']} sources checked; "
-                        f"{result['inserted_count']} new jobs."
+                        f"{result['inserted_count']} new jobs; "
+                        f"{result.get('remaining_due_sources', 0)} sources remain due."
                     )
-                    st.rerun()
+                    if result["status"] == "failed":
+                        st.warning(
+                            message
+                            + " The selected external career sites were unavailable and will retry later."
+                        )
+                    else:
+                        st.success(message)
 
 
-def _render_compensation(company_name, job_id):
+def _render_compensation(job):
+    company_name = job["company"]
     reports = get_compensation_reports(company_name)
-    if not reports:
-        st.caption("No verified salary-review data stored yet.")
-        return
+    extracted = extract_compensation(job.get("description", ""))
 
-    chart_rows = [
-        {
-            "Source": report["source"],
-            "Low": report["minimum_lpa"],
-            "High": report["maximum_lpa"],
-        }
-        for report in reports
-    ]
-    st.bar_chart(
-        pd.DataFrame(chart_rows).set_index("Source"),
-        color=["#4C78A8", "#72B7B2"],
-        height=240,
-    )
-    for index, report in enumerate(reports):
-        role = report.get("role", "Data Engineer")
-        location = report.get("location")
-        context = f" · {location}" if location else ""
-        st.markdown(
-            f"**₹{report['minimum_lpa']:g}L–₹{report['maximum_lpa']:g}L** "
-            f"· {role}{context} · "
-            f"[{report['source']} ↗]({report['url']})"
+    if reports:
+        chart_rows = [
+            {
+                "Source": report["source"],
+                "Low": report["minimum_lpa"],
+                "High": report["maximum_lpa"],
+            }
+            for report in reports
+        ]
+        st.bar_chart(
+            pd.DataFrame(chart_rows).set_index("Source"),
+            color=["#4C78A8", "#72B7B2"],
+            height=240,
         )
-        if report.get("caveat"):
-            st.caption(report["caveat"])
+        for report in reports:
+            role = report.get("role", "Data Engineer")
+            location = report.get("location")
+            context = f" · {location}" if location else ""
+            st.markdown(
+                f"**₹{report['minimum_lpa']:g}L–₹{report['maximum_lpa']:g}L** "
+                f"· {role}{context} · "
+                f"[{report['source']} ↗]({report['url']})"
+            )
+            if report.get("caveat"):
+                st.caption(report["caveat"])
+    else:
+        st.caption("No curated company salary band is stored for this role.")
+
+    if extracted["published_ranges"]:
+        st.write("**Compensation published in this job description**")
+        for value in extracted["published_ranges"]:
+            st.write(f"- {value}")
+    reward_signals = []
+    if extracted["equity_mentioned"]:
+        reward_signals.append("Equity/RSU mentioned")
+    if extracted["bonus_mentioned"]:
+        reward_signals.append("Bonus mentioned")
+    reward_signals.extend(extracted["benefits"])
+    if reward_signals:
+        st.caption(" · ".join(reward_signals))
+
+    links = get_research_links(company_name, job["title"])
+    st.markdown(f"[Search Glassdoor, AmbitionBox and Levels.fyi ↗]({links['Salary reviews']})")
+    st.caption(
+        "External salary reviews are candidate-reported and may vary by level, location and date."
+    )
 
 
 def _render_stock(company, job_id):
@@ -314,7 +447,126 @@ def _render_priority_companies(companies, jobs):
                 _render_stock(selected, f"priority_{selected['company']}")
 
 
-def _filter_jobs(jobs, location_scope, search_query, priority_names):
+def _render_application_profile():
+    st.subheader("Application Profile")
+    st.caption(
+        "Saved only in this signed-in browser session. It is not written to PostgreSQL. "
+        "The portal prepares answers for review but never submits an application."
+    )
+    profile = st.session_state.get("job_application_profile", {})
+    with st.form("job_application_profile_form"):
+        identity = st.columns(3)
+        full_name = identity[0].text_input("Full name", value=profile.get("full_name", ""))
+        email = identity[1].text_input("Email", value=profile.get("email", ""))
+        phone = identity[2].text_input("Phone", value=profile.get("phone", ""))
+        links = st.columns(3)
+        current_location = links[0].text_input(
+            "Current location",
+            value=profile.get("current_location", ""),
+        )
+        linkedin_url = links[1].text_input(
+            "LinkedIn URL",
+            value=profile.get("linkedin_url", ""),
+        )
+        portfolio_url = links[2].text_input(
+            "Portfolio / GitHub URL",
+            value=profile.get("portfolio_url", ""),
+        )
+        work = st.columns(4)
+        years_experience = work[0].text_input(
+            "Years of experience",
+            value=profile.get("years_experience", ""),
+        )
+        notice_period = work[1].text_input(
+            "Notice period",
+            value=profile.get("notice_period", ""),
+        )
+        current_company = work[2].text_input(
+            "Current company",
+            value=profile.get("current_company", ""),
+        )
+        expected_salary = work[3].text_input(
+            "Expected salary",
+            value=profile.get("expected_salary", ""),
+        )
+        current_salary = st.text_input(
+            "Current salary",
+            value=profile.get("current_salary", ""),
+        )
+        eligibility = st.columns(3)
+        work_authorized = eligibility[0].selectbox(
+            "Authorized to work in target location?",
+            ["", "Yes", "No"],
+            index=["", "Yes", "No"].index(profile.get("work_authorized", "")),
+        )
+        requires_sponsorship = eligibility[1].selectbox(
+            "Require visa sponsorship?",
+            ["", "Yes", "No"],
+            index=["", "Yes", "No"].index(profile.get("requires_sponsorship", "")),
+        )
+        willing_to_relocate = eligibility[2].selectbox(
+            "Willing to relocate?",
+            ["", "Yes", "No"],
+            index=["", "Yes", "No"].index(profile.get("willing_to_relocate", "")),
+        )
+        save_profile = st.form_submit_button("Save profile for this session", type="primary")
+    if save_profile:
+        st.session_state["job_application_profile"] = {
+            "full_name": full_name,
+            "email": email,
+            "phone": phone,
+            "current_location": current_location,
+            "linkedin_url": linkedin_url,
+            "portfolio_url": portfolio_url,
+            "years_experience": years_experience,
+            "notice_period": notice_period,
+            "current_company": current_company,
+            "current_salary": current_salary,
+            "expected_salary": expected_salary,
+            "work_authorized": work_authorized,
+            "requires_sponsorship": requires_sponsorship,
+            "willing_to_relocate": willing_to_relocate,
+        }
+        profile = st.session_state["job_application_profile"]
+        st.success("Application profile is ready for review packets.")
+
+    completion = profile_completion(profile)
+    st.progress(completion["percent"] / 100, text=f"{completion['percent']}% complete")
+    if completion["missing"]:
+        st.caption("Missing: " + " · ".join(completion["missing"]))
+
+
+def _render_application_review(job):
+    profile = st.session_state.get("job_application_profile", {})
+    review = build_application_review(job, profile)
+    completion = review["completion"]
+    if not profile:
+        st.info("Complete the Application Profile tab once to prepare reusable answers.")
+        return
+    st.caption(
+        f"{completion['completed']}/{completion['total']} standard fields ready. "
+        "Review every answer before continuing to the official portal."
+    )
+    st.dataframe(review["answers"], width="stretch", hide_index=True)
+    st.download_button(
+        "Download review packet",
+        data=review["download"],
+        file_name=f"{job['company']}-{job['id']}-application-review.json",
+        mime="application/json",
+        key=f"download_application_review_{job['id']}",
+    )
+    st.link_button(
+        "Open official application for final review ↗",
+        job["job_url"],
+        width="stretch",
+    )
+    st.warning(
+        "The portal does not press Submit. External ATS forms, CAPTCHA and legal declarations "
+        "must be reviewed and completed by you."
+    )
+
+
+def _filter_jobs(jobs, location_scope, sector_scope, search_query, priority_names):
     filtered = []
     search_query = search_query.strip().lower()
     for job in jobs:
@@ -328,6 +580,8 @@ def _filter_jobs(jobs, location_scope, search_query, priority_names):
             continue
         if location_scope == "Priority companies" and job["company"] not in priority_names:
             continue
+        if sector_scope != "All sectors" and job["sector"] != sector_scope:
+            continue
         if search_query and search_query not in (
             f"{job['company']} {job['title']} {job['location']} "
             f"{job['description']}"
@@ -337,16 +591,68 @@ def _filter_jobs(jobs, location_scope, search_query, priority_names):
     return filtered
 
 
+def _render_sector_demand(jobs):
+    if not jobs:
+        st.info("No active jobs are available for sector analysis.")
+        return
+    rows = []
+    for sector in sorted({job["sector"] for job in jobs}):
+        sector_jobs = [job for job in jobs if job["sector"] == sector]
+        rows.append(
+            {
+                "Sector": sector,
+                "Active jobs": len(sector_jobs),
+                "Companies": len({job["company"] for job in sector_jobs}),
+            }
+        )
+    demand = pd.DataFrame(rows).sort_values(
+        ["Active jobs", "Companies"],
+        ascending=False,
+    )
+    leader = demand.iloc[0]
+    st.metric(
+        "Highest demand sector",
+        leader["Sector"],
+        f"{int(leader['Active jobs'])} active matching jobs",
+    )
+    st.caption(
+        "Demand is measured from currently active matching postings in official company feeds."
+    )
+    st.bar_chart(demand.set_index("Sector")["Active jobs"])
+    st.dataframe(demand, hide_index=True, width="stretch")
+
+    st.subheader("Companies by sector")
+    for sector in demand["Sector"]:
+        sector_jobs = [job for job in jobs if job["sector"] == sector]
+        company_counts = {}
+        for job in sector_jobs:
+            company_counts[job["company"]] = company_counts.get(job["company"], 0) + 1
+        companies = sorted(
+            company_counts.items(),
+            key=lambda item: (-item[1], item[0].lower()),
+        )
+        with st.expander(f"{sector} · {len(sector_jobs)} jobs · {len(companies)} companies"):
+            st.write(" · ".join(f"{company} ({count})" for company, count in companies))
+
+
+@st.fragment
 def _render_job(username, job):
     with st.container(border=True):
-        title_col, status_col = st.columns([5, 1])
-        title_col.subheader(job["title"])
-        status_col.caption(STATUS_LABELS.get(job["status"], job["status"].title()))
-
+        header_slot = st.empty()
+        current_status = st.session_state.get(
+            f"job_status_override::{job['id']}",
+            job["status"],
+        )
+        posted_value = job.get("posted_at") or job.get("first_seen_at")
+        posted_label = "Posted" if job.get("posted_at") else "First discovered"
         st.caption(
             f"{job['company']} · {job['location']} · {job['work_mode']} · "
-            f"Posted {_display_time(job['posted_at'])}"
+            f"{posted_label} {_display_job_time(job, posted_value)}"
         )
+        if job.get("last_seen_at"):
+            st.caption(f"Verified in official feed {_display_time(job['last_seen_at'])}")
+        if not job.get("is_active", True):
+            st.warning("This saved/applied posting is no longer present in the latest official feed.")
         signals = _role_signals(job["description"])
         if signals:
             st.caption("Skills: " + " · ".join(signals))
@@ -356,34 +662,90 @@ def _render_job(username, job):
             compact_links.append(f"[Careers ↗]({company['careers_url']})")
         st.markdown(" · ".join(compact_links))
 
-        with st.expander("Salary, stock and interview evidence"):
-            salary_tab, stock_tab, interview_tab = st.tabs(
-                ["Salary reviews", "Stock", "Interview reports"]
+        panel_key = f"job_panel::{job['id']}"
+        description_col, evidence_col, application_col, close_col = st.columns(4)
+        if description_col.button(
+            "Description",
+            key=f"description_job_{job['id']}",
+            width="stretch",
+        ):
+            st.session_state[panel_key] = "description"
+        if evidence_col.button(
+            "Evidence",
+            key=f"evidence_job_{job['id']}",
+            width="stretch",
+        ):
+            st.session_state[panel_key] = "evidence"
+        if application_col.button(
+            "Application",
+            key=f"application_job_{job['id']}",
+            width="stretch",
+        ):
+            st.session_state[panel_key] = "application"
+        if close_col.button(
+            "Close",
+            key=f"close_job_{job['id']}",
+            width="stretch",
+        ):
+            st.session_state.pop(panel_key, None)
+
+        selected_panel = st.session_state.get(panel_key)
+        if selected_panel == "description":
+            st.markdown("#### Official job description")
+            st.caption(
+                f"{posted_label} {_display_job_time(job, posted_value)} · "
+                f"Last verified {_display_time(job.get('last_seen_at'))}"
             )
-            with salary_tab:
-                _render_compensation(job["company"], job["id"])
-            with stock_tab:
+            st.write(
+                job["description"]
+                or "The official feed did not provide a description. Use the Apply link for full details."
+            )
+        elif selected_panel == "evidence":
+            st.markdown("#### Salary, stock and interview evidence")
+            selected_evidence = lazy_tab(
+                ["Salary reviews", "Stock", "Interview reports"],
+                f"job_evidence_{job['id']}",
+                "Evidence view",
+            )
+            if selected_evidence == "Salary reviews":
+                _render_compensation(job)
+            elif selected_evidence == "Stock":
                 _render_stock(company, job["id"])
-            with interview_tab:
+            else:
                 _render_interview(job["company"], job["title"])
+        elif selected_panel == "application":
+            st.markdown("#### Prepare application review")
+            _render_application_review(job)
 
         save_col, applied_col, reject_col, irrelevant_col = st.columns(4)
         if save_col.button("Save", key=f"save_job_{job['id']}", width="stretch"):
-            update_job_status(username, job["id"], "saved")
-            st.rerun()
+            if update_job_status(username, job["id"], "saved"):
+                current_status = "saved"
         if applied_col.button("Applied", key=f"apply_job_{job['id']}", width="stretch"):
-            update_job_status(username, job["id"], "applied")
-            st.rerun()
+            if update_job_status(username, job["id"], "applied"):
+                current_status = "applied"
         if reject_col.button("Reject", key=f"reject_job_{job['id']}", width="stretch"):
-            update_job_status(username, job["id"], "rejected")
-            st.rerun()
+            if update_job_status(username, job["id"], "rejected"):
+                current_status = "rejected"
         if irrelevant_col.button(
             "Not relevant",
             key=f"irrelevant_job_{job['id']}",
             width="stretch",
         ):
-            update_job_status(username, job["id"], "not_relevant")
-            st.rerun()
+            if update_job_status(username, job["id"], "not_relevant"):
+                current_status = "not_relevant"
+
+        if current_status != job["status"]:
+            st.session_state[f"job_status_override::{job['id']}"] = current_status
+            _invalidate_job_cache()
+            st.toast(f"Job marked {STATUS_LABELS[current_status]}.")
+
+        with header_slot.container():
+            title_col, status_col = st.columns([5, 1])
+            title_col.subheader(job["title"])
+            status_col.caption(
+                STATUS_LABELS.get(current_status, current_status.title())
+            )
 
 
 def render_job_alerts():
@@ -393,47 +755,106 @@ def render_job_alerts():
     st.title("Job Alerts")
 
     _render_scan_status(is_admin=role == "admin")
-    priority_companies = load_priority_companies()
-    priority_names = {company["company"] for company in priority_companies}
-    active_jobs = list_jobs_for_user(username, status_filter="Active")
+    selected_workspace = lazy_tab(
+        ["Jobs", "Sector demand", "Priority companies", "Application Profile"],
+        "job_alert_workspace",
+        "Job workspace",
+    )
 
-    jobs_tab, companies_tab = st.tabs(["Jobs", "Priority companies"])
-    with jobs_tab:
-        status_col, location_col = st.columns([1, 2])
-        selected_status = status_col.selectbox(
-            "Status",
-            STATUS_OPTIONS,
-            key="job_alert_status_filter",
+    if selected_workspace == "Jobs":
+        priority_names = {
+            company["company"] for company in load_priority_companies()
+        }
+        sector_options = ["All sectors"] + sorted(
+            set(_source_sector_lookup().values())
+            | {"Enterprise Software & Cloud", "Retail & E-commerce"}
         )
-        location_scope = location_col.segmented_control(
-            "Location",
-            ["All jobs", "Remote", "India", "Priority companies"],
-            default="All jobs",
-            key="job_alert_location_filter",
-        )
-        search_query = st.text_input(
-            "Search jobs",
-            placeholder="Company, title, location or skill",
-            key="job_alert_search",
-        )
-        jobs = (
-            active_jobs
-            if selected_status == "Active"
-            else list_jobs_for_user(username, status_filter=selected_status)
-        )
-        jobs = _filter_jobs(
+        with st.form("job_alert_filters"):
+            status_col, location_col, sector_col = st.columns([1, 1, 2])
+            selected_status = status_col.selectbox(
+                "Status",
+                STATUS_OPTIONS,
+                key="job_alert_status_filter",
+            )
+            location_scope = location_col.selectbox(
+                "Location",
+                ["All jobs", "Remote", "India", "Priority companies"],
+                key="job_alert_location_filter",
+            )
+            sector_scope = sector_col.selectbox(
+                "Sector",
+                sector_options,
+                key="job_alert_sector_filter",
+            )
+            search_query = st.text_input(
+                "Search jobs",
+                placeholder="Company, title, location or skill",
+                key="job_alert_search",
+            )
+            apply_filters = st.form_submit_button("Apply filters")
+        if apply_filters:
+            st.session_state["job_alert_page"] = 0
+
+        jobs = _jobs_with_sectors(_load_jobs_cached(username, selected_status))
+        filtered_jobs = _filter_jobs(
             jobs,
-            location_scope or "All jobs",
+            location_scope,
+            sector_scope,
             search_query,
             priority_names,
         )
+        company_count = len({job["company"] for job in filtered_jobs})
+        jobs = _balance_jobs(filtered_jobs)
 
         if not jobs:
-            st.info("No jobs match these filters.")
-        else:
-            st.caption(f"{len(jobs)} job{'s' if len(jobs) != 1 else ''}")
-            for job in jobs:
-                _render_job(username, job)
+            st.info(
+                "No jobs match these filters. Change the filters or check Priority companies "
+                "for direct official career links."
+            )
+            return
 
-    with companies_tab:
+        total_pages = max(1, (len(jobs) + PAGE_SIZE - 1) // PAGE_SIZE)
+        page = min(
+            int(st.session_state.get("job_alert_page", 0)),
+            total_pages - 1,
+        )
+        st.session_state["job_alert_page"] = page
+        start = page * PAGE_SIZE
+        page_jobs = jobs[start : start + PAGE_SIZE]
+
+        summary = (
+            f"{len(filtered_jobs)} matching jobs from {company_count} companies"
+            " · company-diverse order, newest within each organization"
+        )
+        st.caption(summary)
+        previous_col, page_col, next_col = st.columns([1, 3, 1])
+        previous_col.button(
+            "← Previous",
+            disabled=page == 0,
+            on_click=_change_job_page,
+            args=(-1,),
+            width="stretch",
+        )
+        page_col.markdown(
+            f"<div style='text-align:center;padding:.4rem'>Page {page + 1} of {total_pages}</div>",
+            unsafe_allow_html=True,
+        )
+        next_col.button(
+            "Next →",
+            disabled=page >= total_pages - 1,
+            on_click=_change_job_page,
+            args=(1,),
+            width="stretch",
+        )
+        for job in page_jobs:
+            _render_job(username, job)
+
+    elif selected_workspace == "Sector demand":
+        active_jobs = _jobs_with_sectors(_load_jobs_cached(username, "Active"))
+        _render_sector_demand(active_jobs)
+    elif selected_workspace == "Priority companies":
+        priority_companies = load_priority_companies()
+        active_jobs = _load_jobs_cached(username, "Active")
         _render_priority_companies(priority_companies, active_jobs)
+    else:
+        _render_application_profile()

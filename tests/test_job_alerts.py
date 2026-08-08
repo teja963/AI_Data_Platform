@@ -1,6 +1,10 @@
 import unittest
+import json
+from pathlib import Path
 
 from core.job_alerts import (
+    _all_scan_targets,
+    _execute_scan_targets,
     collect_microsoft_jobs,
     is_india_or_eligible_remote,
     match_job_title,
@@ -106,6 +110,50 @@ class SourceRegistryTests(unittest.TestCase):
         self.assertGreaterEqual(len(sources) + 1, 200)
         keys = {(source["platform"], source["slug"]) for source in sources}
         self.assertEqual(len(keys), len(sources))
+
+    def test_external_source_outage_returns_degraded_result_without_raising(self):
+        def unavailable():
+            raise RuntimeError("HTTP 404")
+
+        result = _execute_scan_targets([("greenhouse:removed-board", unavailable)])
+
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["successful_sources"], 0)
+        self.assertEqual(result["failed_sources"], 1)
+        self.assertEqual(result["failures"][0]["source"], "greenhouse:removed-board")
+
+    def test_every_priority_company_has_an_automated_scanner(self):
+        priority_path = Path(__file__).resolve().parents[1] / "data" / "priority_companies.json"
+        priority_companies = json.loads(priority_path.read_text(encoding="utf-8"))
+        scanner_companies = {
+            source["company"].casefold() for source in load_job_sources()
+        } | {"microsoft"}
+
+        missing = [
+            company["company"]
+            for company in priority_companies
+            if company["company"].casefold() not in scanner_companies
+        ]
+
+        self.assertEqual(missing, [])
+
+    def test_priority_company_sources_are_scanned_first(self):
+        sources = load_job_sources()
+        priority_path = Path(__file__).resolve().parents[1] / "data" / "priority_companies.json"
+        priority_names = {
+            company["company"].casefold()
+            for company in json.loads(priority_path.read_text(encoding="utf-8"))
+        }
+        priority_keys = {
+            f"{source['platform']}:{source['slug']}"
+            for source in sources
+            if source["company"].casefold() in priority_names
+        }
+
+        target_keys = [source for source, _run in _all_scan_targets()]
+
+        self.assertEqual(target_keys[0], "microsoft_careers")
+        self.assertEqual(set(target_keys[1 : len(priority_keys) + 1]), priority_keys)
 
 
 if __name__ == "__main__":

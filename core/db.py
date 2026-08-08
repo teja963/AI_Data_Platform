@@ -1,14 +1,19 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
-import streamlit as st
 import os
 from urllib.parse import urlparse
+
+try:
+    import streamlit as st
+except ImportError:  # Standalone scanners only require DATABASE_URL.
+    st = None
+
 
 # GitHub Actions and standalone workers provide DATABASE_URL directly. Check it
 # before touching st.secrets because Streamlit raises when no secrets file exists.
 if os.getenv("DATABASE_URL"):
     DATABASE_URL = os.getenv("DATABASE_URL")
-elif "database" in st.secrets:
+elif st is not None and "database" in st.secrets:
     db_config = st.secrets["database"]
     if "url" in db_config:
         DATABASE_URL = db_config["url"]
@@ -18,13 +23,19 @@ else:
     # Local development default
     DATABASE_URL = "postgresql://localhost/ai_data_engg"
 
-# pool_pre_ping=True fixes the "SSL connection closed unexpectedly" error
-# pool_recycle ensures connections are refreshed before the server drops them
-engine = create_engine(
-    DATABASE_URL, 
-    pool_pre_ping=True, 
-    pool_recycle=300
-)
+# Bound connection/query waits so background jobs fail and retry instead of
+# hanging until the GitHub Actions timeout.
+engine_options = {
+    "pool_pre_ping": True,
+    "pool_recycle": 300,
+    "pool_timeout": 10,
+}
+if DATABASE_URL.startswith(("postgresql://", "postgresql+psycopg2://")):
+    engine_options["connect_args"] = {
+        "connect_timeout": 10,
+        "options": "-c statement_timeout=60000",
+    }
+engine = create_engine(DATABASE_URL, **engine_options)
 # expire_on_commit=False prevents attributes from being wiped after a commit,
 # which helps avoid DetachedInstanceErrors when accessing data after session close.
 SessionLocal = sessionmaker(bind=engine, expire_on_commit=False)
