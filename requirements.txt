@@ -1,7 +1,6 @@
 streamlit==1.60.0
 streamlit-adjustable-columns==0.2.1
 streamlit-code-editor==0.1.22
-streamlit-cookies-controller==0.0.4
 groq==1.6.0
 pandas==3.0.5
 numpy==2.5.1

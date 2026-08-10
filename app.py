@@ -1,11 +1,7 @@
-import base64
-import hashlib
-import hmac
 import streamlit as st
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from sqlalchemy.exc import SQLAlchemyError
-from streamlit_cookies_controller import CookieController
 
 # -------- SESSION INIT (MANDATORY) --------
 if "user" not in st.session_state:
@@ -44,7 +40,6 @@ from core.constants import (
 
 st.set_page_config(layout="wide")
 st.set_option("client.toolbarMode", "viewer")
-cookie_controller = CookieController(key="ai_data_engg_cookies")
 
 # --- Global Query Params Initialization (Fixes NameError) ---
 query_params = st.query_params
@@ -60,96 +55,10 @@ from core.runtime import ensure_fresh_runtime
 
 
 APP_VERSION = ensure_fresh_runtime()
-AUTH_COOKIE_NAME = "ai_data_engg_auth"
 
 
 def _utc_now():
     return datetime.now(timezone.utc)
-
-
-def _auth_token_for(username, password_hash):
-    username_part = base64.urlsafe_b64encode(username.encode("utf-8")).decode("ascii").rstrip("=")
-    signature = hmac.new(
-        password_hash.encode("utf-8"),
-        username_part.encode("ascii"),
-        hashlib.sha256,
-    ).hexdigest()
-    return f"{username_part}.{signature}"
-
-
-def _username_from_token(token):
-    try:
-        username_part, supplied_signature = token.split(".", 1)
-        padding = "=" * (-len(username_part) % 4)
-        username = base64.urlsafe_b64decode(username_part + padding).decode("utf-8")
-    except (AttributeError, ValueError, UnicodeDecodeError):
-        return None
-
-    session = SessionLocal()
-    try:
-        user = session.query(User).filter_by(username=username).first()
-        if not user:
-            return None
-        expected_signature = _auth_token_for(user.username, user.password).split(".", 1)[1]
-        if not hmac.compare_digest(supplied_signature, expected_signature):
-            return None
-        return user.username, user.role
-    except SQLAlchemyError:
-        return None
-    finally:
-        session.close()
-
-
-def _persist_login(username):
-    session = SessionLocal()
-    try:
-        database_user = session.query(User).filter_by(username=username).first()
-        if not database_user:
-            return
-        token = _auth_token_for(database_user.username, database_user.password)
-    finally:
-        session.close()
-
-    cookie_controller.set(
-        AUTH_COOKIE_NAME,
-        token,
-        expires=_utc_now() + timedelta(days=3650),
-        max_age=315360000,
-        secure=True,
-        same_site="strict",
-    )
-
-
-def _clear_persistent_login():
-    if _browser_auth_cookie():
-        cookie_controller.set(
-            AUTH_COOKIE_NAME,
-            "",
-            expires=_utc_now() - timedelta(days=1),
-            max_age=0,
-            secure=True,
-            same_site="strict",
-        )
-
-
-def _browser_auth_cookie():
-    try:
-        request_cookie = st.context.cookies.get(AUTH_COOKIE_NAME)
-    except (AttributeError, RuntimeError):
-        request_cookie = None
-    return request_cookie or cookie_controller.get(AUTH_COOKIE_NAME)
-
-
-def _restore_persistent_login():
-    if st.session_state.get("user"):
-        return
-    restored_user = _username_from_token(_browser_auth_cookie())
-    if not restored_user:
-        return
-    username, role = restored_user
-    st.session_state["user"] = username
-    st.session_state["role"] = role
-    st.session_state["login_ts"] = _utc_now()
 
 
 def _show_database_unavailable(error):
@@ -162,7 +71,7 @@ def _show_database_unavailable(error):
         st.caption(f"Configured DB host: `{database_host}`")
     st.caption(f"Database detail: {error}")
 
-# --- persistent login using query params + session state
+# Authentication exists only for the current Streamlit session.
 if "user" not in st.session_state:
     st.session_state["user"] = None
 if "role" not in st.session_state:
@@ -348,7 +257,6 @@ st.markdown(
 # parameters created by older releases while preserving navigation parameters.
 st.query_params.pop("user", None)
 st.query_params.pop("auth_ts", None)
-_restore_persistent_login()
 
 def _safe_query_param(name):
     v = st.query_params.get(name)
@@ -415,8 +323,6 @@ def _render_section_navigation(visible_sections, selected_module):
 def _render_sidebar_logout():
     if st.button("⎋", key="sidebar_logout", help="Logout"):
         flush_section_activity(st.session_state.get("user"))
-        _clear_persistent_login()
-        st.session_state.pop("persistent_cookie_user", None)
         st.session_state["user"] = None
         st.session_state["role"] = "user"
         st.session_state.pop("login_ts", None)
@@ -628,10 +534,6 @@ if st.session_state.get("user"):
     from core.prewarm import prewarm_section_modules
 
     prewarm_section_modules()
-
-    if st.session_state.get("persistent_cookie_user") != st.session_state["user"]:
-        _persist_login(st.session_state["user"])
-        st.session_state["persistent_cookie_user"] = st.session_state["user"]
 
     if not st.session_state.get("job_alerts_checked"):
         try:
