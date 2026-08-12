@@ -2,7 +2,7 @@ name: Scan career sites
 
 on:
   schedule:
-    # Run hourly; the scanner selects a small due batch so each source refreshes
+    # Run hourly; the scanner selects a due batch sized so each source refreshes
     # approximately every 12 hours without hitting every career site at once.
     - cron: "0 * * * *"
   workflow_dispatch:
@@ -17,9 +17,11 @@ concurrency:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.DB_URL || secrets.NEON_DATABASE_URL }}
+      JOB_SCAN_BATCH_SIZE: ${{ vars.JOB_SCAN_BATCH_SIZE || '48' }}
+      JOB_SCAN_WORKERS: ${{ vars.JOB_SCAN_WORKERS || '8' }}
       PYTHONUNBUFFERED: "1"
 
     steps:

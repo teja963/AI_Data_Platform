@@ -3,6 +3,7 @@ import re
 import time
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
+from functools import lru_cache
 from http.cookiejar import CookieJar
 from datetime import datetime, timedelta, timezone
 from html import unescape
@@ -18,6 +19,18 @@ PRIORITY_COMPANIES_PATH = (
 )
 HTTP_TIMEOUT_SECONDS = 25
 USER_AGENT = "AI-Data-Engineering-Job-Monitor/1.0"
+REMOTE_WORK_TERMS = (
+    "remote",
+    "work from home",
+    "work-from-home",
+    "wfh",
+    "home based",
+    "home-based",
+    "distributed",
+    "work from anywhere",
+    "worldwide",
+)
+HYBRID_WORK_TERMS = ("hybrid", "flexible workplace")
 
 
 class _HTMLTextExtractor(HTMLParser):
@@ -101,9 +114,33 @@ def parse_relative_posted_datetime(value, now=None):
     return reference - delta
 
 
-def load_job_sources():
+def normalize_work_mode(location="", work_mode="", description="", remote_flag=None):
+    text = " ".join(
+        str(value or "").casefold()
+        for value in (location, work_mode, description)
+    )
+    if remote_flag is True or any(term in text for term in REMOTE_WORK_TERMS):
+        return "remote"
+    if any(term in text for term in HYBRID_WORK_TERMS):
+        return "hybrid"
+    if any(term in text for term in ("onsite", "on-site", "in office", "in-office")):
+        return "onsite"
+    normalized = " ".join(str(work_mode or "").strip().lower().split())
+    return normalized or "onsite"
+
+
+def is_remote_work(location="", work_mode="", description=""):
+    return normalize_work_mode(location, work_mode, description) == "remote"
+
+
+@lru_cache(maxsize=1)
+def _load_job_sources_cached():
     payload = json.loads(SOURCE_REGISTRY_PATH.read_text(encoding="utf-8"))
-    return [source for source in payload if source.get("enabled", True)]
+    return tuple(source for source in payload if source.get("enabled", True))
+
+
+def load_job_sources():
+    return [dict(source) for source in _load_job_sources_cached()]
 
 
 def load_priority_company_names():
@@ -193,7 +230,10 @@ def _greenhouse_jobs(source):
                 "external_id": str(item.get("id") or ""),
                 "title": item.get("title") or "",
                 "location": location,
-                "work_mode": "remote" if "remote" in location.lower() else "onsite",
+                "work_mode": normalize_work_mode(
+                    location,
+                    description=clean_html(item.get("content")),
+                ),
                 "department": "",
                 "description": clean_html(item.get("content")),
                 "job_url": item.get("absolute_url") or "",
@@ -221,7 +261,11 @@ def _lever_jobs(source):
                 "external_id": str(item.get("id") or ""),
                 "title": item.get("text") or "",
                 "location": location,
-                "work_mode": work_mode,
+                "work_mode": normalize_work_mode(
+                    location,
+                    work_mode,
+                    item.get("descriptionPlain") or clean_html(item.get("description")),
+                ),
                 "department": categories.get("team") or categories.get("department") or "",
                 "description": item.get("descriptionPlain") or clean_html(item.get("description")),
                 "job_url": item.get("hostedUrl") or item.get("applyUrl") or "",
@@ -250,7 +294,12 @@ def _ashby_jobs(source):
                 "external_id": str(external_id or ""),
                 "title": item.get("title") or "",
                 "location": location_text,
-                "work_mode": item.get("workplaceType") or "",
+                "work_mode": normalize_work_mode(
+                    location_text,
+                    item.get("workplaceType"),
+                    item.get("descriptionPlain") or clean_html(item.get("descriptionHtml")),
+                    remote_flag=item.get("isRemote"),
+                ),
                 "department": item.get("department") or item.get("team") or "",
                 "description": item.get("descriptionPlain")
                 or clean_html(item.get("descriptionHtml")),
@@ -290,7 +339,10 @@ def _smartrecruiters_jobs(source):
                     "external_id": str(item.get("id") or item.get("uuid") or ""),
                     "title": item.get("name") or "",
                     "location": location or ("Remote" if remote else ""),
-                    "work_mode": "remote" if remote else "onsite",
+                    "work_mode": normalize_work_mode(
+                        location,
+                        remote_flag=remote,
+                    ),
                     "department": (item.get("department") or {}).get("label") or "",
                     "description": "",
                     "job_url": item.get("ref") or "",
@@ -706,7 +758,10 @@ def _successfactors_rss_jobs(source):
                 "external_id": id_match.group(1),
                 "title": title,
                 "location": location,
-                "work_mode": "remote" if "remote" in location.lower() else "onsite",
+                "work_mode": normalize_work_mode(
+                    location,
+                    description=clean_html(item.findtext("description")),
+                ),
                 "department": "",
                 "description": clean_html(item.findtext("description")),
                 "job_url": link,
@@ -736,6 +791,8 @@ def _generic_rss_jobs(source):
         title = (item.findtext("title") or "").strip()
         if not external_id or not title or not link:
             continue
+        description = clean_html(item.findtext("description"))
+        location = source.get("default_location", "")
         published = None
         try:
             published_value = parsedate_to_datetime(item.findtext("pubDate") or "")
@@ -746,10 +803,13 @@ def _generic_rss_jobs(source):
             {
                 "external_id": external_id,
                 "title": title,
-                "location": source.get("default_location", ""),
-                "work_mode": "onsite",
+                "location": location,
+                "work_mode": normalize_work_mode(
+                    location,
+                    description=description,
+                ),
                 "department": "",
-                "description": clean_html(item.findtext("description")),
+                "description": description,
                 "job_url": link,
                 "posted_at": published,
                 "raw_payload": {

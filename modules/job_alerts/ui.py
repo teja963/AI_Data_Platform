@@ -16,11 +16,12 @@ from core.job_enrichment import (
 )
 from core.application_assist import build_application_review, profile_completion
 from core.job_alerts import (
+    is_india_location,
     list_jobs_for_user,
     run_due_company_scans,
     update_job_status,
 )
-from core.job_sources import load_job_sources, source_key
+from core.job_sources import is_remote_work, load_job_sources, source_key
 from core.lazy_tabs import lazy_tab
 
 
@@ -33,23 +34,34 @@ STATUS_LABELS = {
     "not_relevant": "Not Relevant",
 }
 SECTOR_LABELS = {
+    "ai": "AI & Machine Learning",
     "aerospace": "Aerospace",
     "aviation": "Travel & Aviation",
     "commerce": "Retail & E-commerce",
+    "data": "Data Platforms & Analytics",
+    "design-productivity": "Design & Productivity",
     "consulting": "Consulting & Services",
     "consumer": "Consumer Internet",
     "consumer-tech": "Consumer Internet",
     "entertainment": "Media & Entertainment",
     "financial-services": "Banking & Financial Services",
     "fintech": "Payments & Fintech",
+    "gaming": "Gaming",
+    "infrastructure": "Cloud & Infrastructure",
+    "internet": "Consumer Internet",
+    "logistics": "Logistics Technology",
     "health-tech": "Healthcare Technology",
     "marketplace": "Retail & E-commerce",
+    "networking": "Networking & Security",
     "payments": "Payments & Fintech",
+    "product": "Product Technology",
+    "saas": "Enterprise SaaS",
     "remote-talent": "Staffing & Talent Platforms",
     "retail": "Retail & E-commerce",
     "semiconductors": "Chips & Semiconductors",
     "software": "Enterprise Software & Cloud",
     "technology": "Enterprise Software & Cloud",
+    "climate-tech": "Climate Technology",
     "travel": "Travel & Aviation",
 }
 
@@ -602,13 +614,13 @@ def _filter_jobs(
     filtered = []
     search_query = search_query.strip().lower()
     for job in jobs:
-        location_text = f"{job['location']} {job['work_mode']}".lower()
-        if location_scope == "Remote" and "remote" not in location_text:
-            continue
-        if location_scope == "India" and not any(
-            term in location_text
-            for term in ("india", "bengaluru", "bangalore", "hyderabad", "pune", "chennai")
+        if location_scope == "Remote" and not is_remote_work(
+            job["location"],
+            job["work_mode"],
+            job.get("description", ""),
         ):
+            continue
+        if location_scope == "India" and not is_india_location(job["location"]):
             continue
         if location_scope == "Priority companies" and job["company"] not in priority_names:
             continue
@@ -771,7 +783,7 @@ def render_job_alerts():
             location_col, sector_col, company_col = st.columns(3)
             location_scope = location_col.selectbox(
                 "Location",
-                ["All jobs", "Remote", "India", "Priority companies"],
+                ["Remote first", "All jobs", "Remote", "India", "Priority companies"],
                 key="job_alert_location_filter",
             )
             sector_scope = sector_col.selectbox(
@@ -802,7 +814,23 @@ def render_job_alerts():
             search_query,
             priority_names,
         )
+        if location_scope == "Remote first":
+            filtered_jobs.sort(
+                key=lambda job: not is_remote_work(
+                    job["location"],
+                    job["work_mode"],
+                    job.get("description", ""),
+                )
+            )
         company_count = len({job["company"] for job in filtered_jobs})
+        remote_count = sum(
+            is_remote_work(
+                job["location"],
+                job["work_mode"],
+                job.get("description", ""),
+            )
+            for job in filtered_jobs
+        )
         jobs = _balance_jobs(filtered_jobs)
 
         if not jobs:
@@ -823,6 +851,7 @@ def render_job_alerts():
 
         summary = (
             f"{len(filtered_jobs)} matching jobs from {company_count} companies"
+            f" · {remote_count} remote"
             " · company-diverse order, newest within each organization"
         )
         st.caption(summary)

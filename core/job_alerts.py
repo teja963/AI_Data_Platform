@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
@@ -12,11 +13,19 @@ from sqlalchemy import and_, func, or_
 from core.db import Base, SessionLocal, engine
 from core.job_sources import (
     collect_source_jobs,
+    is_remote_work,
     load_job_sources,
     load_priority_company_names,
     source_key,
 )
 from core.models import JobPosting, JobScanRun, User, UserJobState
+
+
+def _positive_env_int(name, default):
+    try:
+        return max(1, int(os.getenv(name, str(default))))
+    except (TypeError, ValueError):
+        return default
 
 
 MICROSOFT_SOURCE = "microsoft_careers"
@@ -25,7 +34,8 @@ MICROSOFT_BASE_URL = "https://apply.careers.microsoft.com"
 RETENTION_DAYS = 7
 SCAN_INTERVAL_HOURS = 12
 FAILED_SOURCE_RETRY_HOURS = 6
-DEFAULT_SCAN_BATCH_SIZE = 24
+DEFAULT_SCAN_BATCH_SIZE = _positive_env_int("JOB_SCAN_BATCH_SIZE", 48)
+SCAN_WORKERS = _positive_env_int("JOB_SCAN_WORKERS", 8)
 
 TARGET_QUERIES = (
     "AI Data Engineer",
@@ -149,14 +159,13 @@ def match_job_title(title):
     return None
 
 
-def is_india_or_eligible_remote(location, work_mode):
+def is_india_location(location):
     location_text = " ".join((location or "").lower().split())
-    work_mode_text = " ".join((work_mode or "").lower().split())
-    if any(term in location_text for term in _INDIA_LOCATION_TERMS):
-        return True
+    return any(term in location_text for term in _INDIA_LOCATION_TERMS)
 
-    is_remote = "remote" in location_text or "remote" in work_mode_text
-    return is_remote
+
+def is_india_or_eligible_remote(location, work_mode):
+    return is_india_location(location) or is_remote_work(location, work_mode)
 
 
 class MicrosoftCareersClient:
@@ -410,6 +419,8 @@ def _all_scan_targets():
             else 1
             if source.get("featured", False)
             else 2
+            if source.get("remote_friendly", False)
+            else 3
         )
     )
     return [
@@ -424,7 +435,7 @@ def _all_scan_targets():
 def _execute_scan_targets(scan_targets):
     results = []
     failures = []
-    with ThreadPoolExecutor(max_workers=6) as executor:
+    with ThreadPoolExecutor(max_workers=SCAN_WORKERS) as executor:
         futures = {
             executor.submit(run_scan): scan_source
             for scan_source, run_scan in scan_targets

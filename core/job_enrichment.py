@@ -110,6 +110,14 @@ _SINGLE_PAY_PATTERN = re.compile(
 )
 
 
+@st.cache_data(show_spinner=False)
+def _company_source_lookup():
+    return {
+        source_key(configured): configured
+        for configured in load_job_sources()
+    }
+
+
 @st.cache_data(ttl=3600, show_spinner=False)
 def get_company_metadata(source, company):
     if source == "microsoft_careers":
@@ -121,9 +129,8 @@ def get_company_metadata(source, company):
             "ticker": "MSFT",
         }
 
-    for configured in load_job_sources():
-        if source_key(configured) != source:
-            continue
+    configured = _company_source_lookup().get(source)
+    if configured:
         platform = configured["platform"]
         slug = configured["slug"]
         careers_urls = {

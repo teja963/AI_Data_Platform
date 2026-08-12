@@ -3,6 +3,8 @@ import json
 from pathlib import Path
 
 from core.job_alerts import (
+    DEFAULT_SCAN_BATCH_SIZE,
+    SCAN_INTERVAL_HOURS,
     _all_scan_targets,
     _execute_scan_targets,
     collect_microsoft_jobs,
@@ -107,9 +109,19 @@ class LocationEligibilityTests(unittest.TestCase):
 class SourceRegistryTests(unittest.TestCase):
     def test_registry_has_broad_product_company_coverage(self):
         sources = load_job_sources()
-        self.assertGreaterEqual(len(sources) + 1, 200)
+        self.assertGreaterEqual(len(sources) + 1, 550)
         keys = {(source["platform"], source["slug"]) for source in sources}
         self.assertEqual(len(keys), len(sources))
+        self.assertGreaterEqual(
+            sum(bool(source.get("remote_friendly")) for source in sources),
+            200,
+        )
+
+    def test_hourly_batch_refreshes_full_registry_within_scan_interval(self):
+        self.assertGreaterEqual(
+            DEFAULT_SCAN_BATCH_SIZE * SCAN_INTERVAL_HOURS,
+            len(_all_scan_targets()),
+        )
 
     def test_external_source_outage_returns_degraded_result_without_raising(self):
         def unavailable():

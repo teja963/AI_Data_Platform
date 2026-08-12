@@ -5,6 +5,8 @@ from unittest.mock import patch
 
 from core.job_sources import (
     collect_source_jobs,
+    is_remote_work,
+    normalize_work_mode,
     parse_datetime,
     parse_relative_posted_datetime,
 )
@@ -23,6 +25,12 @@ class JobSourceAdapterTests(unittest.TestCase):
 
         def read(self):
             return self.payload
+
+    def test_remote_work_mode_normalizes_common_remote_labels(self):
+        self.assertEqual(normalize_work_mode("Worldwide", "Distributed"), "remote")
+        self.assertEqual(normalize_work_mode("", "Work from home"), "remote")
+        self.assertEqual(normalize_work_mode("New York", "Hybrid"), "hybrid")
+        self.assertTrue(is_remote_work("Home-based - APAC", ""))
 
     @patch("core.job_sources._get_json")
     def test_greenhouse_adapter_normalizes_job(self, get_json):
@@ -77,7 +85,7 @@ class JobSourceAdapterTests(unittest.TestCase):
         jobs = collect_source_jobs(source)
 
         self.assertEqual(len(jobs), 1)
-        self.assertEqual(jobs[0]["work_mode"], "Remote")
+        self.assertEqual(jobs[0]["work_mode"], "remote")
         self.assertEqual(jobs[0]["company"], "Example AI")
 
     @patch("core.job_sources._post_json")
