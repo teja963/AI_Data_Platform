@@ -1,0 +1,20 @@
+FROM mcr.microsoft.com/playwright/python:v1.61.0-noble
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+
+WORKDIR /app
+COPY requirements-agent.txt .
+RUN python -m pip install --upgrade pip \
+    && python -m pip install -r requirements-agent.txt
+
+COPY core ./core
+COPY scripts ./scripts
+RUN useradd --create-home --uid 10001 agentuser \
+    && mkdir -p /data/playwright/browser-state /data/playwright/artifacts \
+    && chown -R agentuser:agentuser /app /data
+
+USER agentuser
+CMD ["python", "scripts/run_application_agent.py", "--loop"]

@@ -1,0 +1,85 @@
+name: ai-data-engineering
+
+x-app-environment: &app-environment
+  DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-change-this-password}@postgres:5432/ai_data_engg
+  APP_DATA_ENCRYPTION_KEY: ${APP_DATA_ENCRYPTION_KEY:-}
+  GROQ_API_KEY: ${GROQ_API_KEY:-}
+  RESEND_API_KEY: ${RESEND_API_KEY:-}
+  PLAYWRIGHT_ARTIFACTS_DIR: /data/playwright/artifacts
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-this-password}
+      POSTGRES_DB: ai_data_engg
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_data_engg"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ai-data-engineering-app:local
+    environment: *app-environment
+    command:
+      - /bin/sh
+      - -c
+      - python init_db.py && exec streamlit run app.py --server.address=0.0.0.0 --server.port=8501
+    ports:
+      - "${APP_PORT:-8501}:8501"
+    volumes:
+      - playwright-artifacts:/data/playwright/artifacts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+  job-scanner:
+    image: ai-data-engineering-app:local
+    environment:
+      <<: *app-environment
+      JOB_SCAN_BATCH_SIZE: ${JOB_SCAN_BATCH_SIZE:-48}
+      JOB_SCAN_WORKERS: ${JOB_SCAN_WORKERS:-8}
+    command: ["python", "scripts/run_job_scanner.py", "--loop", "--interval-hours", "1"]
+    healthcheck:
+      disable: true
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+  application-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.playwright
+    image: ai-data-engineering-agent:local
+    init: true
+    shm_size: "2gb"
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:-change-this-password}@postgres:5432/ai_data_engg
+      APP_DATA_ENCRYPTION_KEY: ${APP_DATA_ENCRYPTION_KEY:-}
+      PLAYWRIGHT_HEADLESS: ${PLAYWRIGHT_HEADLESS:-true}
+      PLAYWRIGHT_STATE_DIR: /data/playwright/browser-state
+      PLAYWRIGHT_ARTIFACTS_DIR: /data/playwright/artifacts
+      APPLICATION_AGENT_POLL_SECONDS: ${APPLICATION_AGENT_POLL_SECONDS:-5}
+    volumes:
+      - playwright-browser-state:/data/playwright/browser-state
+      - playwright-artifacts:/data/playwright/artifacts
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  playwright-browser-state:
+  playwright-artifacts:

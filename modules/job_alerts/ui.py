@@ -1,7 +1,22 @@
+import json
 from datetime import timedelta, timezone
+from pathlib import Path
 
 import streamlit as st
 
+from core.application_workflow import (
+    approve_application_submission,
+    delete_site_credential,
+    encryption_configured,
+    latest_application_draft,
+    list_application_drafts,
+    list_site_credentials,
+    load_application_profile,
+    mark_application_reviewed,
+    queue_application_draft,
+    save_application_profile,
+    save_site_credential,
+)
 from core.job_enrichment import (
     compensation_range_in_inr,
     extract_compensation,
@@ -14,7 +29,7 @@ from core.job_enrichment import (
     get_research_links,
     load_priority_companies,
 )
-from core.application_assist import build_application_review, profile_completion
+from core.application_assist import profile_completion
 from core.job_alerts import (
     is_india_location,
     list_jobs_for_user,
@@ -484,13 +499,26 @@ def _render_priority_companies(companies, jobs):
                 _render_stock(selected, f"priority_{selected['company']}")
 
 
-def _render_application_profile():
+def _render_application_profile(username):
     st.subheader("Application Profile")
+    persistent_storage = encryption_configured()
+    if persistent_storage:
+        try:
+            profile = load_application_profile(username)
+        except Exception as error:
+            st.error(str(error))
+            profile = st.session_state.get("job_application_profile", {})
+    else:
+        profile = st.session_state.get("job_application_profile", {})
+        st.warning(
+            "Set APP_DATA_ENCRYPTION_KEY to enable encrypted profile, resume storage, "
+            "and Playwright preparation. Until then this profile remains session-only."
+        )
     st.caption(
-        "Saved only in this signed-in browser session. It is not written to PostgreSQL. "
-        "The portal prepares answers for review but never submits an application."
+        "Your profile and resume are encrypted before database storage. The browser worker "
+        "fills trusted answers and captures review evidence. Submission remains locked until "
+        "you explicitly approve a completed draft."
     )
-    profile = st.session_state.get("job_application_profile", {})
     with st.form("job_application_profile_form"):
         identity = st.columns(3)
         full_name = identity[0].text_input("Full name", value=profile.get("full_name", ""))
@@ -546,9 +574,28 @@ def _render_application_profile():
             ["", "Yes", "No"],
             index=["", "Yes", "No"].index(profile.get("willing_to_relocate", "")),
         )
-        save_profile = st.form_submit_button("Save profile for this session", type="primary")
+        custom_answers = st.text_area(
+            "Additional reusable answers",
+            value=profile.get("custom_answers", ""),
+            placeholder=(
+                "Highest degree = Bachelor of Technology\n"
+                "Are you at least 18 years old = Yes"
+            ),
+            help=(
+                "One exact question fragment and answer per line using Question = Answer. "
+                "Only add answers you have personally verified."
+            ),
+        )
+        resume = st.file_uploader(
+            "Resume",
+            type=["pdf", "doc", "docx"],
+            help="Encrypted before storage. Uploading a new file replaces the existing resume.",
+        )
+        if profile.get("_resume_filename"):
+            st.caption(f"Stored resume: {profile['_resume_filename']}")
+        save_profile = st.form_submit_button("Save application profile", type="primary")
     if save_profile:
-        st.session_state["job_application_profile"] = {
+        updated_profile = {
             "full_name": full_name,
             "email": email,
             "phone": phone,
@@ -563,44 +610,210 @@ def _render_application_profile():
             "work_authorized": work_authorized,
             "requires_sponsorship": requires_sponsorship,
             "willing_to_relocate": willing_to_relocate,
+            "custom_answers": custom_answers,
         }
-        profile = st.session_state["job_application_profile"]
-        st.success("Application profile is ready for review packets.")
+        st.session_state["job_application_profile"] = updated_profile
+        profile = updated_profile
+        if persistent_storage:
+            try:
+                save_application_profile(
+                    username,
+                    updated_profile,
+                    resume_filename=resume.name if resume else None,
+                    resume_bytes=resume.getvalue() if resume else None,
+                )
+                if resume:
+                    profile["_resume_filename"] = resume.name
+                st.success("Encrypted application profile saved.")
+            except Exception as error:
+                st.error(str(error))
+        else:
+            st.success("Profile saved for this browser session.")
 
     completion = profile_completion(profile)
     st.progress(completion["percent"] / 100, text=f"{completion['percent']}% complete")
     if completion["missing"]:
         st.caption("Missing: " + " · ".join(completion["missing"]))
 
-
-def _render_application_review(job):
-    profile = st.session_state.get("job_application_profile", {})
-    review = build_application_review(job, profile)
-    completion = review["completion"]
-    if not profile:
-        st.info("Complete the Application Profile tab once to prepare reusable answers.")
-        return
+    st.divider()
+    st.markdown("**Career-site logins**")
     st.caption(
-        f"{completion['completed']}/{completion['total']} standard fields ready. "
-        "Review every answer before continuing to the official portal."
+        "Optional. Credentials are encrypted and used only when the exact application "
+        "hostname presents a password form. CAPTCHA and MFA still require manual attention."
     )
-    st.dataframe(review["answers"], width="stretch", hide_index=True)
-    st.download_button(
-        "Download review packet",
-        data=review["download"],
-        file_name=f"{job['company']}-{job['id']}-application-review.json",
-        mime="application/json",
-        key=f"download_application_review_{job['id']}",
+    if not persistent_storage:
+        st.info("Encrypted storage must be configured before adding site logins.")
+        return
+    with st.form("application_site_credential_form", clear_on_submit=True):
+        credential_columns = st.columns(3)
+        site_url = credential_columns[0].text_input(
+            "Career-site URL or hostname",
+            placeholder="company.wd5.myworkdayjobs.com",
+        )
+        login_email = credential_columns[1].text_input("Login email")
+        login_password = credential_columns[2].text_input("Password", type="password")
+        save_credential = st.form_submit_button("Save encrypted login")
+    if save_credential:
+        try:
+            host = save_site_credential(
+                username,
+                site_url,
+                login_email,
+                login_password,
+            )
+            st.success(f"Encrypted login saved for {host}.")
+        except Exception as error:
+            st.error(str(error))
+
+    try:
+        credentials = list_site_credentials(username)
+    except Exception as error:
+        st.error(str(error))
+        credentials = []
+    for credential in credentials:
+        site_col, remove_col = st.columns([5, 1])
+        site_col.caption(
+            f"{credential['site_host']} · {credential['login_email']} · password stored"
+        )
+        if remove_col.button(
+            "Remove",
+            key=f"remove_site_credential_{credential['id']}",
+        ):
+            if delete_site_credential(username, credential["id"]):
+                st.success(f"Removed login for {credential['site_host']}.")
+
+
+def _render_application_drafts(username):
+    st.subheader("Application Reviews")
+    st.caption(
+        "The preparation worker fills only high-confidence profile answers. Review blockers, "
+        "field values and the captured page before approving submission."
     )
-    st.link_button(
-        "Open official application for final review ↗",
-        job["job_url"],
-        width="stretch",
-    )
-    st.warning(
-        "The portal does not press Submit. External ATS forms, CAPTCHA and legal declarations "
-        "must be reviewed and completed by you."
-    )
+    if not encryption_configured():
+        st.warning("Configure APP_DATA_ENCRYPTION_KEY before preparing applications.")
+        return
+    try:
+        drafts = list_application_drafts(username)
+    except Exception as error:
+        st.error(str(error))
+        return
+    if not drafts:
+        st.info("Choose Prepare application on a job card. Queued work will appear here.")
+        return
+
+    status_labels = {
+        "queued": "Queued",
+        "preparing": "Preparing",
+        "ready_for_review": "Ready for review",
+        "needs_attention": "Needs attention",
+        "approved_for_submission": "Approved for submission",
+        "submitting": "Submitting",
+        "submitted": "Submitted",
+        "failed": "Failed",
+    }
+    for draft in drafts:
+        label = status_labels.get(draft["status"], draft["status"].replace("_", " ").title())
+        with st.expander(
+            f"{draft['company']} · {draft['title']} · {label}",
+            expanded=draft["status"]
+            in {"ready_for_review", "needs_attention", "submitted", "failed"},
+        ):
+            result = draft.get("result") or {}
+            if draft["status"] == "failed":
+                st.error(draft["error_message"] or "Browser preparation failed.")
+            elif draft["status"] in {
+                "queued",
+                "preparing",
+                "approved_for_submission",
+                "submitting",
+            }:
+                st.info(
+                    {
+                        "queued": "Waiting for the Playwright worker.",
+                        "preparing": "The official application is being prepared.",
+                        "approved_for_submission": "Submission approved and waiting for the worker.",
+                        "submitting": "Playwright is completing the approved submission.",
+                    }[draft["status"]]
+                )
+            elif draft["status"] == "submitted":
+                if result.get("confirmation_detected"):
+                    st.success("The employer displayed an application confirmation.")
+                else:
+                    st.warning(
+                        "The submission control was clicked, but confirmation was not recognized. "
+                        "Check the employer's application history before retrying."
+                    )
+            if draft["error_message"] and draft["status"] != "failed":
+                st.warning(draft["error_message"])
+
+            blockers = result.get("blockers") or []
+            if blockers:
+                for blocker in blockers:
+                    st.warning(blocker)
+            filled = result.get("filled_fields") or []
+            if filled:
+                st.markdown("**Filled fields**")
+                st.dataframe(
+                    [{"Field": item["field"], "Answer": item["answer"]} for item in filled],
+                    hide_index=True,
+                    width="stretch",
+                )
+            required_attention = result.get("required_attention") or []
+            if required_attention:
+                st.markdown("**Requires your answer**")
+                st.dataframe(
+                    [
+                        {"Field": item["field"], "Reason": item["reason"]}
+                        for item in required_attention
+                    ],
+                    hide_index=True,
+                    width="stretch",
+                )
+
+            screenshot = result.get("screenshot")
+            if screenshot and Path(screenshot).is_file():
+                st.image(screenshot, caption="Browser review capture", width="stretch")
+            if result:
+                st.download_button(
+                    "Download preparation report",
+                    data=json.dumps(result, indent=2, ensure_ascii=False),
+                    file_name=f"application-draft-{draft['id']}.json",
+                    mime="application/json",
+                    key=f"download_application_draft_{draft['id']}",
+                )
+            st.link_button(
+                "Open official application for final review and submit ↗",
+                draft["official_url"],
+                width="stretch",
+            )
+            if draft["status"] == "ready_for_review":
+                reviewed = st.checkbox(
+                    "I reviewed every filled answer and authorize this one application submission.",
+                    key=f"confirm_application_submission_{draft['id']}",
+                )
+                if st.button(
+                    "Approve & submit through Playwright",
+                    key=f"approve_application_submission_{draft['id']}",
+                    type="primary",
+                    disabled=not reviewed,
+                ):
+                    try:
+                        if approve_application_submission(username, draft["id"]):
+                            st.success("Submission approved and queued.")
+                    except Exception as error:
+                        st.error(str(error))
+            elif draft["status"] == "needs_attention":
+                if st.button(
+                    "Mark review complete",
+                    key=f"mark_application_reviewed_{draft['id']}",
+                    disabled=bool(draft["reviewed_at"]),
+                ):
+                    if mark_application_reviewed(username, draft["id"]):
+                        st.success("Review completion recorded.")
+            st.caption(
+                "No application is submitted without the approval checkbox above. CAPTCHA, "
+                "MFA, legal declarations and demographic questions are never guessed."
+            )
 
 
 def _filter_jobs(
@@ -729,6 +942,34 @@ def _render_job(username, job):
             else:
                 _render_company_history(job["company"])
 
+        if st.toggle(
+            "Application agent",
+            key=f"application_agent_job_{job['id']}",
+            help="Queue Playwright to fill trusted fields and capture a review screenshot.",
+        ):
+            if not encryption_configured():
+                st.info(
+                    "Configure APP_DATA_ENCRYPTION_KEY and save the Application Profile first."
+                )
+            else:
+                try:
+                    draft = latest_application_draft(username, job["id"])
+                    if draft:
+                        status = draft["status"].replace("_", " ").title()
+                        st.caption(f"Latest preparation: {status}")
+                    if st.button(
+                        "Prepare application",
+                        key=f"prepare_application_{job['id']}",
+                        type="primary",
+                        width="stretch",
+                    ):
+                        draft_id = queue_application_draft(username, job["id"])
+                        st.success(
+                            f"Application draft {draft_id} queued. Track it in Application Reviews."
+                        )
+                except Exception as error:
+                    st.error(str(error))
+
         if current_status == "applied":
             st.success("Applied")
         elif st.button(
@@ -762,7 +1003,14 @@ def render_job_alerts():
 
     _render_scan_status(is_admin=role == "admin")
     selected_workspace = lazy_tab(
-        ["Jobs", "Applied", "Sector demand", "Priority companies", "Application Profile"],
+        [
+            "Jobs",
+            "Applied",
+            "Sector demand",
+            "Priority companies",
+            "Application Profile",
+            "Application Reviews",
+        ],
         "job_alert_workspace",
         "Job workspace",
     )
@@ -892,5 +1140,7 @@ def render_job_alerts():
         priority_companies = load_priority_companies()
         active_jobs = _load_jobs_cached(username, "Active")
         _render_priority_companies(priority_companies, active_jobs)
+    elif selected_workspace == "Application Reviews":
+        _render_application_drafts(username)
     else:
-        _render_application_profile()
+        _render_application_profile(username)

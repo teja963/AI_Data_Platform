@@ -1,0 +1,14 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+.streamlit/secrets.toml
+myenv
+venv
+__pycache__
+*.pyc
+*.log
+.DS_Store
+data/playwright
+tests

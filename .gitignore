@@ -32,3 +32,10 @@ Thumbs.db
 *.db
 *.sqlite
 .env*
+!.env.example
+
+# 🔹 Playwright sessions and review artifacts
+data/playwright/
+playwright-report/
+test-results/
+storage_state*.json

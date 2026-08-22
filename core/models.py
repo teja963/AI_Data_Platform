@@ -261,3 +261,53 @@ class JobScanRun(Base):
     matched_count = Column(Integer, default=0, nullable=False)
     inserted_count = Column(Integer, default=0, nullable=False)
     error_message = Column(Text, nullable=True)
+
+
+class ApplicationProfile(Base):
+    __tablename__ = "application_profiles"
+    __table_args__ = (
+        UniqueConstraint("user_id", name="uq_application_profile_user"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    encrypted_profile = Column(LargeBinary, nullable=False)
+    resume_filename = Column(String, nullable=True)
+    encrypted_resume = Column(LargeBinary, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ApplicationSiteCredential(Base):
+    __tablename__ = "application_site_credentials"
+    __table_args__ = (
+        UniqueConstraint("user_id", "site_host", name="uq_application_credential_site"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    site_host = Column(String, nullable=False)
+    encrypted_credentials = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ApplicationDraft(Base):
+    __tablename__ = "application_drafts"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    job_id = Column(Integer, ForeignKey("job_postings.id"), nullable=False)
+    status = Column(String, default="queued", nullable=False)
+    source = Column(String, nullable=False)
+    official_url = Column(Text, nullable=False)
+    encrypted_result = Column(LargeBinary, nullable=True)
+    artifact_dir = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    requested_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    started_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    reviewed_at = Column(DateTime, nullable=True)
+    submission_approved_at = Column(DateTime, nullable=True)
+    submitted_at = Column(DateTime, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

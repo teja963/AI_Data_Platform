@@ -1,4 +1,5 @@
 import bcrypt
+import os
 import re
 import random
 import resend
@@ -64,9 +65,10 @@ def create_user(username, password, full_name, email, phone, role="user", otp_se
 
 # ---------------- EMAIL SEND ----------------
 def send_otp_email(email, otp):
-    resend.api_key = st.secrets["RESEND_API_KEY"]
-
     try:
+        resend.api_key = os.getenv("RESEND_API_KEY") or st.secrets.get("RESEND_API_KEY")
+        if not resend.api_key:
+            raise RuntimeError("RESEND_API_KEY is not configured")
         resend.Emails.send({
             "from": "Panasa Edu <no-reply@panasaedu.in>",
             "to": [email],

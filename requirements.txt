@@ -13,3 +13,4 @@ bcrypt==5.0.0
 pyotp==2.10.0
 sqlalchemy==2.0.51
 resend==2.35.0
+cryptography==50.0.0

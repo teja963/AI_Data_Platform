@@ -1,3 +1,5 @@
+import os
+
 from groq import Groq
 import streamlit as st
 
@@ -5,7 +7,8 @@ import streamlit as st
 @st.cache_resource(show_spinner=False)
 def get_client():
     try:
-        return Groq(api_key=st.secrets["GROQ_API_KEY"])
+        api_key = os.getenv("GROQ_API_KEY") or st.secrets.get("GROQ_API_KEY")
+        return Groq(api_key=api_key) if api_key else None
     except Exception:
         return None
 

@@ -3,6 +3,7 @@ from core.models import Base
 from core.activity import ensure_activity_schema
 from core.access import ensure_access_schema
 from core.architecture import ensure_architecture_schema
+from core.application_workflow import ensure_application_schema
 from core.login_history import ensure_login_history_schema
 from core.job_alerts import ensure_job_schema
 from core.kubernetes_lab import ensure_kubernetes_lab_schema
@@ -16,6 +17,7 @@ _ensure_progress_schema()
 ensure_activity_schema()
 ensure_access_schema()
 ensure_architecture_schema()
+ensure_application_schema()
 ensure_login_history_schema()
 ensure_job_schema()
 ensure_kubernetes_lab_schema()
